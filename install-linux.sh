@@ -15,7 +15,21 @@ say "1/5  System packages"
 # that is WebKitGTK plus the PyGObject bindings, both distro packages.
 missing=()
 python3 -c 'import gi' 2>/dev/null || missing+=(pygobject)
-pkg-config --exists webkit2gtk-4.1 2>/dev/null || pkg-config --exists webkit2gtk-4.0 2>/dev/null || missing+=(webkit2gtk)
+# Test what pywebview actually needs: the GObject-Introspection typelib, loaded
+# the same way it will load it. Checking pkg-config instead would test for the
+# *-devel* package, which supplies build headers nothing here uses — the
+# runtime alone is enough and is what distros install by default.
+python3 - <<'PY' 2>/dev/null || missing+=(webkit2gtk)
+import gi
+for version in ("4.1", "4.0"):
+    try:
+        gi.require_version("WebKit2", version)
+        from gi.repository import WebKit2  # noqa: F401
+        raise SystemExit(0)
+    except (ValueError, ImportError):
+        continue
+raise SystemExit(1)
+PY
 if [ ${#missing[@]} -eq 0 ]; then
 	ok "webkit2gtk and PyGObject present"
 else
@@ -39,17 +53,30 @@ ok "dependencies installed"
 
 # The venv is isolated, so the *system* PyGObject is invisible to it. Expose
 # just that path rather than turning on system-site-packages wholesale.
-if ! .venv/bin/python -c 'import gi' 2>/dev/null; then
-	SYS_SITE="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-	SYS_SITE64="${SYS_SITE/lib\/python/lib64\/python}"
-	VENV_SITE="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-	{ echo "$SYS_SITE"; [ -d "$SYS_SITE64" ] && echo "$SYS_SITE64"; } >"$VENV_SITE/_system_gi.pth"
-	.venv/bin/python -c 'import gi' 2>/dev/null &&
-		ok "system PyGObject linked into the venv" ||
-		warn "PyGObject still not visible — the app will fall back to --browser"
-else
+if .venv/bin/python -c 'import gi' 2>/dev/null; then
 	ok "PyGObject visible"
+else
+	# Ask the system Python where `gi` actually is, rather than deriving it
+	# from sysconfig: on Fedora sysconfig reports /usr/local/lib/... (the local
+	# install prefix) while distro packages live in /usr/lib64/..., and the
+	# same mismatch appears in different forms on Debian and Arch.
+	GI_SITE="$(python3 -c 'import gi, os; print(os.path.dirname(os.path.dirname(os.path.abspath(gi.__file__))))')"
+	VENV_SITE="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+	echo "$GI_SITE" >"$VENV_SITE/_system_gi.pth"
+	if .venv/bin/python -c 'import gi' 2>/dev/null; then
+		ok "system PyGObject linked in from $GI_SITE"
+	else
+		rm -f "$VENV_SITE/_system_gi.pth"
+		warn "PyGObject not usable from the venv — the window will not open."
+		warn "The app still works: run 'pgs --browser'."
+	fi
 fi
+
+# Python version mismatch is the other way this fails, and it fails at import
+# time with a confusing error rather than here.
+SYS_PY="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+VENV_PY="$(.venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+[ "$SYS_PY" = "$VENV_PY" ] || warn "venv is Python $VENV_PY but system PyGObject is built for $SYS_PY — delete .venv and re-run"
 
 say "3/5  Frontend"
 if [ ! -d frontend/node_modules ]; then (cd frontend && npm install --silent); fi
@@ -75,7 +102,7 @@ Type=Application
 Name=Personal Growth System
 Comment=Local tech tree for deliberate practice
 Exec=$BIN/pgs
-Icon=$ROOT/frontend/static/favicon.png
+Icon=$ROOT/frontend/static/favicon.svg
 Terminal=false
 Categories=Education;Utility;
 StartupWMClass=Personal Growth System

@@ -64,7 +64,7 @@ $sc.TargetPath = "wscript.exe"
 $sc.Arguments = """$LauncherVbs"""
 $sc.WorkingDirectory = $Root
 $sc.Description = "Local tech tree for deliberate practice"
-$icon = Join-Path $Root "frontend\static\favicon.ico"
+$icon = Join-Path $Root "frontend\static\favicon.svg"  # .ico if you add one
 if (Test-Path $icon) { $sc.IconLocation = $icon }
 $sc.Save()
 Ok $Shortcut

@@ -3,6 +3,28 @@
 A local tech tree for the things you're trying to get good at. One question:
 **what do I work on right now, and for how long?**
 
+## Install
+
+```bash
+./install-linux.sh                                    # Linux
+powershell -ExecutionPolicy Bypass -File install-windows.ps1   # Windows
+```
+
+Then launch it from your app menu, or `pgs` on Linux. It opens in its own
+window — a native webview over a loopback server, nothing listening publicly.
+
+```bash
+pgs                                # data in ./data
+pgs --data-dir /mnt/shared/pgs     # share one history across both OSes
+pgs --browser                      # no window; use your browser instead
+```
+
+Dual-booting? See [`SYNC.md`](SYNC.md) — either point both installs at one
+shared folder, or sync through a private git remote, where the append-only
+log merges without conflicts.
+
+Or run it as a plain server:
+
 ```bash
 ./run.sh          # http://localhost:8787
 ```
