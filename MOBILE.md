@@ -33,13 +33,34 @@ control, and the choice of address is the entire security decision.
 A WireGuard mesh between your own devices. Nothing is exposed to the internet
 and no traffic goes through a third party.
 
-1. Install Tailscale on the PC and on the phone, sign in to both
-2. `tailscale ip -4` on the PC → an address like `100.x.y.z`
-3. `pgs --host 100.x.y.z --port 8787`
-4. On the phone: `http://100.x.y.z:8787` → Add to Home Screen
+**Linux.** Installing the package does not start the daemon — Fedora ships the
+unit disabled, so `tailscale ip` fails with *"failed to connect to local
+Tailscale daemon"* until you do:
 
-Works from anywhere with a connection — the phone does not need to be on your
-WiFi. **This is the option to use.**
+```bash
+sudo systemctl enable --now tailscaled   # --now also starts it
+sudo tailscale up                        # prints a URL; open it to sign in
+```
+
+**Windows.** Install from <https://tailscale.com/download/windows>. It runs as a
+service with a tray icon; **sign in through the tray app, not the command line.**
+The CLI exists at `C:\Program Files\Tailscale\tailscale.exe` but is not on
+PATH by default — you do not need it, because:
+
+**Then, on either OS:**
+
+```bash
+pgs --host tailscale --port 8787
+```
+
+`--host tailscale` asks Tailscale for this machine's tailnet address and binds
+that specific interface. That is safer than typing an address by hand and much
+safer than `0.0.0.0`: the app is reachable only by your own signed-in devices,
+which is what makes running it without a login defensible at all. If the daemon
+is down it tells you, rather than silently binding nothing.
+
+Then on the phone, open the printed URL in **Safari** → Add to Home Screen.
+Works from anywhere, not just your WiFi.
 
 ### Home only — LAN
 
@@ -52,6 +73,34 @@ trusted home network; not fine in a café, an office, or a shared flat.
 
 Putting this on a VPS means your practice log lives on a rented computer, open
 to anyone who finds the port, until authentication exists. Do not, yet.
+
+## Dual-boot: you get two Tailscale devices
+
+Each OS install has its own machine identity, so Linux and Windows appear as
+**two separate devices with two different addresses**, even on the same
+hardware. Only one is ever online, but the phone still needs to know which.
+
+Two consequences:
+
+1. **Two URLs, so potentially two home-screen icons.** A PWA fixes its start
+   URL at install time. Turn on **MagicDNS** in the Tailscale admin console and
+   you at least get stable names — `http://pekka-linux:8787` — instead of
+   memorising two `100.x` addresses.
+2. **Point both installs at one data folder.** Otherwise the phone writes to
+   whichever OS is booted and the two copies diverge. The append-only log is
+   built to survive exactly that (see `SYNC.md`), but a shared folder avoids the
+   problem rather than repairing it afterwards:
+
+```bash
+pgs --data-dir /mnt/shared/pgs-data --host tailscale --port 8787
+```
+
+If you would rather not share a folder, git still reconciles it — just actually
+`git pull --rebase` when you switch OS, or the divergence simply sits there
+until you do.
+
+The simplest version of all this: **pick the OS you use most and only serve
+from that one.** One address, one icon, no divergence.
 
 ## The real limitation
 

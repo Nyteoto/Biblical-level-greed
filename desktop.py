@@ -55,6 +55,44 @@ def wait_until_up(port: int, timeout: float = 30.0) -> bool:
     return False
 
 
+TAILSCALE_BINARIES = (
+    "tailscale",
+    r"C:\Program Files\Tailscale\tailscale.exe",
+    "/usr/bin/tailscale",
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+)
+
+
+def tailscale_ip() -> str | None:
+    """This machine's address on the tailnet, or None if it is not up.
+
+    Asking Tailscale rather than the user is not just convenience: binding the
+    tailnet interface *specifically* is what makes running without
+    authentication defensible. `--host 0.0.0.0` on a café network exposes the
+    same app to everyone on it; this address is reachable only by your own
+    signed-in devices.
+    """
+    import subprocess
+
+    for binary in TAILSCALE_BINARIES:
+        try:
+            out = subprocess.run(
+                [binary, "ip", "-4"], capture_output=True, text=True, timeout=10
+            )
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            continue
+        address = out.stdout.strip().splitlines()
+        if out.returncode == 0 and address:
+            return address[0].strip()
+        if "not running" in (out.stderr or "").lower():
+            raise SystemExit(
+                "Tailscale is installed but its daemon is not running.\n"
+                "  Linux:   sudo systemctl enable --now tailscaled && sudo tailscale up\n"
+                "  Windows: open the Tailscale tray app and sign in"
+            )
+    return None
+
+
 def serve(port: int, host: str = "127.0.0.1") -> tuple["uvicorn.Server", threading.Thread]:  # noqa: F821
     import uvicorn
 
@@ -152,9 +190,11 @@ def main() -> int:
     parser.add_argument(
         "--host",
         default="127.0.0.1",
-        help="interface to bind. THERE IS NO AUTHENTICATION: anything that can "
-        "reach this address can read and rewrite your log. Bind a private "
-        "interface (a Tailscale address) rather than 0.0.0.0.",
+        help="interface to bind. Use `tailscale` to bind this machine's tailnet "
+        "address, which is the recommended way to reach it from a phone. "
+        "THERE IS NO AUTHENTICATION: anything that can route to the bound "
+        "address can read and rewrite your log, so do not use 0.0.0.0 on a "
+        "network you do not control.",
     )
     args = parser.parse_args()
 
@@ -174,6 +214,18 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    if args.host == "tailscale":
+        found = tailscale_ip()
+        if not found:
+            print(
+                "Could not find a Tailscale address. Is it installed and signed in?\n"
+                "  Linux:   sudo systemctl enable --now tailscaled && sudo tailscale up\n"
+                "  Windows: install from tailscale.com/download and sign in via the tray",
+                file=sys.stderr,
+            )
+            return 1
+        args.host = found
 
     port = args.port or free_port()
     server, thread = serve(port, args.host)
