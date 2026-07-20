@@ -19,6 +19,9 @@ pgs --data-dir /mnt/shared/pgs     # share one history across both OSes
 pgs --browser                      # no window; use your browser instead
 ```
 
+On a phone? See [`MOBILE.md`](MOBILE.md) — it installs to the iOS home screen
+as a PWA, and reaches the PC over Tailscale.
+
 Dual-booting? See [`SYNC.md`](SYNC.md) — either point both installs at one
 shared folder, or sync through a private git remote, where the append-only
 log merges without conflicts.

@@ -55,7 +55,7 @@ def wait_until_up(port: int, timeout: float = 30.0) -> bool:
     return False
 
 
-def serve(port: int) -> tuple["uvicorn.Server", threading.Thread]:  # noqa: F821
+def serve(port: int, host: str = "127.0.0.1") -> tuple["uvicorn.Server", threading.Thread]:  # noqa: F821
     import uvicorn
 
     # Imported *after* PGS_DATA_DIR is set: config reads the environment at
@@ -63,7 +63,7 @@ def serve(port: int) -> tuple["uvicorn.Server", threading.Thread]:  # noqa: F821
     from backend.app.main import app
 
     config = uvicorn.Config(
-        app, host="127.0.0.1", port=port, log_level="warning", access_log=False
+        app, host=host, port=port, log_level="warning", access_log=False
     )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True, name="pgs-server")
@@ -149,6 +149,13 @@ def main() -> int:
         help="skip the native window and open the default browser instead",
     )
     parser.add_argument("--port", type=int, default=0, help="fixed port (default: any free one)")
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="interface to bind. THERE IS NO AUTHENTICATION: anything that can "
+        "reach this address can read and rewrite your log. Bind a private "
+        "interface (a Tailscale address) rather than 0.0.0.0.",
+    )
     args = parser.parse_args()
 
     if args.data_dir:
@@ -169,8 +176,19 @@ def main() -> int:
         return 1
 
     port = args.port or free_port()
-    server, thread = serve(port)
+    server, thread = serve(port, args.host)
     url = f"http://127.0.0.1:{port}"
+
+    if args.host != "127.0.0.1":
+        # Loud, every time. The app has no login, so the network *is* the
+        # access control, and that is only true if the interface is private.
+        print(
+            f"\n  Serving on {args.host}:{port} — reachable beyond this machine.\n"
+            f"  There is no authentication. Anyone who can route to this address\n"
+            f"  can read your journal and rewrite your history.\n"
+            f"  Use a Tailscale/WireGuard address, not 0.0.0.0, unless you mean it.\n",
+            file=sys.stderr,
+        )
 
     if not wait_until_up(port):
         shutdown(server, thread)

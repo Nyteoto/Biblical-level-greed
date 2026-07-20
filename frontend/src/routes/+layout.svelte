@@ -14,6 +14,10 @@
 		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
 </script>
 
+<svelte:head>
+	<title>Personal Growth System</title>
+</svelte:head>
+
 <div class="flex min-h-screen flex-col bg-[#14100c] text-stone-300">
 	<!-- Centred uppercase tabs, as in the reference. -->
 	<header class="relative border-b border-black/60 bg-gradient-to-b from-[#20191200] to-[#00000060]">
