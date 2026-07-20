@@ -15,7 +15,4 @@ data/todos.jsonl   merge=union
 # small, so a real conflict here is worth reading by hand.
 data/domains/*.toml -merge
 
-# Keep line endings sane across the Windows/Linux boundary.
 * text=auto eol=lf
-*.ps1 text eol=crlf
-*.bat text eol=crlf

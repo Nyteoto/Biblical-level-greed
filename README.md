@@ -6,12 +6,15 @@ A local tech tree for the things you're trying to get good at. One question:
 ## Install
 
 ```bash
-./install-linux.sh                                    # Linux
-powershell -ExecutionPolicy Bypass -File install-windows.ps1   # Windows
+./install-linux.sh
 ```
 
-Then launch it from your app menu, or `pgs` on Linux. It opens in its own
-window — a native webview over a loopback server, nothing listening publicly.
+Then launch it from your app menu, or `pgs`. It opens in its own window — a
+native webview over a loopback server, nothing listening publicly.
+
+Linux only. A Windows port existed briefly and was dropped: maintaining two
+installers, two GUI stacks and a dual-boot sync story cost more than it
+returned for a single-user app.
 
 ```bash
 pgs                                # data in ./data
@@ -20,11 +23,9 @@ pgs --browser                      # no window; use your browser instead
 ```
 
 On a phone? See [`MOBILE.md`](MOBILE.md) — it installs to the iOS home screen
-as a PWA, and reaches the PC over Tailscale.
+as a PWA and reaches this machine over Tailscale.
 
-Dual-booting? See [`SYNC.md`](SYNC.md) — either point both installs at one
-shared folder, or sync through a private git remote, where the append-only
-log merges without conflicts.
+Backups and moving machines: [`SYNC.md`](SYNC.md).
 
 Or run it as a plain server:
 

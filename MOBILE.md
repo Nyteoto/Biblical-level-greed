@@ -42,12 +42,7 @@ sudo systemctl enable --now tailscaled   # --now also starts it
 sudo tailscale up                        # prints a URL; open it to sign in
 ```
 
-**Windows.** Install from <https://tailscale.com/download/windows>. It runs as a
-service with a tray icon; **sign in through the tray app, not the command line.**
-The CLI exists at `C:\Program Files\Tailscale\tailscale.exe` but is not on
-PATH by default — you do not need it, because:
-
-**Then, on either OS:**
+**Then:**
 
 ```bash
 pgs --host tailscale --port 8787
@@ -74,33 +69,17 @@ trusted home network; not fine in a café, an office, or a shared flat.
 Putting this on a VPS means your practice log lives on a rented computer, open
 to anyone who finds the port, until authentication exists. Do not, yet.
 
-## Dual-boot: you get two Tailscale devices
+## One machine, one address
 
-Each OS install has its own machine identity, so Linux and Windows appear as
-**two separate devices with two different addresses**, even on the same
-hardware. Only one is ever online, but the phone still needs to know which.
+Dropping the Windows install removed the awkward part of this. A dual-boot
+machine is *two* Tailscale devices with two addresses, because each OS install
+has its own identity — which meant two URLs, two home-screen icons, and two
+data copies that drifted apart. None of that applies now: one device, one
+address, one icon, nothing to reconcile.
 
-Two consequences:
-
-1. **Two URLs, so potentially two home-screen icons.** A PWA fixes its start
-   URL at install time. Turn on **MagicDNS** in the Tailscale admin console and
-   you at least get stable names — `http://pekka-linux:8787` — instead of
-   memorising two `100.x` addresses.
-2. **Point both installs at one data folder.** Otherwise the phone writes to
-   whichever OS is booted and the two copies diverge. The append-only log is
-   built to survive exactly that (see `SYNC.md`), but a shared folder avoids the
-   problem rather than repairing it afterwards:
-
-```bash
-pgs --data-dir /mnt/shared/pgs-data --host tailscale --port 8787
-```
-
-If you would rather not share a folder, git still reconciles it — just actually
-`git pull --rebase` when you switch OS, or the divergence simply sits there
-until you do.
-
-The simplest version of all this: **pick the OS you use most and only serve
-from that one.** One address, one icon, no divergence.
+Turn on **MagicDNS** in the Tailscale admin console and you can use a stable
+name instead of the address — `http://p:8787` rather than `http://100.x.y.z:8787`
+— which also survives the address ever changing.
 
 ## The real limitation
 

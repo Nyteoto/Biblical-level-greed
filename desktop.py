@@ -11,11 +11,14 @@ interface.
 
 WHY NOT TAURI: Tauri wraps a *Rust* binary. This backend is Python, so a Tauri
 build would need the Rust toolchain plus a PyInstaller sidecar to carry the
-Python half anyway — two build systems to maintain for the same window. pywebview
-uses the OS's own engine directly: WebKitGTK on Linux, and on Windows the
-Edge WebView2 runtime that ships with Windows 10 and 11, so neither platform
-needs a bundled browser. If a tray icon or an auto-updater is ever wanted, the
-frontend and API stay exactly as they are and only this file gets replaced.
+Python half anyway — two build systems to maintain for the same window.
+pywebview drives WebKitGTK directly, so nothing is bundled. If a tray icon or
+an auto-updater is ever wanted, the frontend and API stay exactly as they are
+and only this file gets replaced.
+
+Linux only. The cross-platform guards below are kept because they cost nothing
+and removing them would be a change with no upside, but nothing else here is
+tested anywhere but Linux.
 """
 from __future__ import annotations
 

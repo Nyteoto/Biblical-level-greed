@@ -1,61 +1,27 @@
-# Running on both OSes
+# Backups, and moving to another machine
 
-You dual-boot. There are two ways to keep one history across both, and the first
-one is much better if your partition layout allows it.
+Your data is four kinds of plain file in `data/`:
 
-## Option A — one shared folder (no sync at all)
+| | |
+|---|---|
+| `domains/*.toml` | your trees — hand-editable |
+| `log/YYYY-MM.jsonl` | every check-off, append-only |
+| `todos.jsonl` | the checklist, append-only |
+| `index.sqlite` | a rebuildable cache — **not** tracked, delete it any time |
 
-If both operating systems can reach the same partition, point both installs at
-the same data directory and there is nothing to reconcile, ever.
-
-```bash
-# Linux
-pgs --data-dir /mnt/shared/pgs-data
-```
-```powershell
-# Windows
-.\.venv\Scripts\python.exe desktop.py --data-dir D:\pgs-data
-```
-
-The `index.sqlite` cache is written inside that folder too, and is rebuilt
-automatically whenever it is stale or missing — so it does not matter which OS
-wrote it last.
-
-**Dual-boot specifics.** Linux reads and writes NTFS fine (`ntfs3`), so a
-Windows data partition works from both sides. The reverse — Windows reading
-ext4 — needs third-party drivers and is not worth it. If one of your drives is
-NTFS, put the data there and use it from both.
-
-> Do not point a shared folder at a drive that Windows Fast Startup keeps
-> hibernated. Fast Startup leaves NTFS volumes in a dirty state and Linux will
-> mount them read-only. Turn it off (`powercfg /h off`) if you hit that.
-
-## Option B — a git remote
-
-If there is no shared partition, sync through a **private** repo. Your practice
-log and journal entries are in it.
+The repo is the backup. Commit and push whenever you have done a stretch of
+work:
 
 ```bash
-git remote add origin git@github.com:you/pgs.git
-git push -u origin main
-```
-
-Then on the other OS: clone it, run that OS's install script, and you have the
-same tree and the same history.
-
-### The workflow
-
-Before you start, and after you finish:
-
-```bash
-git pull --rebase        # get the other OS's work
-# ...use the app...
 git add -A && git commit -m "practice" && git push
 ```
 
-If you forget, nothing breaks — the merge is designed for exactly that.
+Moving to a new machine is a clone plus `./install-linux.sh`.
 
-### Why the merge is safe
+## If two machines ever write the same history
+
+Not the normal case any more — this is a single-machine app — but the design
+still supports it, and it costs nothing to leave in place.
 
 `.gitattributes` marks the append-only streams `merge=union`:
 
@@ -72,7 +38,7 @@ That leaves two problems, both handled on read rather than on write:
 
 | problem | handled by |
 |---|---|
-| merged lines are **out of order** | events sort by `ts`, stably — file order stops being meaningful once two machines write the same file |
+| merged lines are **out of order** | events sort by `ts`, stably — file order stops meaning anything once two machines write the same file |
 | merged lines may be **duplicated** | sessions, completions and phases are last-wins; todos are keyed by item id; journal entries dedupe on `(ts, text)` |
 
 Journal entries were the only kind that would visibly double, because they
@@ -85,31 +51,22 @@ identical lines cannot simply be collapsed.
 versions together produces something that will not parse. Edits there are rare
 and small, so a genuine conflict is worth reading by hand.
 
-### If a merge ever looks wrong
+## Using a data directory elsewhere
 
-The index is disposable. Delete it and replay:
+To keep the data off the repo drive — a different disk, an encrypted volume:
 
 ```bash
-rm data/index.sqlite     # or: curl -X POST localhost:PORT/api/admin/reindex
+pgs --data-dir /mnt/somewhere/pgs-data
+```
+
+The index follows it, so nothing stale is left behind in the checkout.
+
+## If anything ever looks wrong
+
+The index is disposable. Delete it and the log replays:
+
+```bash
+rm data/index.sqlite
 ```
 
 The log is the truth; everything else is a projection of it.
-
-## Updating
-
-Both scripts are idempotent — re-running is the update path:
-
-```bash
-git pull && ./install-linux.sh
-```
-```powershell
-git pull; powershell -ExecutionPolicy Bypass -File install-windows.ps1
-```
-
-## What is and is not in the repo
-
-| in | out |
-|---|---|
-| `data/domains/*.toml` — your trees | `data/index.sqlite` — rebuildable cache |
-| `data/log/*.jsonl` — every check-off | `.venv/`, `node_modules/` |
-| `data/todos.jsonl` — the checklist | `frontend/build/` — rebuilt by the installer |
