@@ -26,6 +26,9 @@
 	const domainId = $derived(page.params.domain!);
 
 	let domains = $state<DomainView[]>([]);
+	// From the server: the app's day rolls over at GMT+7 midnight, which is not
+	// necessarily the browser's idea of today.
+	let todayKey = $state('');
 	let view = $state<DomainView | null>(null);
 	let error = $state<string | null>(null);
 	let selected = $state<string | null>(null);
@@ -44,6 +47,7 @@
 		try {
 			const [board, one] = await Promise.all([getDashboard(), getDomain(domainId)]);
 			domains = board.domains;
+			todayKey = board.today;
 			view = one;
 			error = null;
 		} catch (e) {
@@ -427,6 +431,7 @@
 			node={detail}
 			nodes={view.nodes}
 			strands={view.strands}
+			today={todayKey}
 			onchange={load}
 			onclose={() => (selected = null)}
 		/>

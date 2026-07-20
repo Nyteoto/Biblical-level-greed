@@ -63,6 +63,10 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
     """
     per_day: dict[tuple[str, str], str] = {}  # (node, day) -> session|undo
     completion: dict[str, tuple[str, str]] = {}  # node -> (complete|reopen, day)
+    # One reflection per node per day. Keyed like the session toggle, so the
+    # last thing written that day is what stands — which lets you revise this
+    # evening's entry without the log ever losing what you first wrote.
+    per_journal: dict[tuple[str, str], dict] = {}
     per_phase: dict[tuple[str, str], str] = {}  # (node, phase) -> phase|phase_undo
     facts: dict[str, NodeFacts] = {}
 
@@ -76,9 +80,11 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
                     {"day": row["day"], "value": value}
                 )
         elif kind == eventlog.JOURNAL:
-            facts.setdefault(row["node"], _blank()).journal.append(
-                {"ts": row["ts"], "day": row["day"], "text": row["text"]}
-            )
+            per_journal[(row["node"], row["day"])] = {
+                "ts": row["ts"],
+                "day": row["day"],
+                "text": row["text"],
+            }
         elif kind in (eventlog.PHASE, eventlog.PHASE_UNDO):
             per_phase[(row["node"], row["text"])] = kind
         else:
@@ -95,22 +101,13 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
     for (node_id, phase), kind in per_phase.items():
         if kind == eventlog.PHASE:
             facts.setdefault(node_id, _blank()).phases_done.add(phase)
+    for (node_id, _day), entry in per_journal.items():
+        facts.setdefault(node_id, _blank()).journal.append(entry)
 
     for node_facts in facts.values():
-        # The one event kind that accumulates rather than resolving last-wins,
-        # so it is the only one a duplicated log line would visibly double. Two
-        # entries with the same timestamp *and* the same text are the same
-        # entry arriving twice — which is what a cross-machine merge produces.
-        seen: set[tuple[str, str]] = set()
-        deduped = []
-        for entry in node_facts.journal:
-            key = (entry["ts"], entry["text"])
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(entry)
-        node_facts.journal = deduped
-        node_facts.journal.sort(key=lambda entry: entry["ts"], reverse=True)
+        # Duplicated log lines need no special handling any more: keyed by
+        # (node, day), a repeated entry overwrites itself.
+        node_facts.journal.sort(key=lambda entry: entry["day"], reverse=True)
         node_facts.readings.sort(key=lambda entry: entry["day"])
         # An undone session leaves its reading behind; drop readings for days
         # that are no longer checked off so the chart matches the counter.

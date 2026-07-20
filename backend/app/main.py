@@ -195,29 +195,6 @@ def complete_todo(item_id: str) -> dict:
     return {"todos": todos.live()}
 
 
-# -- throwaway diagnostic ---------------------------------------------------
-# Does `shortcuts://` fire from an installed PWA in standalone mode? Apple
-# documents the scheme for browsers but says nothing about standalone, so this
-# is settled by experiment. Self-verifying: the test Shortcut POSTs here, so a
-# hit is server-side proof it actually ran rather than the page guessing.
-_shortcut_ping: dict = {"at": None, "count": 0, "note": ""}
-
-
-@app.post("/api/shortcut-ping")
-def shortcut_ping(body: TodoIn | None = None) -> dict:
-    from .timeutil import now
-
-    _shortcut_ping["at"] = now().isoformat(timespec="seconds")
-    _shortcut_ping["count"] += 1
-    _shortcut_ping["note"] = (body.text if body else "") or ""
-    return {"ok": True, **_shortcut_ping}
-
-
-@app.get("/api/shortcut-ping")
-def shortcut_ping_status() -> dict:
-    return _shortcut_ping
-
-
 # -- notes: one mutable markdown document per node --------------------------
 
 
@@ -256,15 +233,12 @@ async def upload_media(
 
     Deliberately tolerant about how the bytes arrive, because the caller is an
     iOS Shortcut and `Get Contents of URL` can send a file either as multipart
-    or as the raw request body depending on how it was assembled. Sniffing the
-    content type and accepting both is cheaper than making the Shortcut exact.
+    or as the raw request body depending on how it was assembled.
     """
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("multipart/form-data"):
         form = await request.form()
-        upload = next(
-            (v for v in form.values() if hasattr(v, "read")), None
-        )
+        upload = next((v for v in form.values() if hasattr(v, "read")), None)
         if upload is None:
             raise HTTPException(400, "multipart body carried no file")
         data = await upload.read()
@@ -298,8 +272,7 @@ def get_media(relative: str):
     target = media.path_for(relative)
     if target is None:
         raise HTTPException(404, "no such media")
-    # Content-addressed by a random id and never rewritten, so it can be
-    # cached hard.
+    # Random id, never rewritten, so it can be cached hard.
     return FileResponse(
         target, headers={"cache-control": "public, max-age=31536000, immutable"}
     )
@@ -566,6 +539,11 @@ if BUILD_DIR.exists():
     # imply HEAD from GET, so it has to be named.
     @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def spa(path: str):
+        # An unmatched /api/ path must 404, not fall through to the app shell.
+        # Returning 200 + HTML for a mistyped endpoint means a client — an iOS
+        # Shortcut, say — reports success and silently does nothing.
+        if path.startswith("api/"):
+            raise HTTPException(404, f"no such endpoint: /{path}")
         target = (BUILD_DIR / path).resolve()
         if path and target.is_file() and target.is_relative_to(BUILD_DIR.resolve()):
             return _static(target, path)

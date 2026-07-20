@@ -34,6 +34,23 @@ downscaled to 2048px on the long edge, rotated per EXIF and then stripped of
 it, and re-encoded as JPEG so an iPhone HEIC becomes something a browser can
 draw. A 3000×2000 photo lands at about 16 KB.
 
+## Two blank fields that break it
+
+Found by capturing the raw request. Shortcuts sent:
+
+```
+: 
+{"":"it ran"}
+```
+
+A header line with **no name**, and a JSON body with an **empty key**. The bare
+`: ` is invalid HTTP and uvicorn rejects the whole request — which surfaced on
+the phone as the uninformative "The network connection was lost".
+
+So, in `Get Contents of URL`: delete any blank row under **Headers**, and never
+leave a **JSON** key unnamed. Neither field is obviously empty in the UI, and
+both follow you into any action you duplicate.
+
 ## Building the Shortcut
 
 **Photo → node**, in six actions:

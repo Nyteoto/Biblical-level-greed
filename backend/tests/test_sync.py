@@ -93,19 +93,32 @@ def test_duplicated_journal_lines_do_not_double_up(write_domain, view):
     assert len(view("d")["nodes"][0]["journal"]) == 1
 
 
-def test_distinct_journal_entries_in_the_same_second_both_survive(
-    write_domain, view
-):
-    """Dedupe keys on text as well as timestamp, so two different notes written
-    in the same second are not mistaken for one."""
+def test_a_second_entry_on_the_same_day_revises_the_first(write_domain, view):
+    """One entry per node per day. Writing again revises it — which is the
+    whole point of keying by day rather than accumulating: you can fix this
+    evening's reflection without the log ever losing what you first wrote."""
     write_domain("d", DOMAIN)
     _write_lines(
         [
             _event("10:00:00", eventlog.JOURNAL, text="first thought"),
-            _event("10:00:00", eventlog.JOURNAL, text="second thought"),
+            _event("21:00:00", eventlog.JOURNAL, text="revised at bedtime"),
         ]
     )
-    assert len(view("d")["nodes"][0]["journal"]) == 2
+    journal = view("d")["nodes"][0]["journal"]
+    assert len(journal) == 1
+    assert journal[0]["text"] == "revised at bedtime"
+
+
+def test_entries_on_different_days_all_survive(write_domain, view):
+    write_domain("d", DOMAIN)
+    _write_lines(
+        [
+            _event("21:00:00", eventlog.JOURNAL, day=f"2026-07-{d}", text=f"day {d}")
+            for d in (18, 19, 20)
+        ]
+    )
+    journal = view("d")["nodes"][0]["journal"]
+    assert [e["text"] for e in journal] == ["day 20", "day 19", "day 18"]
 
 
 def test_backdated_events_sharing_a_timestamp_all_survive(write_domain, view):

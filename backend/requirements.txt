@@ -9,3 +9,5 @@ Pillow>=10.0
 # multipart/form-data, so an iOS Shortcut can post a file either way.
 python-multipart>=0.0.9
 pytest>=8.0
+# fastapi.testclient, so routing is tested through the real ASGI app
+httpx>=0.27

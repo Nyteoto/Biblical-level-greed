@@ -164,3 +164,35 @@ def test_a_photo_can_be_appended_to_a_note(data_dir):
     text = notes.read("guitar", "hands-and-tone")
     assert f"](/media/{rel})" in text
     assert media.path_for(rel) is not None
+
+
+# -- the API surface --------------------------------------------------------
+
+
+def test_every_endpoint_the_shortcut_needs_is_registered():
+    """Added after a cleanup edit silently deleted the notes, media and active
+    routes at once: the tests all passed, because none of them asked the app
+    which routes it actually has."""
+    from backend.app.main import app
+
+    paths = {r.path for r in app.routes}
+    for required in (
+        "/api/active",
+        "/api/media",
+        "/media/{relative:path}",
+        "/api/domains/{domain_id}/nodes/{node_id}/note",
+        "/api/domains/{domain_id}/nodes/{node_id}/journal",
+    ):
+        assert required in paths, f"{required} is not registered"
+
+
+def test_an_unknown_api_path_404s_rather_than_serving_the_app_shell():
+    """The SPA fallback must not swallow /api/. Returning 200 + HTML for a
+    mistyped endpoint makes a client — an iOS Shortcut, say — report success
+    while silently doing nothing."""
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import app
+
+    with TestClient(app) as client:
+        assert client.get("/api/definitely-not-a-thing").status_code == 404

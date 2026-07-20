@@ -128,8 +128,10 @@ Two different things, deliberately not merged:
 | **journal** | *what happened today* — evidence | append-only events in the log |
 | **note** | *what I have worked out* — knowledge | `data/notes/<domain>/<node>.md` |
 
-The journal stays immutable: timestamped, deduplicated on `(ts, text)`,
-union-merged across machines. Making it editable would have cost the
+The journal is **one entry per node per day**, written at the end of it. Keyed
+by day exactly like the session toggle, so writing again revises today's entry
+rather than stacking a second one — and the log still keeps every version,
+because posting appends as it always did. Nothing is ever edited in place. Making it editable would have cost the
 append-only property that sync, the XP fold and calibration all depend on.
 
 A note is knowledge, and knowledge gets revised — so it is an ordinary markdown

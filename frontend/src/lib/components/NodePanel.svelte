@@ -21,11 +21,13 @@
 		nodes: TreeNode[];
 		/** The domain's declared strands; empty unless its shape is `strands`. */
 		strands?: string[];
+		/** Today in the app's timezone, for deciding what "today's entry" means. */
+		today: string;
 		onchange: () => Promise<void> | void;
 		onclose: () => void;
 	}
 
-	let { domainId, node, nodes, strands = [], onchange, onclose }: Props = $props();
+	let { domainId, node, nodes, strands = [], today, onchange, onclose }: Props = $props();
 
 	let tab = $state<'params' | 'journal'>('params');
 	// Notes open full screen rather than into this 340px rail: a document you
@@ -37,6 +39,19 @@
 	// Renamed from `entry` when the node schema gained an `entry` field of its
 	// own — this one is the journal composer, which is a different thing.
 	let journalDraft = $state('');
+
+	// One entry per node per day. Today's, if it exists, loads into the box so
+	// writing again revises it rather than stacking a second entry — the log
+	// still keeps every version, because posting appends as it always did.
+	const todaysEntry = $derived(node.journal[0]?.day === today ? node.journal[0] : null);
+	let loadedFor = $state('');
+	$effect(() => {
+		const key = `${node.id}:${todaysEntry?.ts ?? ''}`;
+		if (loadedFor !== key) {
+			loadedFor = key;
+			journalDraft = todaysEntry?.text ?? '';
+		}
+	});
 
 	// Local copy so typing doesn't fight the server; reset when the node changes.
 	let draft = $state({ ...node });
@@ -694,7 +709,9 @@
 				<textarea
 					bind:value={journalDraft}
 					rows="3"
-					placeholder="What happened in this session?"
+					placeholder={todaysEntry
+						? "Revising today's entry"
+						: 'End of day: what did this session actually teach you?'}
 					class="w-full resize-y rounded-sm border border-stone-800 bg-black/40 px-2 py-1.5 text-sm text-stone-100 focus:border-amber-500/60 focus:outline-none"
 				></textarea>
 				<button
@@ -702,7 +719,7 @@
 					disabled={busy || !journalDraft.trim()}
 					class="mt-2 w-full rounded-sm border border-amber-500/60 bg-amber-500/10 py-1.5 text-[11px] tracking-[0.16em] text-amber-300 uppercase disabled:opacity-30"
 				>
-					add entry
+					{todaysEntry ? "revise today's entry" : "save today's entry"}
 				</button>
 			</form>
 
@@ -721,7 +738,8 @@
 					</article>
 				{:else}
 					<p class="text-[11px] text-stone-600">
-						No entries yet. These are append-only — once written, an entry stays in the log.
+						One entry per day, written at the end of it. Revising today's replaces what
+						shows here; the log keeps every version.
 					</p>
 				{/each}
 			</div>
