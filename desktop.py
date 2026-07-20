@@ -55,7 +55,7 @@ def wait_until_up(port: int, timeout: float = 30.0) -> bool:
     return False
 
 
-def serve(port: int) -> "uvicorn.Server":  # noqa: F821
+def serve(port: int) -> tuple["uvicorn.Server", threading.Thread]:  # noqa: F821
     import uvicorn
 
     # Imported *after* PGS_DATA_DIR is set: config reads the environment at
@@ -66,8 +66,35 @@ def serve(port: int) -> "uvicorn.Server":  # noqa: F821
         app, host="127.0.0.1", port=port, log_level="warning", access_log=False
     )
     server = uvicorn.Server(config)
-    threading.Thread(target=server.run, daemon=True, name="pgs-server").start()
-    return server
+    thread = threading.Thread(target=server.run, daemon=True, name="pgs-server")
+    thread.start()
+    # The thread is returned, not discarded, because the process must not begin
+    # interpreter shutdown while it is still running. See shutdown().
+    return server, thread
+
+
+def shutdown(server, thread, timeout: float = 5.0) -> None:
+    """Stop the server and *wait for it*, before the interpreter tears down.
+
+    Marking the thread `daemon` stops it holding the process open, but it does
+    not stop it running. uvicorn only notices `should_exit` when its event loop
+    next ticks (~100ms), so returning immediately after setting it raced
+    interpreter finalization against uvloop's C timer callback:
+
+        main thread   Py_Exit -> __run_exit_handlers -> _dl_fini
+        uvloop thread uv__run_timers -> PyGILState_Ensure -> SIGSEGV
+
+    PyGILState_Ensure cannot allocate a thread state once finalization has
+    begun, so the process segfaulted on every clean exit — after all work was
+    already flushed, which is why it cost nothing but noise and a 13MB core
+    dump each time. Joining the thread removes the race entirely.
+    """
+    server.should_exit = True
+    thread.join(timeout=timeout)
+    if thread.is_alive():
+        # A request wedged mid-flight. Escalate rather than exit underneath it.
+        server.force_exit = True
+        thread.join(timeout=2.0)
 
 
 def _prepare_linux_gui() -> None:
@@ -142,10 +169,11 @@ def main() -> int:
         return 1
 
     port = args.port or free_port()
-    server = serve(port)
+    server, thread = serve(port)
     url = f"http://127.0.0.1:{port}"
 
     if not wait_until_up(port):
+        shutdown(server, thread)
         print(f"server did not come up on {port}", file=sys.stderr)
         return 1
 
@@ -158,13 +186,17 @@ def main() -> int:
             while True:
                 time.sleep(3600)
         except KeyboardInterrupt:
-            return 0
+            pass
+        finally:
+            shutdown(server, thread)
+        return 0
 
     _prepare_linux_gui()
 
     try:
         import webview
     except ImportError:
+        shutdown(server, thread)
         print(
             "pywebview is not installed, so there is no native window.\n"
             "  pip install pywebview      (then re-run)\n"
@@ -181,10 +213,12 @@ def main() -> int:
         min_size=WINDOW_MIN,
         background_color="#171310",
     )
-    # Blocks until the window is closed; the server thread is a daemon and dies
-    # with the process.
-    webview.start()
-    server.should_exit = True
+    # Blocks until the window is closed. The shutdown is in a `finally` so that
+    # a crash in the GUI still stops the server thread before exit.
+    try:
+        webview.start()
+    finally:
+        shutdown(server, thread)
     return 0
 
 
