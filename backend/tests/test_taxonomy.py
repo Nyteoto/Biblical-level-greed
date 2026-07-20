@@ -1047,3 +1047,66 @@ def test_unsettled_nodes_are_left_out_of_the_domain_bias(write_domain, view, log
     for n in range(5):
         log("e", "guess", eventlog.SESSION, f"2026-07-{n + 1:02d}")
     assert view("e")["calibration"]["settled_nodes"] == 0
+
+
+# -- upkeep before the rot -------------------------------------------------
+
+
+def test_a_completed_drill_can_be_topped_up_before_it_goes_stale(
+    write_domain, node_of, log
+):
+    """`decay_days` exists to prompt maintenance *before* the skill rots.
+    Requiring the node to reach `maintenance` first would invert that: you
+    could only repair the lapse, never prevent it."""
+    write_domain(
+        "d",
+        """
+id = "d"
+title = "D"
+[[node]]
+id = "hands"
+title = "Hands"
+tier = 1
+kind = "drill"
+estimate = 2
+decay_days = 20
+""",
+    )
+    log("d", "hands", eventlog.SESSION, "2026-07-01")
+    log("d", "hands", eventlog.COMPLETE, "2026-07-01")
+
+    node = node_of("d", "hands", today="2026-07-10")
+    assert node["status"] == DONE
+    assert node["decay_days"] == 20  # the UI enables upkeep off exactly this
+
+    # A top-up lands as an ordinary session and pushes the decay clock out.
+    log("d", "hands", eventlog.SESSION, "2026-07-10")
+    assert node_of("d", "hands", today="2026-07-25")["status"] == DONE
+    # ...whereas without it, the same date would have gone stale.
+    assert node_of("d", "hands", today="2026-08-05")["status"] == MAINTENANCE
+
+
+def test_upkeep_does_not_disturb_the_calibration(write_domain, node_of, log):
+    """Topping up must not make a well-maintained node look badly estimated."""
+    write_domain(
+        "d",
+        """
+id = "d"
+title = "D"
+[[node]]
+id = "hands"
+title = "Hands"
+tier = 1
+kind = "drill"
+estimate = 2
+decay_days = 20
+""",
+    )
+    log("d", "hands", eventlog.SESSION, "2026-07-01")
+    log("d", "hands", eventlog.COMPLETE, "2026-07-01")
+    for day in ("2026-07-10", "2026-07-20", "2026-07-30"):
+        log("d", "hands", eventlog.SESSION, day)
+
+    cal = node_of("d", "hands", today="2026-08-01")["calibration"]
+    assert cal["actual"] == 1  # the cost, not the upkeep
+    assert cal["settled"] is True

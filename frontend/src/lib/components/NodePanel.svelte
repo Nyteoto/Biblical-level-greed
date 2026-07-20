@@ -235,15 +235,29 @@
 						class="w-16 rounded-sm border border-stone-800 bg-black/40 px-1.5 py-1.5 text-center font-mono text-[11px] text-stone-200 placeholder:text-stone-700 focus:border-stone-600 focus:outline-none"
 					/>
 				{/if}
+				<!-- Upkeep is meaningful exactly where decay is. A completed drill with
+				     a decay window can still be topped up *before* it goes stale, which
+				     is the whole point of having a window: waiting for the node to rot
+				     so the button re-enables would be the opposite of maintenance. A
+				     completed `study` stays closed, because nothing there rots. -->
 				<button
 					onclick={() => run(() => checkOff())}
-					disabled={busy || node.status === 'locked' || node.status === 'done'}
+					disabled={busy || node.status === 'locked' || (node.status === 'done' && !node.decay_days)}
+					title={node.status === 'done' && node.decay_days
+						? `Upkeep: goes stale after ${node.decay_days} idle days`
+						: ''}
 					class="flex-1 rounded-sm border px-2 py-1.5 text-[11px] tracking-wide uppercase transition disabled:opacity-30
 					{node.checked_today
 						? 'border-stone-700 text-stone-400'
 						: 'border-amber-500/60 text-amber-300 hover:bg-amber-500/10'}"
 				>
-					{node.checked_today ? 'undo today' : node.kind === 'social' ? 'log one' : 'check off'}
+					{node.checked_today
+						? 'undo today'
+						: node.status === 'done' || node.status === 'maintenance'
+							? 'top up'
+							: node.kind === 'social'
+								? 'log one'
+								: 'check off'}
 				</button>
 			{/if}
 			<button
