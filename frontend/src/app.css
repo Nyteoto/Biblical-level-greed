@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html {
+	background: #14100c;
+	color-scheme: dark;
+}
+
+body {
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Faint warm grid behind the tree, echoing the reference's textured backdrop. */
+.blueprint {
+	background-image:
+		linear-gradient(rgba(214, 178, 120, 0.035) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(214, 178, 120, 0.035) 1px, transparent 1px);
+	background-size: 34px 34px;
+}
+
+::-webkit-scrollbar {
+	height: 10px;
+	width: 10px;
+}
+::-webkit-scrollbar-track {
+	background: #14100c;
+}
+::-webkit-scrollbar-thumb {
+	background: #2e2620;
+	border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #453a30;
+}

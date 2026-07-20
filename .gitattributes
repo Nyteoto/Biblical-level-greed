@@ -1,0 +1,21 @@
+# The append-only streams merge by taking BOTH sides. That is correct here and
+# nowhere else: a log line is an immutable fact, so two machines appending
+# different lines have not conflicted — they have each observed something true.
+# `union` skips the conflict entirely and keeps everything.
+#
+# Ordering after such a merge is arbitrary, and duplicates are possible. Both
+# are handled on read: events are sorted by timestamp, and the fold is
+# last-wins (sessions, completions, phases), keyed by id (todos) or explicitly
+# deduplicated (journal entries). See backend/tests/test_sync.py.
+data/log/*.jsonl   merge=union
+data/todos.jsonl   merge=union
+
+# Domain files are NOT union-merged: they are structured TOML, and gluing two
+# versions together produces a file that will not parse. Edits are rare and
+# small, so a real conflict here is worth reading by hand.
+data/domains/*.toml -merge
+
+# Keep line endings sane across the Windows/Linux boundary.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf

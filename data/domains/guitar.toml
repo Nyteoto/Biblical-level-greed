@@ -1,0 +1,412 @@
+id       = "guitar"
+title    = "Electric Guitar"
+priority = 20
+cadence  = "daily"
+color    = "amber"
+shape    = "strands"
+strands  = ["technique", "theory", "ear", "repertoire"]
+
+# Sequenced against the Berklee guitar major (BPS/OGUIT sample curriculum).
+# Full sourcing in docs/sources.md.
+#
+# SHAPE: strands. The domain that forced the shape to exist. Berklee runs
+# Private Lessons (technique), Harmony (theory) and Ear Training (ear)
+# concurrently every semester, and its published prerequisite chain proves the
+# dependency runs sideways: Scales 101 and Chords 101 both require Harmony 1
+# first. Theory gates the instrument.
+#
+# TITLES ARE CONCEPTS, NOT COURSE CODES. Earlier versions of this file used
+# Berklee's internal names — Guitar Chords 101, Getting Your Guitar Sound —
+# which are unsearchable at best and actively misleading at worst: searching
+# `Guitar Chords 101` returns beginner open-chord blogs, when the node is
+# about drop 2 voicings. Node ids are unchanged, so no history is orphaned.
+#
+# The default free spine for this whole domain is justinguitar.com, and the
+# default paid spine is Leavitt's A Modern Method for Guitar — the actual
+# Berklee textbook. Where a node says neither, it means neither covers it.
+
+[season]
+state    = "low"
+
+[[node]]
+id       = "hands-and-tone"
+title    = "Posture, picking hand, fretting hand"
+tier     = 1
+strand   = "technique"
+estimate = 25
+min_each = "20 min"
+metric   = "bpm"
+metric_target = 120
+decay_days = 21
+gate     = "Chromatic exercise at 120bpm, alternate picked, clean, no left-hand tension"
+note     = "Berklee assesses this in week one and places you accordingly. It is the placement test."
+entry    = [
+    "Free: JustinGuitar Beginner Grade 1 — the best free structured guitar course that exists, and it starts exactly here",
+    "Free: any metronome app, or a browser metronome. Every bpm gate in this file assumes one.",
+    "Watch: Troy Grady, Cracking the Code (free YouTube material) on picking mechanics — start here rather than fixing a broken picking hand in year three",
+    "Search: alternate picking technique, guitar left hand tension, 1234 chromatic exercise",
+]
+
+[[node]]
+id       = "music-foundations"
+title    = "Music foundations — notes, intervals, key signatures"
+tier     = 1
+kind     = "study"
+strand   = "theory"
+estimate = 20
+min_each = "25 min"
+gate     = "Name any interval and spell any major key without counting"
+entry    = [
+    "Free: musictheory.net — lessons plus drill exercises; the exercises are the point, not the lessons",
+    "Free: Open Music Theory v2 (viva.pressbooks.pub/openmusictheory) — a full undergraduate theory textbook, open-licensed, with workbooks",
+    "Drill: musictheory.net note and interval trainers, 10 minutes daily. This is rote and there is no shortcut.",
+    "Search: circle of fifths explained, interval quality major minor perfect",
+]
+
+[[node]]
+id       = "ear-training-1"
+title    = "Ear Training 1 — intervals and solfege"
+tier     = 1
+strand   = "ear"
+estimate = 40
+min_each = "20 min"
+decay_days = 30
+gate     = "Sing a written line at sight; identify any interval played cold"
+entry    = [
+    "Free: Functional Ear Trainer (iOS/Android/desktop) — teaches scale degrees against a tonal centre, which is what actually transfers to playing",
+    "Free: Earpeggio (Android) — intervals, chords, scales, melodic and rhythmic dictation, genuinely free with no upsell",
+    "Free: musictheory.net ear trainers in the browser",
+    "Note: sing everything you identify. Ear training that never leaves the ears does not connect to the instrument.",
+    "Search: functional ear training scale degrees, solfege sight singing beginner",
+]
+
+[[node]]
+id       = "private-l1-l2"
+title    = "Barre chords and scales in position"
+tier     = 2
+strand   = "technique"
+requires = ["hands-and-tone"]
+estimate = 50
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 100
+decay_days = 21
+gate     = "All barre chord shapes clean; major scale in 5 positions at tempo"
+entry    = [
+    "Free: JustinGuitar Grade 2-3 covers barre chords properly, including the strength and thumb-position problems everyone hits",
+    "Book: Leavitt, A Modern Method for Guitar Vol 1 — Berklee's own text; position playing and reading from the first page",
+    "Search: CAGED system explained, barre chord buzzing fix, major scale five positions",
+]
+
+[[node]]
+id       = "harmony-1"
+title    = "Harmony 1 — triads and diatonic function"
+tier     = 2
+kind     = "study"
+strand   = "theory"
+requires = ["music-foundations"]
+estimate = 40
+min_each = "30 min"
+gate     = "Harmonise a major scale in triads and sevenths, any key, on paper"
+note     = "Berklee gates both Scales 101 and Chords 101 behind this. Theory gates the instrument — that is the relationship hobbyist roadmaps invert."
+entry    = [
+    "Free: Open Music Theory, Diatonic Harmony unit — worksheets included",
+    "Free: musictheory.net chord and scale lessons for the mechanics",
+    "Do it on paper, away from the guitar. The gate says on paper because shape-recognition on the fretboard will let you fake this indefinitely.",
+    "Search: diatonic harmony roman numerals, harmonizing the major scale sevenths",
+]
+
+[[node]]
+id       = "fretboard-map"
+title    = "The fretboard, memorised"
+tier     = 3
+strand   = "technique"
+requires = ["private-l1-l2"]
+estimate = 35
+min_each = "15 min"
+decay_days = 45
+gate     = "Name any note on any string in under a second, and find every octave of it"
+entry    = [
+    "Free: JustinGuitar note-finding exercises, and the Justin Guitar Note Trainer app",
+    "Free: Fretboard Trainer / Fretboard Learn apps — free tiers are sufficient for this",
+    "Method: one note name per day across all six strings beats random drilling. 15 minutes, daily, for a month.",
+    "Search: memorize guitar fretboard octave shapes, fretboard note trainer",
+]
+
+[[node]]
+id       = "reading-notation"
+title    = "Reading standard notation on guitar"
+tier     = 3
+strand   = "technique"
+requires = ["private-l1-l2"]
+prefers  = ["music-foundations"]
+estimate = 60
+min_each = "25 min"
+decay_days = 30
+gate     = "Sight-read a grade-3 piece in first position, first take, in time"
+note     = "The single skill that separates a Berklee player from a self-taught one. Slow, unglamorous, non-negotiable — and it rots fast if you stop."
+entry    = [
+    "Book: Leavitt, A Modern Method for Guitar Vol 1 — this is what the book is FOR. Berklee uses it as the reading text.",
+    "Free: sheetmusicgenerator.com — generates unlimited random sight-reading exercises, so you never re-read the same bar",
+    "Free: HubGuitar sight-reading exercise series (hubguitar.com/sight-reading)",
+    "Rule: never read the same page twice. Reading practice on memorised material is not reading practice.",
+    "Search: guitar sight reading first position, sight reading generator guitar",
+]
+
+[[node]]
+id       = "harmony-2"
+title    = "Harmony 2 — secondary dominants, modal interchange"
+tier     = 3
+kind     = "study"
+strand   = "theory"
+requires = ["harmony-1"]
+estimate = 40
+min_each = "30 min"
+gate     = "Analyse an unfamiliar standard's changes correctly on sight"
+entry    = [
+    "Free: Open Music Theory, Chromatic Harmony unit — secondary function and modal mixture, with worksheets",
+    "Free: jazzguitar.be theory section covers the same ground from a playing angle",
+    "Practice: pull lead sheets and analyse them. iRealPro (paid, cheap) or any free standards chord archive gives you an endless supply.",
+    "Search: secondary dominants explained, modal interchange borrowed chords, tritone substitution",
+]
+
+[[node]]
+id       = "guitar-scales-101"
+title    = "Modes and scale fingerings across the neck"
+tier     = 4
+strand   = "technique"
+requires = ["harmony-1", "fretboard-map"]
+estimate = 55
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 132
+decay_days = 30
+gate     = "Any mode, any root, any position, without hunting for the shape"
+entry    = [
+    "Book: Leavitt, A Modern Method for Guitar Vol 2 — position playing and scale studies across the neck",
+    "Free: JustinGuitar Practical Music Theory plus his scale modules for the applied version",
+    "Free: jazzguitar.be scale lessons connect modes to the chords they belong over, which is the part shape-charts leave out",
+    "Warning: learning seven mode shapes without knowing what chord each belongs over is the classic dead end. Harmony 1 is a hard prerequisite for exactly this reason.",
+    "Search: guitar modes explained chord relationship, three notes per string scales",
+]
+
+[[node]]
+id       = "guitar-chords-101"
+title    = "Drop 2 and drop 3 chord voicings"
+tier     = 4
+strand   = "technique"
+requires = ["harmony-1", "fretboard-map"]
+estimate = 55
+min_each = "30 min"
+decay_days = 30
+gate     = "Comp through a jazz standard using inversions on the middle four strings"
+entry    = [
+    "Free: jazzguitar.be drop 2 chord lessons, with free downloadable chord charts and ebooks",
+    "Free: jazzguitarlessons.net drop 2 voice-leading series",
+    "Book: Randy Vincent, Jazz Guitar Voicings Vol 1 — The Drop 2 Book. The deep version, if you want one book on this forever.",
+    "Search: drop 2 voicings middle four strings, drop 3 chords guitar, chord inversions voice leading",
+]
+
+[[node]]
+id       = "ear-training-2"
+title    = "Ear Training 2 — hearing changes"
+tier     = 4
+strand   = "ear"
+requires = ["ear-training-1"]
+prefers  = ["harmony-2"]
+estimate = 50
+min_each = "25 min"
+decay_days = 30
+gate     = "Take down the changes of an unfamiliar tune by ear in one pass"
+entry    = [
+    "Free: Functional Ear Trainer advanced levels move from single notes to progressions",
+    "Free/cheap: Transcribe! or Amazing Slow Downer for slowing audio without pitch change; Audacity is free and does the same job worse",
+    "Method: transcribe actual records, not exercises. Start with bass lines — the bass tells you the change.",
+    "Search: how to transcribe chord changes by ear, ii-V-I recognition ear training",
+]
+
+[[node]]
+id       = "your-sound"
+title    = "Amp, gain and pedals — getting a sound"
+tier     = 4
+kind     = "study"
+strand   = "technique"
+requires = ["private-l1-l2"]
+estimate = 20
+min_each = "30 min"
+gate     = "Dial a usable clean, crunch, and lead tone on an unfamiliar amp in 5 minutes"
+entry    = [
+    "Free: That Pedal Show (YouTube) — long-form, methodical, and the closest thing to a curriculum on amp and pedal behaviour",
+    "Free: your amp's own manual, read once, properly. Gain staging is the whole subject and almost nobody reads it.",
+    "Search: gain staging guitar amp, preamp vs power amp distortion, pedal order signal chain",
+]
+
+[[node]]
+id       = "rhythm-groove"
+title    = "Rhythm and groove — time feel"
+tier     = 5
+strand   = "technique"
+requires = ["guitar-chords-101"]
+estimate = 45
+min_each = "25 min"
+metric   = "bpm"
+metric_target = 120
+decay_days = 21
+gate     = "Sit dead in the pocket against a drum loop for 5 minutes with the click on 2 and 4"
+entry    = [
+    "Free: set the metronome to click on 2 and 4 only, not every beat. This one change exposes time problems nothing else will.",
+    "Free: any drum-loop app, or YouTube drum tracks at fixed tempos",
+    "Free: iRealPro is paid, but free backing tracks for standards are everywhere on YouTube",
+    "Search: metronome on 2 and 4 practice, guitar strumming in the pocket, subdivision practice",
+]
+
+[[node]]
+id       = "blues-guitar"
+title    = "Blues — vocabulary and phrasing"
+tier     = 5
+strand   = "repertoire"
+requires = ["guitar-scales-101"]
+estimate = 50
+min_each = "30 min"
+gate     = "Play 12 choruses over a blues without repeating yourself or running out of ideas"
+entry    = [
+    "Free: JustinGuitar blues modules — Grade 4 onward, and the best free blues material anywhere",
+    "Method: learn solos off records, note for note, then steal the phrases. Blues is a vocabulary language, not a scale.",
+    "Listen: B.B. King, Freddie King, Albert King, Peter Green, Robben Ford. Steal from all five and it stops sounding like theft.",
+    "Search: blues phrasing call and response, 12 bar blues variations, minor pentatonic five positions",
+]
+
+[[node]]
+id       = "ensemble"
+title    = "Playing with other people"
+tier     = 6
+kind     = "social"
+strand   = "repertoire"
+prefers  = ["rhythm-groove", "reading-notation"]
+estimate = 60
+min_each = "60 min"
+gate     = "Comp behind a soloist for a whole tune without stepping on them once"
+note     = "SOFT edges on purpose. Berklee requires four semesters of ensemble and puts you in one from the first semester — below competence, deliberately. You cannot practise this alone, which is exactly why waiting until you are ready is the wrong move."
+entry    = [
+    "Find: local jam sessions — blues and jazz jams exist in most cities and most welcome beginners at the early slot",
+    "Free: the standard jam repertoire is small. Learn a blues in A and in Bb, Autumn Leaves, and All of Me, and you can sit in almost anywhere.",
+    "Online: Discord and Reddit have remote-collaboration communities if there is genuinely nothing local",
+    "Search: jam session etiquette guitar, local blues jam near me, comping behind a soloist",
+]
+
+[[node]]
+id       = "improvisation-basic"
+title    = "Basic improvisation — playing the changes"
+tier     = 6
+strand   = "repertoire"
+requires = ["guitar-scales-101", "ear-training-2"]
+estimate = 60
+min_each = "30 min"
+gate     = "Solo over a ii-V-I in all twelve keys and land the guide tones"
+entry    = [
+    "Free: jazzguitar.be improvisation lessons and free ebooks — the guide-tone approach specifically",
+    "Book: Leavitt Vol 3, or Jerry Bergonzi's Inside Improvisation series if you want the deep version",
+    "Method: practise guide tones (3rds and 7ths) before scales. Landing on the right two notes beats running the right seven.",
+    "Search: guide tone lines ii-V-I, jazz improvisation for guitar beginners, playing the changes vs playing scales",
+]
+
+[[node]]
+id       = "chord-melody"
+title    = "Chord melody and inversions"
+tier     = 6
+strand   = "repertoire"
+requires = ["guitar-chords-101", "harmony-2"]
+estimate = 55
+min_each = "30 min"
+gate     = "Arrange and play a standard solo, melody and harmony together"
+entry    = [
+    "Free: jazzguitar.be chord melody lesson series, with free arrangements to work from",
+    "Book: Randy Vincent, Jazz Guitar Voicings Vol 1 continues directly into chord melody territory",
+    "Method: take a standard you already know the melody of. Arranging an unfamiliar tune means solving two problems at once.",
+    "Search: chord melody arranging guitar, harmonize a melody guitar, drop 2 chord melody",
+]
+
+[[node]]
+id       = "style-lab"
+title    = "Style lab — pick one and go deep"
+tier     = 6
+strand   = "repertoire"
+requires = ["blues-guitar"]
+prefers  = ["your-sound"]
+estimate = 50
+min_each = "30 min"
+gate     = "Play three tunes in the idiom convincingly enough that a player of that style nods"
+note     = "Berklee's elective slot: Metal, Country, Classic Rock, Funk/R&B Soloing, Steve Vai Techniques. Choose one, not several."
+entry    = [
+    "Pick the idiom first, then find its specific canon. The resource depends entirely on the choice, and choosing three means learning none.",
+    "Free: YouTube has a deep free curriculum for every one of these idioms specifically because they are popular",
+    "Method: transcribe three players in the style. The style lives in the phrasing and the time feel, not the gear.",
+    "Search: [your idiom] guitar essential techniques, [your idiom] rhythm guitar patterns",
+]
+
+[[node]]
+id       = "jazz-guitar"
+title    = "Jazz vocabulary — bebop language"
+tier     = 7
+strand   = "repertoire"
+requires = ["improvisation-basic", "chord-melody"]
+estimate = 70
+min_each = "40 min"
+gate     = "Play the head and two choruses on five standards from memory"
+entry    = [
+    "Free: jazzguitar.be is a complete free jazz guitar curriculum, and the best free resource in this domain",
+    "Book: The Real Book (Sher or Hal Leonard 6th) — the standard repertoire source every jam assumes you own",
+    "Method: learn tunes from records, not from the Real Book. Use the book to check yourself afterwards.",
+    "Search: bebop scale guitar, jazz standards to learn first, charlie parker omnibook guitar",
+]
+
+[[node]]
+id       = "solo-guitar"
+title    = "Solo guitar — performance and arranging"
+tier     = 7
+strand   = "repertoire"
+requires = ["chord-melody"]
+estimate = 55
+min_each = "35 min"
+gate     = "Hold an audience alone for 20 minutes with no backing track"
+entry    = [
+    "Listen and transcribe: Joe Pass Virtuoso, Ted Greene Solo Guitar, Tuck Andress. The whole subject is in those records.",
+    "Book: Ted Greene, Chord Chemistry — difficult, disorganised, and the deepest book on guitar harmony ever written",
+    "Method: a 20-minute set is roughly six tunes. Build the set list before you build the arrangements.",
+    "Search: solo jazz guitar walking bass, ted greene chord chemistry study guide",
+]
+
+[[node]]
+id       = "improv-techniques"
+title    = "Advanced improvisation — rhythm changes and beyond"
+tier     = 8
+strand   = "repertoire"
+requires = ["jazz-guitar"]
+estimate = 70
+min_each = "40 min"
+gate     = "Improvise coherently over rhythm changes and Coltrane changes at tempo"
+entry    = [
+    "Book: Bergonzi, Inside Improvisation series — melodic structures, pentatonics, hexatonics",
+    "Free: jazzguitar.be rhythm changes and Giant Steps lesson series",
+    "Method: rhythm changes in all twelve keys is the standard benchmark and it is a year of work, not a month.",
+    "Search: rhythm changes guitar, coltrane changes practice, giant steps pentatonic approach",
+]
+
+[[node]]
+id       = "recital"
+title    = "Recital — a full set, in front of people"
+tier     = 9
+kind     = "exam"
+strand   = "repertoire"
+requires = ["improv-techniques", "solo-guitar"]
+prefers  = ["ensemble"]
+estimate = 30
+min_each = "60 min"
+gate     = "Performed a full set in front of people who were free to leave, and they didn't"
+note     = "An exam, not a practice target: a date, an audience, and a verdict that is not yours to give. Unlike an HSK sitting this needs no institution — a bar, an open mic or a living room full of people all count."
+entry    = [
+    "Book it before you are ready. The date is the only thing that makes this happen.",
+    "Options: open mics, house concerts, a local bar's quiet night, a care home, a church hall. All of them count.",
+    "Record it. The recording is the only honest feedback you will get, and you will not enjoy it.",
+    "Search: how to book a first gig, open mic near me, set list construction",
+]

@@ -1,0 +1,355 @@
+id       = "software-dev"
+title    = "Software Development"
+priority = 50
+cadence  = "weekdays"
+color    = "sky"
+shape    = "strands"
+strands  = ["foundations", "systems", "practice"]
+
+# Sequenced against the nine subjects of Teach Yourself CS (programming,
+# architecture, algorithms and data structures, math for CS, operating
+# systems, networking, databases, languages and compilers, distributed
+# systems), interleaved with the practitioner skills a CS curriculum leaves
+# out entirely: version control, testing, shipping, review, operations.
+# TYCS suggests 100-200 hours per subject, which is where the counts come from.
+#
+# SHAPE: strands. `foundations` and `systems` are the theory; `practice` is
+# the craft, and it runs from day one rather than waiting for the theory.
+#
+# MOST EDGES HERE ARE SOFT. This is the deliberate contrast with
+# electrical-engineering.toml, where every edge is hard. People ship working
+# software knowing none of the theory, every day. The tree encodes what stops
+# you being blocked by things you cannot name — a weaker claim than "you may
+# not proceed", and the file should say which one it means.
+#
+# TYCS names one book and one video course per subject, and those pairs are
+# reproduced in the `entry` of each theory node below. The `practice` strand is
+# not from TYCS and its resources are not either.
+
+[season]
+state    = "low"
+
+[[node]]
+id       = "programming-fundamentals"
+title    = "One language, properly"
+tier     = 1
+kind     = "study"
+strand   = "foundations"
+estimate = 60
+min_each = "60 min"
+gate     = "Write a non-trivial program without looking up the language's own syntax"
+entry    = [
+    "Free: Structure and Interpretation of Computer Programs (SICP) — the full text is free online, and it is the TYCS pick",
+    "Free: Berkeley CS61A (cs61a.org) — SICP's ideas in Python, with autograded assignments, all public",
+    "Alternative if SICP is too much: Composing Programs (composingprograms.com), which is CS61A's own free textbook",
+    "Pick one language and stay in it for this node. Breadth here is procrastination.",
+    "Search: SICP free online, berkeley cs61a, composing programs",
+]
+
+[[node]]
+id       = "shell-and-git"
+title    = "The shell and version control"
+tier     = 1
+strand   = "practice"
+estimate = 30
+min_each = "30 min"
+decay_days = 90
+gate     = "Recover from a bad merge, an accidental force-push, and a detached HEAD without panic"
+entry    = [
+    "Free: MIT's The Missing Semester of Your CS Education (missing.csail.mit.edu) — shell, git, vim, tmux, ssh, debugging. Exactly the material degrees omit, and it is this node almost line for line.",
+    "Free: Pro Git (git-scm.com/book) — free, complete, and the chapter on internals is what turns git from ritual into a model",
+    "Free: Oh My Git (an actual game), or learngitbranching.js.org, for the branching mental model",
+    "Method: make a throwaway repo and deliberately break it. Force-push over your own work, then recover it with reflog. The gate is about not panicking, which requires having done it once safely.",
+    "Search: missing semester MIT, git reflog recover, pro git book",
+]
+
+[[node]]
+id       = "algorithms"
+title    = "Algorithms and data structures"
+tier     = 2
+kind     = "study"
+strand   = "foundations"
+requires = ["programming-fundamentals"]
+estimate = 70
+min_each = "60 min"
+gate     = "Pick the right structure for an unfamiliar problem and justify the complexity out loud"
+entry    = [
+    "Book: Skiena, The Algorithm Design Manual — the TYCS pick, and better for practitioners than CLRS",
+    "Free: Skiena's own Stony Brook lectures are on YouTube, and his war stories are the most useful part",
+    "Free: CLRS is the reference when Skiena is too brief. Do not read it front to back.",
+    "The gate says out loud on purpose. Complexity you cannot explain conversationally is memorised, not understood.",
+    "Search: skiena algorithm design manual lectures, algorithms practice problems by pattern",
+]
+
+[[node]]
+id       = "math-for-cs"
+title    = "Discrete mathematics"
+tier     = 2
+kind     = "study"
+strand   = "foundations"
+requires = ["programming-fundamentals"]
+estimate = 55
+min_each = "60 min"
+gate     = "Prove a program's loop invariant and reason about its asymptotics rigorously"
+entry    = [
+    "Free: MIT's Mathematics for Computer Science (the Lehman/Leighton/Meyer notes) — a free 900-page textbook, and the TYCS pick",
+    "Free: MIT OCW 6.042J, Tom Leighton's lectures, which follow those notes exactly",
+    "Free: MIT OCW 6.1200 is the current version of the same subject if you prefer newer material",
+    "Search: mathematics for computer science lehman leighton meyer pdf, MIT 6.042J",
+]
+
+[[node]]
+id       = "computer-architecture"
+title    = "Computer architecture"
+tier     = 2
+kind     = "study"
+strand   = "systems"
+requires = ["programming-fundamentals"]
+estimate = 65
+min_each = "60 min"
+gate     = "Explain what your code does to the cache, and be right when you measure it"
+entry    = [
+    "Book: Bryant and O'Hallaron, Computer Systems: A Programmer's Perspective (CS:APP). TYCS's own fallback advice is that if you only read two books, this is one of them.",
+    "Free: the CS:APP labs (csapp.cs.cmu.edu/3e/labs.html) — bomb lab, attack lab, cache lab. Free, self-checking, and the actual education.",
+    "Free: Berkeley CS61C, or CMU 15-213, both public with video",
+    "The gate says be right when you measure it, so learn perf (Linux) or Instruments (macOS) alongside.",
+    "Search: CSAPP labs, cache lab walkthrough, perf stat cache misses",
+]
+
+[[node]]
+id       = "testing-debugging"
+title    = "Testing and debugging as a discipline"
+tier     = 2
+strand   = "practice"
+requires = ["shell-and-git"]
+estimate = 45
+min_each = "45 min"
+decay_days = 90
+gate     = "Find a bug by bisecting and hypothesis, never by guessing and re-running"
+entry    = [
+    "Free: Missing Semester's Debugging and Profiling lecture — debuggers, tracing, profiling, in one sitting",
+    "Book: David Agans, Debugging — nine rules, no code, and it is the closest thing to a theory of the activity",
+    "Free: git bisect, and specifically `git bisect run` with a script. The gate names bisecting because it is the technique that most reliably replaces guessing.",
+    "Free: learn your language's property-based testing library (Hypothesis, QuickCheck, fast-check). It finds the cases you would not have written.",
+    "Search: git bisect run tutorial, property based testing introduction, rubber duck debugging method",
+]
+
+[[node]]
+id       = "operating-systems"
+title    = "Operating systems"
+tier     = 3
+kind     = "study"
+strand   = "systems"
+requires = ["computer-architecture"]
+estimate = 70
+min_each = "60 min"
+gate     = "Explain a process's page faults, context switches and syscalls from a trace you took yourself"
+entry    = [
+    "Free: Operating Systems: Three Easy Pieces (pages.cs.wisc.edu/~remzi/OSTEP) — the complete book, free, and the TYCS pick",
+    "Free: Berkeley CS162, public with video lectures",
+    "Free: strace, ltrace, /proc and perf. The gate says a trace you took yourself, so the tools are the material.",
+    "Optional and excellent: xv6 (MIT's teaching OS) — read the source, then modify it",
+    "Search: OSTEP free book, strace tutorial, xv6 book",
+]
+
+[[node]]
+id       = "databases"
+title    = "Databases"
+tier     = 3
+kind     = "study"
+strand   = "systems"
+requires = ["algorithms"]
+estimate = 65
+min_each = "60 min"
+gate     = "Read a query plan, fix the slow query, and say what isolation level you actually need"
+entry    = [
+    "Free: CMU 15-445 Database Systems, Andy Pavlo (youtube, all lectures public). The best free database course available, and stronger than the TYCS pick.",
+    "Free: Readings in Database Systems (the Red Book, redbook.io) — the TYCS pick, and a papers collection rather than a textbook",
+    "Free: install Postgres and run EXPLAIN ANALYZE on your own slow queries. This node is unusually easy to make concrete.",
+    "Read: Martin Kleppmann's chapter on isolation levels in DDIA is clearer than any textbook's.",
+    "Search: CMU 15-445 pavlo, EXPLAIN ANALYZE postgres guide, isolation levels anomalies table",
+]
+
+[[node]]
+id       = "ship-project-1"
+title    = "Ship something small, end to end"
+tier     = 3
+kind     = "project"
+strand   = "practice"
+requires = ["testing-debugging"]
+prefers  = ["algorithms"]
+phases   = ["scope it", "build", "deploy", "give it to a stranger"]
+min_each = "one working session"
+gate     = "A stranger used it without you in the room"
+note     = "Deliberately early, and deliberately soft-blocked on the theory. Every study node above compounds faster once you have felt a real user hit a real edge case."
+entry    = [
+    "Free hosting: Fly.io, Railway, Render, Cloudflare Pages/Workers, or a $5 VPS. All have free or near-free tiers sufficient for this.",
+    "Scope it smaller than you want to. The gate is a stranger used it, not it was impressive.",
+    "Give it to a stranger means an actual person who is not you and does not know how it works. Friends are not strangers for this purpose.",
+    "Search: deploy side project free tier, fly.io getting started, show HN first project",
+]
+
+[[node]]
+id       = "networking"
+title    = "Computer networking"
+tier     = 4
+kind     = "study"
+strand   = "systems"
+requires = ["operating-systems"]
+estimate = 60
+min_each = "60 min"
+gate     = "Diagnose a connection problem with tcpdump and explain every layer involved"
+entry    = [
+    "Book: Kurose and Ross, Computer Networking: A Top-Down Approach — the TYCS pick, and the top-down order is the right one",
+    "Free: Stanford's Introduction to Computer Networking course materials",
+    "Free: Wireshark, plus its own sample capture files. Reading a real capture teaches layering faster than any diagram.",
+    "Free: Beej's Guide to Network Programming for the sockets side",
+    "Search: kurose ross top down approach, wireshark tutorial tcp handshake, beej guide network programming",
+]
+
+[[node]]
+id       = "compilers"
+title    = "Languages and compilers"
+tier     = 4
+kind     = "study"
+strand   = "foundations"
+requires = ["computer-architecture", "math-for-cs"]
+estimate = 70
+min_each = "60 min"
+gate     = "Wrote a compiler or interpreter that runs programs you did not write"
+entry    = [
+    "Free: Bob Nystrom, Crafting Interpreters (craftinginterpreters.com) — the complete book, free, and you build two working interpreters. This is the TYCS pick and it is the whole node.",
+    "Free: Alex Aiken's compilers course (edX / Stanford Lagunita archive) for the theory layer",
+    "Book: the Dragon Book is the reference, not the tutorial. Do not start there.",
+    "The gate says programs you did not write, which means writing a test suite you did not author. Crafting Interpreters ships one.",
+    "Search: crafting interpreters, writing an interpreter in go, lox language test suite",
+]
+
+[[node]]
+id       = "code-review"
+title    = "Working in someone else's codebase"
+tier     = 4
+kind     = "social"
+strand   = "practice"
+prefers  = ["ship-project-1", "testing-debugging"]
+estimate = 60
+min_each = "45 min"
+gate     = "A maintainer merged your patch to a project you did not start"
+note     = "SOFT edges, and social. Unpractisable alone, like the ensemble node in guitar. Most self-taught paths never contain it, which is precisely the gap it exists to close."
+entry    = [
+    "Free: goodfirstissue.dev, up-for-grabs.net, and GitHub's good-first-issue label across any repo you already use",
+    "Free: Google's Code Review Developer Guide (google.github.io/eng-practices) — both sides of the review, and unusually candid",
+    "Start with documentation and test patches on a project you actually use. Maintainers merge those fastest, and you learn the codebase on the way in.",
+    "Read the CONTRIBUTING.md before writing anything. Most rejected first patches are rejected on process, not code.",
+    "Search: good first issue, google eng-practices code review, first contributions tutorial",
+]
+
+[[node]]
+id       = "system-design"
+title    = "System design fundamentals"
+tier     = 4
+kind     = "study"
+strand   = "systems"
+requires = ["databases"]
+prefers  = ["ship-project-1"]
+estimate = 55
+min_each = "60 min"
+gate     = "Design a system to a stated load, and name what breaks first at 10x"
+entry    = [
+    "Free: The System Design Primer (github.com/donnemartin/system-design-primer) — the standard free starting point",
+    "Book: Kleppmann, Designing Data-Intensive Applications. TYCS's other if-you-only-read-two book, and it covers this node and distributed-systems together.",
+    "Free: the engineering blogs of companies at scale, and the papers they cite. Read what actually broke rather than what was planned.",
+    "The gate says name what breaks first, which is a capacity-estimation skill. Practise back-of-envelope numbers explicitly.",
+    "Search: system design primer, back of the envelope calculations latency numbers, DDIA chapter summaries",
+]
+
+[[node]]
+id       = "distributed-systems"
+title    = "Distributed systems"
+tier     = 5
+kind     = "study"
+strand   = "systems"
+requires = ["networking", "databases"]
+estimate = 75
+min_each = "60 min"
+gate     = "Reason correctly about partial failure, consensus and the consistency you are actually buying"
+entry    = [
+    "Book: Kleppmann, Designing Data-Intensive Applications — the TYCS pick",
+    "Free: MIT 6.824 / 6.5840 Distributed Systems — lectures on YouTube, labs public. You implement Raft. Do the labs; they are the node.",
+    "Free: Kleppmann's own Cambridge distributed systems lecture series is on YouTube, free",
+    "Free: the Raft paper and raft.github.io's visualisation, which makes consensus legible in about ten minutes",
+    "Search: MIT 6.824 labs, raft paper visualization, DDIA consistency models",
+]
+
+[[node]]
+id       = "performance"
+title    = "Performance engineering"
+tier     = 5
+kind     = "study"
+strand   = "foundations"
+requires = ["operating-systems", "computer-architecture"]
+estimate = 50
+min_each = "60 min"
+gate     = "Made something 10x faster by measuring, not by guessing"
+entry    = [
+    "Book: Brendan Gregg, Systems Performance — the reference, and his site (brendangregg.com) is free and nearly as complete",
+    "Free: flame graphs, perf, eBPF/bcc tools. Gregg wrote most of them and documents them free.",
+    "Free: MIT 6.172 Performance Engineering of Software Systems on OCW, with lectures and assignments",
+    "Rule: record the before number. A 10x claim without a baseline you wrote down first is a story, not a measurement.",
+    "Search: brendan gregg flame graphs, perf record tutorial, MIT 6.172",
+]
+
+[[node]]
+id       = "production-ops"
+title    = "Running things in production"
+tier     = 5
+strand   = "practice"
+requires = ["system-design"]
+prefers  = ["networking"]
+estimate = 60
+min_each = "60 min"
+decay_days = 120
+gate     = "Carried a pager, took a real incident, and wrote the postmortem"
+entry    = [
+    "Free: all three Google SRE books, complete, at sre.google/books — Site Reliability Engineering, The Site Reliability Workbook, Building Secure and Reliable Systems",
+    "Free: the postmortem chapter and template in the SRE book. Blameless postmortems are a specific format, not an attitude.",
+    "Free: Prometheus and Grafana on your own deployed project. Alerting on something you own is the only way to practise this alone.",
+    "Reality: a real pager usually needs a job. If self-employed or solo, own something with actual users and actually respond to it — that is the same lesson at smaller stakes.",
+    "Search: google SRE book postmortem template, prometheus alerting rules, error budgets explained",
+]
+
+[[node]]
+id       = "design-large-system"
+title    = "Design a system others depend on"
+tier     = 6
+kind     = "project"
+strand   = "systems"
+requires = ["distributed-systems", "production-ops"]
+phases   = ["write the design doc", "defend it in review", "build it", "compare it to the doc"]
+min_each = "one working session"
+gate     = "Wrote the design doc, defended it in review, and the built thing matched it"
+entry    = [
+    "Free: Google's design doc guidance, and the many public RFC/ADR templates (search architecture decision record)",
+    "Free: read real ones — Rust RFCs, Python PEPs, Kubernetes KEPs are all public and all show what defending a design in review actually looks like",
+    "Defend it in review needs a reviewer. If you have no colleagues, post the doc publicly: an RFC on a project you contribute to, or a design writeup others can tear apart.",
+    "Keep the original doc. The last phase compares the built thing to it, which only works if you did not quietly edit it as you went.",
+    "Search: architecture decision record template, rust RFC process, design doc google engineering",
+]
+
+[[node]]
+id       = "own-in-production"
+title    = "Own something in production for a year"
+tier     = 7
+kind     = "project"
+strand   = "practice"
+requires = ["design-large-system"]
+prefers  = ["code-review", "performance"]
+phases   = ["ship it", "survive a quarter", "survive two", "live with your own decisions"]
+min_each = "ongoing"
+gate     = "Still running, still maintained, and you have lived with your own past decisions"
+note     = "The only node here that cannot be compressed by working harder. It requires elapsed calendar time, which is why its phases are quarters and not tasks."
+entry    = [
+    "There is no resource for this node. It is the one place where the only input is elapsed time and continued responsibility.",
+    "Pick something with real users, however few. Software with no users does not push back, and being pushed back on is the entire content.",
+    "Keep a decision log from day one. The final phase is living with your own past decisions, which requires remembering what they were and why.",
+]

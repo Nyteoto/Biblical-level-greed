@@ -1,0 +1,335 @@
+id       = "drumming"
+title    = "Drumming"
+priority = 30
+cadence  = "daily"
+color    = "violet"
+shape    = "strands"
+strands  = ["hands", "reading", "coordination", "styles"]
+
+# Sequenced against the Berklee drum set core: grip and stroke, the 40 PAS
+# rudiments, snare reading, then two-, three- and four-way coordination, then
+# the style vocabulary (R&B, pop-rock, funk, jazz, Brazilian, Afro-Cuban) and
+# the odd meters. Standard texts: Stone's "Stick Control", Reed's
+# "Progressive Steps to Syncopation".
+#
+# SHAPE: strands. The hands and the reading develop independently for a long
+# time and only merge at chart reading — a drummer with fast hands who cannot
+# read is a common and specific failure, and so is the reverse.
+#
+# This is the domain with the most `metric` fields, and the reason the feature
+# exists: every gate here is a tempo-and-cleanliness reading. Logging the bpm
+# you actually hit turns a check-off into a measurement. The app stores the
+# number you type and does nothing clever with it.
+#
+# This domain is the cheapest here to self-teach and always was: the canon is
+# two books that cost about $20 together, the rudiment reference is free and
+# official, and a practice pad substitutes for a kit through most of the hands
+# strand. The other five files were rewritten to match what this one already
+# did — name the book and the page, not just the skill.
+
+[season]
+state    = "low"
+
+[[node]]
+id       = "grip-and-stroke"
+title    = "Grip and the four strokes"
+tier     = 1
+strand   = "hands"
+estimate = 25
+min_each = "20 min"
+metric   = "bpm"
+metric_target = 100
+decay_days = 14
+gate     = "Full, down, tap and up strokes, both hands, even and relaxed at 100bpm"
+note     = "Tension set here becomes injury later. This is the one node worth over-investing in."
+entry    = [
+    "Buy first: a practice pad and a pair of 5A sticks. Roughly $40 total, and it covers the entire hands strand without a kit.",
+    "Free: Drumeo free lessons (drumeo.com/free-drum-lessons) — the Moeller and stroke-type material specifically",
+    "Free: Stephen Taylor (stephensdrumshed.com and YouTube) — clearest free breakdown of the four stroke types",
+    "Watch for: any tension in the grip at all. Film your hands; you cannot feel this but you can see it.",
+    "Search: four stroke types drumming, matched grip fulcrum, moeller technique beginner",
+]
+
+[[node]]
+id       = "snare-reading"
+title    = "Snare reading — quarters through sixteenths"
+tier     = 1
+strand   = "reading"
+estimate = 35
+min_each = "20 min"
+decay_days = 30
+gate     = "Sight-read a page of snare étude in 4/4 without stopping"
+entry    = [
+    "Book: Podemski, Standard Snare Drum Method, or Mitchell Peters, Elementary Snare Drum Studies — either is the standard first reading text",
+    "Free: musictheory.net rhythm section for note values and time signatures, if notation itself is new",
+    "Free: sheetmusicgenerator.com generates unlimited rhythm exercises so you never re-read the same line",
+    "Rule: count out loud. Reading rhythm silently lets you fake subdivision indefinitely.",
+    "Search: snare drum reading exercises pdf, sixteenth note counting drums",
+]
+
+[[node]]
+id       = "stick-control"
+title    = "Stick Control — singles, doubles, hand balance"
+tier     = 2
+strand   = "hands"
+requires = ["grip-and-stroke"]
+estimate = 60
+min_each = "20 min"
+metric   = "bpm"
+metric_target = 140
+decay_days = 14
+gate     = "Stone pages 5-7 at 140bpm, weak hand indistinguishable from strong"
+entry    = [
+    "Book: George Lawrence Stone, Stick Control for the Snare Drummer. About $10. Pages 5-7 alone are years of work.",
+    "Free: Percussive Arts Society, New Approaches to Reed's Syncopation and Stone's Stick Control (pas.org) — how to actually use the book rather than just play down it",
+    "Method: each line 20 times, metronome, one page per session. Stone gives no instructions on purpose; the article above supplies them.",
+    "Search: stick control stone how to practice, hand balance weak hand drums",
+]
+
+[[node]]
+id       = "basic-coordination"
+title    = "Two- and three-way coordination"
+tier     = 2
+strand   = "coordination"
+requires = ["grip-and-stroke"]
+prefers  = ["snare-reading"]
+estimate = 40
+min_each = "25 min"
+metric   = "bpm"
+metric_target = 160
+decay_days = 21
+gate     = "Hold a basic rock beat at 60-160bpm and talk to someone while doing it"
+entry    = [
+    "Free: Drumeo and freedrumlessons.com both have complete free beginner beat courses",
+    "The gate is the method: if you cannot hold a conversation over it, it is not yet automatic. Talking while playing is the test, not a party trick.",
+    "Search: basic rock beat drums, drum independence exercises beginner, bass drum control",
+]
+
+[[node]]
+id       = "rolls"
+title    = "Single, double and buzz rolls"
+tier     = 3
+strand   = "hands"
+requires = ["stick-control"]
+estimate = 45
+min_each = "20 min"
+metric   = "bpm"
+metric_target = 120
+decay_days = 14
+gate     = "Open-close-open roll over 30 seconds, smooth throughout, no bump at the turnaround"
+entry    = [
+    "Free: Vic Firth 40 Essential Rudiments hub (ae.vicfirth.com/education/40-essential-rudiments) — roll rudiments with graded play-along audio, Bronze to Diamond",
+    "Free: Dr John Wooton's lesson videos on the same hub, and his 4-Tier learning sequence for what order to take rudiments in",
+    "The turnaround is the whole difficulty. Practise the transition between speeds, not the endpoints.",
+    "Search: open close open roll, buzz roll technique, double stroke roll bounce",
+]
+
+[[node]]
+id       = "syncopation"
+title    = "Reed Syncopation as a reading text"
+tier     = 3
+strand   = "reading"
+requires = ["snare-reading"]
+prefers  = ["basic-coordination"]
+estimate = 70
+min_each = "25 min"
+decay_days = 30
+gate     = "Read Reed pp.29-44 as written while keeping jazz ride and hi-hat underneath"
+note     = "The most re-used book in drumming. You come back to these pages for a decade at increasing levels of interpretation."
+entry    = [
+    "Book: Ted Reed, Progressive Steps to Syncopation for the Modern Drummer. About $10, and the single most-used book in the instrument.",
+    "Free: PAS, New Approaches to Reed's Syncopation — the interpretation systems that make pp.29-44 into a decade of material",
+    "Book: John Riley, The Art of Bop Drumming, if you want the jazz interpretations laid out explicitly",
+    "Search: reed syncopation interpretations, syncopation pages 29-44 jazz, ted reed exercises how to use",
+]
+
+[[node]]
+id       = "groove-rock-funk"
+title    = "Rock, pop and funk grooves"
+tier     = 3
+strand   = "styles"
+requires = ["basic-coordination"]
+estimate = 60
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 100
+decay_days = 21
+gate     = "Sixteenth-note hi-hat grooves with the backbeat unshakeable at 100bpm"
+entry    = [
+    "Free: Drumeo free lessons and Stephen Taylor's groove series cover this comprehensively at no cost",
+    "Method: learn grooves off records. Zeppelin, the Meters, James Brown, Toto. The groove is in the time feel, not the sticking pattern.",
+    "Set the metronome on 2 and 4 only. It exposes everything an every-beat click hides.",
+    "Search: sixteenth note hi hat groove, funk drum grooves transcription, backbeat placement",
+]
+
+[[node]]
+id       = "paradiddles"
+title    = "The paradiddle family"
+tier     = 4
+strand   = "hands"
+requires = ["rolls"]
+estimate = 40
+min_each = "20 min"
+metric   = "bpm"
+metric_target = 120
+decay_days = 14
+gate     = "Single, double, triple and paradiddle-diddle at 120bpm, accents placed"
+entry    = [
+    "Free: Vic Firth 40 Essential Rudiments hub — the paradiddle family with application exercises at five levels each",
+    "Method: move them round the kit once clean on the pad. A paradiddle that only works on one surface is a pad exercise, not vocabulary.",
+    "Search: paradiddle variations around the kit, accented paradiddle exercises",
+]
+
+[[node]]
+id       = "jazz-comping"
+title    = "Jazz ride and comping"
+tier     = 4
+strand   = "coordination"
+requires = ["syncopation"]
+estimate = 70
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 160
+decay_days = 21
+gate     = "Ride pattern steady for 10 minutes while comping independently with the left hand"
+entry    = [
+    "Book: Jim Chapin, Advanced Techniques for the Modern Drummer — the independence text, and still unmatched",
+    "Book: John Riley, The Art of Bop Drumming — the context and the vocabulary Chapin leaves out",
+    "Listen: Philly Joe Jones, Elvin Jones, Tony Williams. Ride-cymbal feel cannot be notated and has to be absorbed.",
+    "Search: jazz ride cymbal pattern feel, chapin independence exercises, comping vocabulary jazz drums",
+]
+
+[[node]]
+id       = "flams-drags"
+title    = "Flams, drags, and the rest of the 40"
+tier     = 5
+strand   = "hands"
+requires = ["paradiddles"]
+estimate = 50
+min_each = "20 min"
+metric   = "bpm"
+metric_target = 120
+decay_days = 21
+gate     = "All 40 PAS rudiments, open-close-open, from memory"
+entry    = [
+    "Free: Vic Firth 40 Essential Rudiments hub — all 40, official PAS list, 14-page PDF, play-along audio and video for every one. This node needs nothing else.",
+    "Free: the PAS rudiment poster PDF, printed and stuck above the pad",
+    "Method: Wooton's 4-Tier sequence rather than working down the list in order.",
+    "Search: PAS 40 international drum rudiments, flam rudiments technique, drag rudiments",
+]
+
+[[node]]
+id       = "chart-reading"
+title    = "Drum charts, road maps and cues"
+tier     = 5
+strand   = "reading"
+requires = ["syncopation"]
+estimate = 45
+min_each = "30 min"
+decay_days = 45
+gate     = "Play an unfamiliar chart down correctly on the first take, catching every hit"
+note     = "Where the hands strand and the reading strand finally meet."
+entry    = [
+    "Book: Ron Spagnardi, The Drummer's Guide to Reading Drum Charts, or Tommy Igoe, Groove Essentials (which is chart-driven throughout)",
+    "Free: real charts from any musical or big band pad — road map notation, D.S., codas, section cues",
+    "Method: one new chart per session, played down cold once. Re-reading a chart you know is not sight reading.",
+    "Search: drum chart notation guide, road map notation music DS coda, big band drum chart reading",
+]
+
+[[node]]
+id       = "ghost-notes"
+title    = "Ghost notes and linear phrasing"
+tier     = 5
+strand   = "coordination"
+requires = ["groove-rock-funk"]
+prefers  = ["stick-control"]
+estimate = 55
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 90
+decay_days = 21
+gate     = "Play a Purdie-style half-time shuffle with the ghosts audible but under the backbeat"
+entry    = [
+    "Listen: Bernard Purdie on Steely Dan's Home at Last and Babylon Sisters; Jeff Porcaro on Rosanna. The three canonical recordings.",
+    "Free: Drumeo has free full breakdowns of both the Purdie and Porcaro shuffles",
+    "Book: Gary Chaffee, Patterns Vol 3 (Time Functioning Patterns) for the linear vocabulary",
+    "The gate is a dynamics problem, not a coordination one. Ghosts audible but under is the entire difficulty.",
+    "Search: purdie shuffle breakdown, ghost notes snare technique, linear drumming patterns",
+]
+
+[[node]]
+id       = "latin-styles"
+title    = "Brazilian and Afro-Cuban"
+tier     = 6
+strand   = "styles"
+requires = ["groove-rock-funk"]
+prefers  = ["ghost-notes"]
+estimate = 60
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 120
+decay_days = 30
+gate     = "Samba, bossa, songo and mambo, correct clave, no rock accent leaking in"
+entry    = [
+    "Book: Ed Uribe, The Essence of Afro-Cuban Percussion and Drum Set, and its companion The Essence of Brazilian Percussion. The standard pair.",
+    "Learn clave first, alone, before any groove. Every one of these styles is organised around it and a groove built without it will be wrong in a way you cannot hear.",
+    "Listen: Irakere, Los Van Van, Jorge Ben, Airto Moreira. The accent placement is not notatable.",
+    "Search: son clave vs rumba clave, samba drum set pattern, songo groove explained",
+]
+
+[[node]]
+id       = "odd-time"
+title    = "Odd meters and metric modulation"
+tier     = 6
+strand   = "coordination"
+requires = ["jazz-comping", "ghost-notes"]
+estimate = 55
+min_each = "30 min"
+metric   = "bpm"
+metric_target = 110
+decay_days = 30
+gate     = "Groove in 5/4, 7/8 and 12/8 without counting out loud"
+entry    = [
+    "Book: Gavin Harrison, Rhythmic Illusions — the standard text on metric modulation, and unusually well explained",
+    "Book: Peter Erskine, Time Awareness, for odd-meter feel rather than odd-meter arithmetic",
+    "Listen: Brubeck Take Five and Blue Rondo, Tool, Meshuggah, Radiohead's 15 Step. Hearing odd time as a groove rather than a count is the whole gate.",
+    "Search: odd time signatures drumming exercises, metric modulation explained, 7/8 groove subdivision",
+]
+
+[[node]]
+id       = "play-with-band"
+title    = "Playing with actual musicians, weekly"
+tier     = 7
+kind     = "social"
+strand   = "styles"
+prefers  = ["chart-reading", "groove-rock-funk", "latin-styles"]
+estimate = 80
+min_each = "90 min"
+gate     = "A band you are not paying asks you back"
+note     = "SOFT edges. Not practisable alone, and everything above it is preparation that only reveals itself here — so waiting until the tree says you are ready is the wrong move. Go and be the worst player in the room."
+entry    = [
+    "Find: JoinMyBand, BandMix, local Facebook musician groups, university noticeboards, church and function bands. Drummers are always in short supply — this is easier than every other instrument.",
+    "Learn ten standards cold before the first rehearsal. Turning up with repertoire is what gets you asked back.",
+    "Own: a kick pedal, sticks, and a hi-hat clutch. Backline is usually shared; those three are not.",
+    "Search: find a band drummer wanted, function band repertoire list, rehearsal room near me",
+]
+
+[[node]]
+id       = "studio-session"
+title    = "Track a song in a studio"
+tier     = 8
+kind     = "project"
+strand   = "styles"
+requires = ["chart-reading"]
+prefers  = ["play-with-band", "odd-time"]
+phases   = ["tune the kit", "chart the song", "track to click", "review takes"]
+min_each = "one session day"
+gate     = "Tracked a song to a click in under five takes and the engineer kept take three"
+note     = "A project, not a habit: a booked room, a day, and four phases. No session count, because you cannot do 12% of a tracking day."
+entry    = [
+    "Learn kit tuning before the day, not on it. Free: Drumeo and Sounds Like A Drum have complete free tuning series. Studio time spent tuning is money.",
+    "Practise to a click for months first. Click tracking is a separate skill and the studio is an expensive place to discover you do not have it.",
+    "Free: DaVinci Resolve or Reaper's evaluation build let you review takes yourself afterwards",
+    "Cheaper first step: a rehearsal room with a decent recorder, or a home kit with two overheads. The discipline transfers; only the room does not.",
+    "Search: drum tuning guide, recording drums to a click, drum session preparation checklist",
+]

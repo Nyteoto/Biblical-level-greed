@@ -1,0 +1,423 @@
+id       = "electrical-engineering"
+title    = "Electrical Engineering"
+priority = 40
+cadence  = "weekdays"
+color    = "emerald"
+shape    = "strands"
+strands  = ["math", "physics", "circuits", "computing", "systems"]
+
+# Sequenced against MIT Course 6-5 (Electrical Engineering with Computing,
+# which replaced 6-1/6-2 from Fall 2024) plus the standard ABET BSEE spine.
+#
+# SHAPE: strands. Five tracks that a real degree runs in parallel across
+# semesters. The maths strand always leads the others — that is not a
+# stylistic choice, it is the prerequisite chain.
+#
+# EVERY EDGE IN THIS FILE IS HARD (`requires`, not `prefers`), and this is the
+# one domain where that is true. The prerequisites are physical: attempting
+# signals and systems without linear algebra does not produce slow progress,
+# it produces zero progress. Compare filmmaking.toml, where the same
+# relationship is inverted.
+#
+# Nodes are `study`, not `drill` — comprehension holds once held, so nothing
+# here decays, and there are no `decay_days`. That is also what makes this the
+# only domain here that may be parked outright: season `off` is legal exactly
+# because nothing rots.
+#
+# This is the best-served domain here for a self-learner: essentially the whole
+# degree is free and legal via MIT OpenCourseWare, and where OCW is thin the
+# gap is filled by other free full texts (dspguide.com, allaboutcircuits.com).
+# Money is needed only where atoms are: a board, a meter, a fab order.
+
+[season]
+state    = "high"
+strands  = ["math", "circuits"]
+until    = "2026-10-01"
+ends_on  = "circuits-ac"
+
+[[node]]
+id       = "calculus-single"
+title    = "Single-variable calculus"
+tier     = 1
+kind     = "study"
+strand   = "math"
+estimate = 60
+min_each = "60 min"
+gate     = "Differentiate and integrate anything in a first-year problem set without a table"
+entry    = [
+    "Free: MIT OCW 18.01SC Single Variable Calculus — full video lectures, problem sets, exams, solutions",
+    "Free: 3Blue1Brown, Essence of Calculus (YouTube) — watch first, for intuition; it is not a substitute for the problem sets",
+    "Free: Paul's Online Math Notes (tutorial.math.lamar.edu) — the best free worked-example reference there is",
+    "Do the problem sets. Watching lectures produces the feeling of understanding calculus and none of the ability.",
+    "Search: MIT 18.01SC, paul's online notes calculus I",
+]
+
+[[node]]
+id       = "programming-c"
+title    = "C and the machine model"
+tier     = 1
+kind     = "study"
+strand   = "computing"
+estimate = 45
+min_each = "60 min"
+gate     = "Write and debug a program with manual memory management and pointer arithmetic"
+entry    = [
+    "Book: Kernighan and Ritchie, The C Programming Language (K&R). Small, old, still correct, still the fastest route in.",
+    "Free: Beej's Guide to C Programming (beej.us) — free, modern, and much friendlier than K&R",
+    "Free: CS50 (Harvard, edX audit free) starts in C and teaches the machine model explicitly",
+    "Tool: compile with -Wall -Wextra -fsanitize=address from day one. The sanitizer teaches pointers faster than any book.",
+    "Search: beej's guide to c, valgrind tutorial, pointer arithmetic explained",
+]
+
+[[node]]
+id       = "calculus-multi"
+title    = "Multivariable and vector calculus"
+tier     = 2
+kind     = "study"
+strand   = "math"
+requires = ["calculus-single"]
+estimate = 60
+min_each = "60 min"
+gate     = "Grad, div, curl, and the divergence and Stokes theorems, used not just recited"
+entry    = [
+    "Free: MIT OCW 18.02SC Multivariable Calculus — Denis Auroux's lectures, complete with psets and exams",
+    "Free: Khan Academy multivariable calculus, written by Grant Sanderson, is unusually good on div and curl specifically",
+    "This node exists to serve Maxwell's equations. If grad/div/curl stay symbolic you will hit a wall at physics-em.",
+    "Search: MIT 18.02SC, divergence and curl intuition, stokes theorem explained",
+]
+
+[[node]]
+id       = "physics-mechanics"
+title    = "Mechanics"
+tier     = 2
+kind     = "study"
+strand   = "physics"
+requires = ["calculus-single"]
+estimate = 45
+min_each = "60 min"
+gate     = "Solve a coupled-oscillator problem from first principles"
+entry    = [
+    "Free: MIT OCW 8.01SC Classical Mechanics — full course with video, psets and solutions",
+    "Book: Kleppner and Kolenkow, An Introduction to Mechanics, if you want the harder and better version",
+    "The coupled oscillator is the point of this node for an EE: it is the same mathematics as an RLC network, met first where you can see it move.",
+    "Search: MIT 8.01SC, coupled oscillators normal modes, simple harmonic motion derivation",
+]
+
+[[node]]
+id       = "digital-logic"
+title    = "Digital logic and sequential design"
+tier     = 2
+kind     = "study"
+strand   = "computing"
+requires = ["programming-c"]
+estimate = 50
+min_each = "60 min"
+gate     = "Design, minimise and time a state machine, then get it running on an FPGA"
+entry    = [
+    "Free: Ben Eater's 8-bit breadboard computer series (eater.net/8bit) — the single best free digital logic education that exists, and it is built from 74-series chips you can buy",
+    "Free: nand2tetris (nand2tetris.org) — builds a whole computer from NAND upward, in simulation, free",
+    "Free: Falstad circuit simulator (falstad.com/circuit) for logic experiments in the browser, nothing to install",
+    "Hardware: an iCE40 board (iCEstick, iCEBreaker) or Tang Nano 9K, roughly $25-40. iCE40 has a fully open toolchain — Yosys, nextpnr, Project IceStorm — with no licence, no registration and no 50GB vendor IDE.",
+    "Search: ben eater 8 bit computer, nand2tetris, yosys nextpnr icestorm getting started",
+]
+
+[[node]]
+id       = "linear-algebra"
+title    = "Linear algebra"
+tier     = 3
+kind     = "study"
+strand   = "math"
+requires = ["calculus-multi"]
+estimate = 55
+min_each = "60 min"
+gate     = "Eigendecomposition by hand, and explain what the eigenvectors physically mean"
+entry    = [
+    "Free: MIT OCW 18.06 Linear Algebra — Gilbert Strang's lectures, the most-watched maths course on the internet and deservedly",
+    "Free: 3Blue1Brown, Essence of Linear Algebra — watch before Strang, not instead of him",
+    "Book: Strang, Introduction to Linear Algebra, if you want the text alongside",
+    "The gate says physically because signals-systems and control both depend on eigenvectors meaning something. Mechanical eigendecomposition is not enough.",
+    "Search: MIT 18.06 strang, essence of linear algebra, eigenvectors physical meaning",
+]
+
+[[node]]
+id       = "differential-equations"
+title    = "Differential equations"
+tier     = 3
+kind     = "study"
+strand   = "math"
+requires = ["calculus-multi"]
+estimate = 55
+min_each = "60 min"
+gate     = "Solve second-order linear ODEs and know why the complex exponential is the natural basis"
+entry    = [
+    "Free: MIT OCW 18.03SC Differential Equations — Arthur Mattuck's lectures, plus the Mathlets for visualising",
+    "Free: 3Blue1Brown, Differential Equations series, for why e^(st) is the natural basis",
+    "This is the node that makes AC circuits trivial rather than mysterious. Do it properly and phasors are obvious; skip it and they are magic.",
+    "Search: MIT 18.03SC, why complex exponentials differential equations, second order linear ODE",
+]
+
+[[node]]
+id       = "physics-em"
+title    = "Electricity and magnetism"
+tier     = 3
+kind     = "study"
+strand   = "physics"
+requires = ["physics-mechanics", "calculus-multi"]
+estimate = 60
+min_each = "60 min"
+gate     = "State all four Maxwell equations and explain each term physically"
+entry    = [
+    "Free: MIT OCW 8.02 Electricity and Magnetism — the full course, with the demonstration-heavy lecture videos",
+    "Book: Purcell and Morin, Electricity and Magnetism — the relativistic-origin treatment, and the one that makes magnetism make sense",
+    "Free: Feynman Lectures Vol II, readable free at feynmanlectures.caltech.edu",
+    "Search: MIT 8.02, maxwell equations physical meaning, purcell electricity magnetism",
+]
+
+[[node]]
+id       = "circuits-dc"
+title    = "DC circuits — KVL, KCL, Thevenin"
+tier     = 4
+kind     = "study"
+strand   = "circuits"
+requires = ["physics-em"]
+estimate = 50
+min_each = "60 min"
+gate     = "Reduce an arbitrary resistive network by inspection; predict a measurement before taking it"
+entry    = [
+    "Free: All About Circuits, Lessons in Electric Circuits Vol 1 — DC (allaboutcircuits.com/textbook). Complete free textbook, open-licensed.",
+    "Free: Falstad circuit simulator — build the network, predict the node voltages, then run it. The predict-first habit is the whole node.",
+    "Hardware: a breadboard, a resistor assortment and a $15 multimeter. The gate says predict a measurement before taking it, which needs a meter.",
+    "Search: thevenin equivalent worked examples, nodal analysis vs mesh analysis, allaboutcircuits textbook",
+]
+
+[[node]]
+id       = "probability-random"
+title    = "Probability and random signals"
+tier     = 4
+kind     = "study"
+strand   = "math"
+requires = ["calculus-multi"]
+estimate = 50
+min_each = "60 min"
+gate     = "Compute the output statistics of a linear system driven by noise"
+entry    = [
+    "Free: MIT OCW 6.041SC Probabilistic Systems Analysis — John Tsitsiklis, and it is aimed squarely at engineers",
+    "Book: Bertsekas and Tsitsiklis, Introduction to Probability — the companion text",
+    "Free: Harvard Stat 110 (Joe Blitzstein) on YouTube, if a second angle helps",
+    "Search: MIT 6.041, random processes through LTI systems, power spectral density noise",
+]
+
+[[node]]
+id       = "microcontrollers"
+title    = "Microcontrollers and embedded firmware"
+tier     = 4
+kind     = "study"
+strand   = "computing"
+requires = ["digital-logic", "programming-c"]
+estimate = 60
+min_each = "60 min"
+gate     = "Bring up a bare-metal board from reset vector to working peripheral, no vendor HAL"
+entry    = [
+    "Hardware: an STM32 Nucleo or Blue Pill (~$5-15), plus an ST-Link programmer. Cheap, and the reference manual is public.",
+    "Free: the STM32 reference manual and datasheet. The gate says no vendor HAL, which means the manual IS the material.",
+    "Free: Ben Eater's 6502 series for the same idea at a slower clock, where you can see the bus",
+    "Free: the Embedded Rust / bare-metal-C community writeups on reset vectors and linker scripts — search the phrase from reset vector to main",
+    "Search: STM32 bare metal register programming, linker script embedded explained, startup code reset handler",
+]
+
+[[node]]
+id       = "circuits-ac"
+title    = "AC circuits — phasors, RLC, transients"
+tier     = 5
+kind     = "study"
+strand   = "circuits"
+requires = ["circuits-dc", "differential-equations"]
+estimate = 60
+min_each = "60 min"
+gate     = "Sketch the step and frequency response of an unfamiliar RLC network before simulating it"
+entry    = [
+    "Free: MIT OCW 6.002 Circuits and Electronics — first- and second-order dynamics, time and frequency domain",
+    "Free: All About Circuits Vol 2 — AC, for the reference treatment",
+    "Free: Falstad again, which draws the transient live and is the fastest way to check a sketch",
+    "Search: MIT 6.002, phasor analysis explained, RLC step response damping ratio",
+]
+
+[[node]]
+id       = "electromagnetics"
+title    = "Electromagnetic waves and transmission lines"
+tier     = 5
+kind     = "study"
+strand   = "physics"
+requires = ["physics-em", "differential-equations"]
+estimate = 60
+min_each = "60 min"
+gate     = "Match a load with a Smith chart and explain the reflection you measure"
+entry    = [
+    "Book: Ulaby, Fundamentals of Applied Electromagnetics — the standard undergraduate text, and unusually readable",
+    "Free: Smith chart tools and tutorials are abundant; the chart itself is just polar reflection coefficient, and saying that out loud demystifies most of it",
+    "Hardware, optional but transformative: a NanoVNA is about $50 and turns this node from theory into measurement",
+    "Search: smith chart tutorial impedance matching, transmission line reflection coefficient, nanovna getting started",
+]
+
+[[node]]
+id       = "semiconductors"
+title    = "Semiconductor devices — diodes, BJT, MOSFET"
+tier     = 6
+kind     = "study"
+strand   = "circuits"
+requires = ["circuits-ac"]
+estimate = 55
+min_each = "60 min"
+gate     = "Derive a small-signal model and predict a transistor stage's bias point on paper"
+entry    = [
+    "Free: Behzad Razavi's UCLA lecture series on YouTube — full undergraduate microelectronics, free, from the author of the textbook",
+    "Book: Sedra and Smith, Microelectronic Circuits, or Razavi's Fundamentals of Microelectronics",
+    "Book: Horowitz and Hill, The Art of Electronics — the practitioner's counterweight; read alongside, not instead",
+    "Search: razavi microelectronics lectures, small signal model derivation, BJT biasing worked example",
+]
+
+[[node]]
+id       = "signals-systems"
+title    = "Signals and systems"
+tier     = 6
+kind     = "study"
+strand   = "systems"
+requires = ["circuits-ac", "linear-algebra"]
+estimate = 70
+min_each = "60 min"
+gate     = "Convolution, Fourier, Laplace and the z-transform — move between all four fluently"
+note     = "The load-bearing subject of the whole degree. Everything after this assumes it cold."
+entry    = [
+    "Free: MIT OCW 6.003 Signals and Systems — the course this node is named after",
+    "Free: the Oppenheim MIT video lectures (also on OCW) — older, slower, and still the clearest exposition on record",
+    "Book: Oppenheim and Willsky, Signals and Systems. The standard, and worth owning given the note above.",
+    "Free: 3Blue1Brown on Fourier transforms and convolution, for the intuition layer",
+    "Search: MIT 6.003, oppenheim signals and systems lectures, convolution intuition, laplace vs fourier vs z transform",
+]
+
+[[node]]
+id       = "analog-electronics"
+title    = "Analog electronics — op-amps and feedback"
+tier     = 7
+kind     = "study"
+strand   = "circuits"
+requires = ["semiconductors"]
+estimate = 65
+min_each = "60 min"
+gate     = "Design a multi-stage amplifier to a spec, build it, and have it meet the spec"
+entry    = [
+    "Book: Horowitz and Hill, The Art of Electronics 3rd ed. This node is what the book is for.",
+    "Free: TI and Analog Devices application notes and op-amp handbooks — free, authoritative, and written by the people who make the parts",
+    "Free: LTspice (free from Analog Devices) — simulate before you build, then find out how wrong the simulation was",
+    "Hardware: the gate says build it and have it meet the spec, so this node needs a breadboard, a supply, and ideally a scope. A used analogue scope is $50-100; a cheap USB scope less.",
+    "Search: art of electronics x chapters, op amp feedback stability phase margin, LTspice tutorial",
+]
+
+[[node]]
+id       = "dsp"
+title    = "Digital signal processing"
+tier     = 7
+kind     = "study"
+strand   = "systems"
+requires = ["signals-systems"]
+estimate = 60
+min_each = "60 min"
+gate     = "Design an FIR and an IIR filter to spec and implement both in fixed point"
+entry    = [
+    "Free: Steven Smith, The Scientist and Engineer's Guide to DSP — the complete book, free at dspguide.com. All 33 chapters.",
+    "Book: Oppenheim and Schafer, Discrete-Time Signal Processing, for the rigorous version",
+    "Free: Python with numpy/scipy.signal, or GNU Octave, for the filter design work. scipy.signal.firwin and iirdesign do the whole gate.",
+    "Fixed point is the part everyone skips and the part that bites. Do it explicitly.",
+    "Search: dspguide, FIR vs IIR filter design tradeoffs, fixed point arithmetic Q format",
+]
+
+[[node]]
+id       = "control-systems"
+title    = "Feedback and control"
+tier     = 7
+kind     = "study"
+strand   = "systems"
+requires = ["signals-systems"]
+estimate = 55
+min_each = "60 min"
+gate     = "Stabilise an unstable plant and defend your phase margin"
+entry    = [
+    "Free: Brian Douglas, Control System Lectures (YouTube) — the standard free control education, and better than most courses",
+    "Book: Franklin, Powell and Emami-Naeini, Feedback Control of Dynamic Systems, or Ogata",
+    "Free: Python control library, or Octave, for root locus and Bode plots without a MATLAB licence",
+    "Hardware: an inverted pendulum or a reaction wheel is about $40 of parts and turns defend your phase margin into something physical",
+    "Search: brian douglas control lectures, root locus explained, phase margin gain margin intuition",
+]
+
+[[node]]
+id       = "power-electronics"
+title    = "Power electronics and machines"
+tier     = 8
+kind     = "study"
+strand   = "circuits"
+requires = ["analog-electronics"]
+estimate = 50
+min_each = "60 min"
+gate     = "Design a switching converter that hits its efficiency target under load"
+entry    = [
+    "Book: Erickson and Maksimovic, Fundamentals of Power Electronics — the standard graduate text and the reference for this whole node",
+    "Free: CU Boulder's power electronics specialisation on Coursera (audit free) is taught by Erickson himself",
+    "Free: TI's power management application notes and reference designs, plus their WEBENCH design tool",
+    "Efficiency is measured, not calculated. This node needs a load, a meter and ideally a scope with a current probe.",
+    "Search: erickson power electronics, buck converter design walkthrough, switching losses measurement",
+]
+
+[[node]]
+id       = "communications"
+title    = "Communication systems"
+tier     = 8
+kind     = "study"
+strand   = "systems"
+requires = ["dsp", "probability-random"]
+estimate = 55
+min_each = "60 min"
+gate     = "Derive the bit error rate of a modulation scheme and confirm it in simulation"
+entry    = [
+    "Free: MIT OCW 6.02 Introduction to EECS II — digital communication systems, from bits to packets",
+    "Book: Proakis and Salehi, Communication Systems Engineering; or Gallager's Principles of Digital Communication (MIT, notes free on OCW)",
+    "Free: GNU Radio, plus an RTL-SDR dongle (~$30) — turns modulation from a derivation into something you can see on a waterfall",
+    "The gate is confirm it in simulation, which means a Monte Carlo BER curve. Python and numpy are sufficient.",
+    "Search: MIT 6.02, BER derivation BPSK QPSK, gnuradio tutorial rtl-sdr",
+]
+
+[[node]]
+id       = "pcb-design"
+title    = "Spin a four-layer board"
+tier     = 8
+kind     = "project"
+strand   = "computing"
+requires = ["analog-electronics", "microcontrollers", "electromagnetics"]
+phases   = ["schematic", "layout", "review", "fab order", "bring-up"]
+min_each = "one working session"
+gate     = "Sent a four-layer board to fab and it worked on the first spin"
+note     = "The first irreversible step in this domain, and the reason `project` exists. Everything before it is erasable; a fab order costs money and two weeks of calendar, and 'fab order' is a phase you cannot half-complete."
+entry    = [
+    "Free: KiCad. Fully capable, open source, and now the default in the hobbyist and much of the professional world.",
+    "Free: Phil's Lab (YouTube) — a complete free four-layer STM32 board in KiCad, schematic through fab order. Exactly this node, start to finish.",
+    "Free: the fab house's own design rules (JLCPCB, PCBWay) — read them BEFORE layout, not after the DRC fails",
+    "Cost: a four-layer board from JLCPCB is roughly $10-30 for five, plus shipping and two weeks. That is the irreversible part.",
+    "Do the review phase with someone else's eyes. It is the cheapest phase and it is what saves the fab order.",
+    "Search: phil's lab kicad four layer, JLCPCB capabilities design rules, PCB stackup 4 layer impedance",
+]
+
+[[node]]
+id       = "capstone"
+title    = "Capstone — design, build, debug, ship"
+tier     = 9
+kind     = "project"
+strand   = "systems"
+requires = ["pcb-design", "control-systems", "power-electronics", "communications"]
+phases   = ["spec", "design review", "build", "debug", "handover"]
+min_each = "one working session"
+gate     = "A device someone else uses, that you can service, with schematics you would show an employer"
+entry    = [
+    "Pick a device someone has actually asked for. A capstone with no user skips the handover phase, which is the phase that teaches the most.",
+    "Free: publish it — GitHub with schematics, gerbers and firmware. The gate says schematics you would show an employer, and a public repo is how they see them.",
+    "Write the spec before the build, and keep the version you wrote. The gap between it and the finished device is the real output of this node.",
+    "Search: open hardware project documentation standards, KiCad release gerbers github",
+]
