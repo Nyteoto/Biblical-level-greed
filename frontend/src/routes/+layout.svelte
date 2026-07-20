@@ -7,7 +7,12 @@
 	const tabs = [
 		{ href: '/', label: 'Today' },
 		{ href: '/tree', label: 'Tech Tree' },
-		{ href: '/manual', label: 'Manual' }
+		{ href: '/manual', label: 'Manual' },
+		// TEMPORARY: the only way to reach the diagnostic from inside an
+		// installed PWA. The manifest pins start_url to "/", so an icon added
+		// from any page opens the app root, and standalone mode has no URL bar
+		// to type into. Delete this entry with the test page.
+		{ href: '/shortcut-test', label: 'Test' }
 	];
 
 	const isActive = (href: string) =>

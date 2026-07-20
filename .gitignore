@@ -5,3 +5,8 @@ frontend/.svelte-kit/
 data/index.sqlite
 __pycache__/
 .pytest_cache/
+
+# Photos. Deliberately NOT tracked: a year of daily images is a repo nobody
+# wants to clone. The consequence is that the repo stops being a complete
+# backup — these files have one copy unless something else copies them.
+data/media/

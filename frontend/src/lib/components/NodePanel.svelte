@@ -1,4 +1,5 @@
 <script lang="ts">
+	import NoteEditor from './NoteEditor.svelte';
 	import {
 		addJournal,
 		deleteNode,
@@ -27,6 +28,10 @@
 	let { domainId, node, nodes, strands = [], onchange, onclose }: Props = $props();
 
 	let tab = $state<'params' | 'journal'>('params');
+	// Notes open full screen rather than into this 340px rail: a document you
+	// revise needs room, and the journal below stays a narrow list on purpose
+	// because it is a log of short entries, not a document.
+	let editingNote = $state(false);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	// Renamed from `entry` when the node schema gained an `entry` field of its
@@ -274,6 +279,17 @@
 			</button>
 		</div>
 	</header>
+
+	<button
+		onclick={() => (editingNote = true)}
+		class="flex items-center gap-2 border-b border-black/50 px-4 py-2.5 text-left transition hover:bg-black/25"
+	>
+		<span class="text-[11px] tracking-[0.16em] text-amber-300/90 uppercase">Notes</span>
+		<span class="truncate text-[11px] text-stone-600">
+			markdown doc · photos land here
+		</span>
+		<span class="ml-auto text-stone-600">→</span>
+	</button>
 
 	<nav class="flex border-b border-black/50 text-[11px] tracking-[0.16em] uppercase">
 		{#each ['params', 'journal'] as name}
@@ -712,3 +728,12 @@
 		{/if}
 	</div>
 </aside>
+
+{#if editingNote}
+	<NoteEditor
+		{domainId}
+		nodeId={node.id}
+		nodeTitle={node.title}
+		onclose={() => (editingNote = false)}
+	/>
+{/if}

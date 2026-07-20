@@ -4,14 +4,16 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import edits, eventlog, todos, watcher
+from . import edits, eventlog, media, notes, todos, watcher
 from .config import ROOT
+from .media import MediaError
 from .models import DomainError
+from .notes import NoteError
 from .store import store
 from .timeutil import day_key
 
@@ -126,6 +128,10 @@ class NodePatch(BaseModel):
     metric_target: int | None = None
 
 
+class NoteIn(BaseModel):
+    text: str
+
+
 class EdgeIn(BaseModel):
     source: str  # the prerequisite
     target: str  # the node that now requires it
@@ -187,6 +193,141 @@ def complete_todo(item_id: str) -> dict:
     """
     todos.complete(item_id)
     return {"todos": todos.live()}
+
+
+# -- throwaway diagnostic ---------------------------------------------------
+# Does `shortcuts://` fire from an installed PWA in standalone mode? Apple
+# documents the scheme for browsers but says nothing about standalone, so this
+# is settled by experiment. Self-verifying: the test Shortcut POSTs here, so a
+# hit is server-side proof it actually ran rather than the page guessing.
+_shortcut_ping: dict = {"at": None, "count": 0, "note": ""}
+
+
+@app.post("/api/shortcut-ping")
+def shortcut_ping(body: TodoIn | None = None) -> dict:
+    from .timeutil import now
+
+    _shortcut_ping["at"] = now().isoformat(timespec="seconds")
+    _shortcut_ping["count"] += 1
+    _shortcut_ping["note"] = (body.text if body else "") or ""
+    return {"ok": True, **_shortcut_ping}
+
+
+@app.get("/api/shortcut-ping")
+def shortcut_ping_status() -> dict:
+    return _shortcut_ping
+
+
+# -- notes: one mutable markdown document per node --------------------------
+
+
+@app.get("/api/domains/{domain_id}/nodes/{node_id}/note")
+def get_note(domain_id: str, node_id: str) -> dict:
+    _node_view(domain_id, node_id)  # 404s if either id is unknown
+    try:
+        return {"text": notes.read(domain_id, node_id)}
+    except NoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.put("/api/domains/{domain_id}/nodes/{node_id}/note")
+def put_note(domain_id: str, node_id: str, body: NoteIn) -> dict:
+    """Replaces the note. Unlike the journal, this is meant to be edited —
+    which is exactly why it is a file and not an event."""
+    _node_view(domain_id, node_id)
+    try:
+        notes.write(domain_id, node_id, body.text)
+    except NoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "text": notes.read(domain_id, node_id)}
+
+
+# -- media ------------------------------------------------------------------
+
+
+@app.post("/api/media")
+async def upload_media(
+    request: Request,
+    domain: str | None = None,
+    node: str | None = None,
+    caption: str = "",
+) -> dict:
+    """Accept an image and, if a node is named, append it to that node's note.
+
+    Deliberately tolerant about how the bytes arrive, because the caller is an
+    iOS Shortcut and `Get Contents of URL` can send a file either as multipart
+    or as the raw request body depending on how it was assembled. Sniffing the
+    content type and accepting both is cheaper than making the Shortcut exact.
+    """
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        upload = next(
+            (v for v in form.values() if hasattr(v, "read")), None
+        )
+        if upload is None:
+            raise HTTPException(400, "multipart body carried no file")
+        data = await upload.read()
+        caption = caption or str(form.get("caption", "") or "")
+        domain = domain or (str(form.get("domain")) if form.get("domain") else None)
+        node = node or (str(form.get("node")) if form.get("node") else None)
+    else:
+        data = await request.body()
+
+    try:
+        relative = media.save(data, day_key())
+    except MediaError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    url = f"/media/{relative}"
+    attached = False
+    if domain and node:
+        _node_view(domain, node)
+        alt = caption.strip() or "photo"
+        try:
+            notes.append(domain, node, f"![{alt}]({url})")
+            attached = True
+        except NoteError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    return {"ok": True, "url": url, "path": relative, "attached_to_note": attached}
+
+
+@app.get("/media/{relative:path}")
+def get_media(relative: str):
+    target = media.path_for(relative)
+    if target is None:
+        raise HTTPException(404, "no such media")
+    # Content-addressed by a random id and never rewritten, so it can be
+    # cached hard.
+    return FileResponse(
+        target, headers={"cache-control": "public, max-age=31536000, immutable"}
+    )
+
+
+@app.get("/api/active")
+def active_nodes() -> dict:
+    """Everything the board says is active right now, flattened.
+
+    Exists for the Shortcut: it has no good way to pick from 107 nodes, so it
+    reads this and offers the handful that are actually in season today.
+    """
+    out = []
+    for domain in store.domains:
+        view = store.domain_view(domain.id)
+        if not view:
+            continue
+        for node in view["active_nodes"]:
+            out.append(
+                {
+                    "domain": domain.id,
+                    "domain_title": domain.title,
+                    "node": node["id"],
+                    "title": node["title"],
+                    "label": f"{domain.title} — {node['title']}",
+                }
+            )
+    return {"active": out}
 
 
 @app.get("/api/domains")

@@ -119,6 +119,30 @@ that's a bug"* has to keep being true once a number is attached to it. Retuning
 any constant re-scores your whole history at once; there is no migration,
 because there is no stored state.
 
+## Notes, and the journal
+
+Two different things, deliberately not merged:
+
+| | what it is | where it lives |
+|---|---|---|
+| **journal** | *what happened today* — evidence | append-only events in the log |
+| **note** | *what I have worked out* — knowledge | `data/notes/<domain>/<node>.md` |
+
+The journal stays immutable: timestamped, deduplicated on `(ts, text)`,
+union-merged across machines. Making it editable would have cost the
+append-only property that sync, the XP fold and calibration all depend on.
+
+A note is knowledge, and knowledge gets revised — so it is an ordinary markdown
+file. Hand-editable, greppable, diffable, readable without this app existing.
+It opens full screen from the node panel, with a write/read toggle.
+
+Markdown rather than a block editor's JSON on purpose: storage decisions are
+permanent, and which editor renders them is not.
+
+Photos from the iPad append themselves here as ordinary markdown image links —
+see [`SHORTCUTS.md`](SHORTCUTS.md). They are stored in `data/media/`, which is
+**not tracked by git**.
+
 ## The checklist
 
 The Today screen carries a plain checklist above the board. It is **not** a

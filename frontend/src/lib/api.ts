@@ -225,6 +225,31 @@ export const addTodo = (text: string) =>
 export const completeTodo = (id: string) =>
 	call<{ todos: Todo[] }>(`/todos/${id}`, { method: 'DELETE' });
 
+// -- notes: one mutable markdown document per node --------------------------
+// Distinct from the journal, which stays an append-only log of events. A note
+// is knowledge and gets revised; a journal entry is evidence and does not.
+
+export const getNote = (domain: string, node: string) =>
+	call<{ text: string }>(`/domains/${domain}/nodes/${node}/note`);
+
+export const saveNote = (domain: string, node: string, text: string) =>
+	call<{ ok: boolean; text: string }>(`/domains/${domain}/nodes/${node}/note`, {
+		method: 'PUT',
+		body: JSON.stringify({ text })
+	});
+
+export interface ActiveNode {
+	domain: string;
+	domain_title: string;
+	node: string;
+	title: string;
+	label: string;
+}
+
+/** What the board says is active right now, flattened. Exists so a Shortcut
+ * can offer a handful of nodes instead of all 107. */
+export const getActive = () => call<{ active: ActiveNode[] }>('/active');
+
 export const addJournal = (domain: string, node: string, text: string) =>
 	call<{ node: TreeNode }>(`/domains/${domain}/nodes/${node}/journal`, {
 		method: 'POST',

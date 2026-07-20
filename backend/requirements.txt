@@ -4,4 +4,8 @@ watchdog>=5.0
 # Native desktop window, rendered by the system WebKitGTK (needs the distro's
 # python3-gobject). The app still runs without it: `desktop.py --browser`.
 pywebview>=5.0
+# Image import: downscale, apply EXIF rotation, re-encode HEIC to JPEG.
+Pillow>=10.0
+# multipart/form-data, so an iOS Shortcut can post a file either way.
+python-multipart>=0.0.9
 pytest>=8.0

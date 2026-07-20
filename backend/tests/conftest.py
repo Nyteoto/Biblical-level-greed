@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -22,9 +23,12 @@ def data_dir() -> Path:
     ):
         path.unlink()
     config.INDEX_PATH.unlink(missing_ok=True)
-    # The checklist lives beside the log rather than inside it, so it needs
-    # clearing explicitly — otherwise ticked todos leak XP into later tests.
+    # Everything that lives beside the log rather than inside it has to be
+    # cleared explicitly, or state leaks between tests: ticked todos leaked XP
+    # once, and a note written by one test was appended to by the next.
     (config.DATA_DIR / "todos.jsonl").unlink(missing_ok=True)
+    for tree in ("notes", "media"):
+        shutil.rmtree(config.DATA_DIR / tree, ignore_errors=True)
     config.ensure_dirs()
     return _TMP
 
