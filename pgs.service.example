@@ -7,10 +7,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/path/to/Iteration01
-# --host tailscale binds this machine's tailnet address specifically, so the
-# app is reachable by signed-in devices and by nothing else. If tailscaled is
-# not up yet at boot, the unit fails and systemd retries.
-ExecStart=/path/to/Iteration01/.venv/bin/python /path/to/Iteration01/desktop.py --headless --host tailscale --port 8787
+# Loopback only. `tailscale serve` publishes it to the tailnet over HTTPS, so
+# nothing needs to bind a routable address and there is no window where the
+# port is open without TLS in front of it.
+ExecStart=/path/to/Iteration01/.venv/bin/python /path/to/Iteration01/desktop.py --headless --port 8787
 Restart=on-failure
 RestartSec=10
 # The daemon can take a moment after login; keep retrying rather than giving up.

@@ -54,6 +54,31 @@ safer than `0.0.0.0`: the app is reachable only by your own signed-in devices,
 which is what makes running it without a login defensible at all. If the daemon
 is down it tells you, rather than silently binding nothing.
 
+### Publish it over HTTPS with `tailscale serve`
+
+Better than binding the tailnet address directly: the app stays on loopback and
+tailscaled terminates TLS in front of it, with a real Let's Encrypt certificate
+on your MagicDNS name. No port number, no certificate warning, and — because it
+is a **secure context** — service workers become possible later.
+
+One-time, in the Tailscale admin console: enable **HTTPS Certificates** on the
+[DNS page](https://login.tailscale.com/admin/dns). Then:
+
+```bash
+sudo tailscale set --operator=$USER      # once, so serve needs no root
+tailscale serve --bg --https=443 http://127.0.0.1:8787
+```
+
+Your app is now at:
+
+```
+https://p.tail1a906a.ts.net
+```
+
+The serve config is stored by tailscaled and survives reboots, so this is also
+a one-time step. `tailscale serve status` shows it; `tailscale serve reset`
+removes it.
+
 ### Run it as a service, not by hand
 
 This is the step that actually makes the phone work. Started from a terminal,

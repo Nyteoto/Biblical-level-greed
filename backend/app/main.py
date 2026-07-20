@@ -405,9 +405,27 @@ def reload_domains() -> dict:
 # a page reload.
 if BUILD_DIR.exists():
 
-    @app.get("/{path:path}", include_in_schema=False)
+    # Serving with no cache headers at all lets a browser heuristically cache
+    # the app shell, which is exactly wrong for a single-page app: the shell
+    # names content-hashed bundles, so a stale shell asks for chunks that no
+    # longer exist and the client router fails on any route added since. That
+    # is what a phone reported as a 500 on a page the server was returning 200
+    # for. The two rules below are the standard pairing and remove the class.
+    IMMUTABLE = "public, max-age=31536000, immutable"  # content-hashed filenames
+    REVALIDATE = "no-cache"  # may be stored, must be revalidated before use
+
+    def _static(target: Path, path: str) -> FileResponse:
+        hashed = path.startswith("_app/immutable/")
+        return FileResponse(
+            target, headers={"cache-control": IMMUTABLE if hashed else REVALIDATE}
+        )
+
+    # HEAD as well as GET: caches and proxies use it to revalidate, and a
+    # static file server answering 405 to it is simply wrong. FastAPI does not
+    # imply HEAD from GET, so it has to be named.
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def spa(path: str):
         target = (BUILD_DIR / path).resolve()
         if path and target.is_file() and target.is_relative_to(BUILD_DIR.resolve()):
-            return FileResponse(target)
-        return FileResponse(BUILD_DIR / "index.html")
+            return _static(target, path)
+        return _static(BUILD_DIR / "index.html", "index.html")
