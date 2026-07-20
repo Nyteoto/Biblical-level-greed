@@ -93,6 +93,21 @@ def _prepare_linux_gui() -> None:
             os.environ["GDK_BACKEND"] = "x11"
     os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
 
+    # 3. WebKitGTK 2.42+ composites through a DMA-BUF renderer that allocates
+    #    GBM buffers. On NVIDIA under XWayland that allocation fails —
+    #    `Failed to create GBM buffer of size WxH: Invalid argument`, logged
+    #    once per frame attempt at exactly the window size — and WebKit then
+    #    has nowhere to draw, so the window appears but stays **solid black**.
+    #    The page is loaded and fully interactive underneath; only the paint is
+    #    missing, which is why the DOM probes in testing all passed while the
+    #    window showed nothing.
+    #
+    #    Falling back to the pre-DMA-BUF path costs nothing perceptible for a
+    #    static dashboard and fixes it outright. Set PGS_KEEP_DMABUF=1 to keep
+    #    the accelerated path if a future driver makes this unnecessary.
+    if not os.environ.get("PGS_KEEP_DMABUF"):
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=WINDOW_TITLE)
