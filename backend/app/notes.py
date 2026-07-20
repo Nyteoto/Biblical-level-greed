@@ -1,24 +1,7 @@
-"""One markdown document per node.
+"""One mutable markdown document per node.
 
-Deliberately NOT the journal. Those are two different things that were being
-conflated, and separating them is what lets a full editor exist without
-breaking anything:
-
-    journal   what happened today        append-only events in the log
-    note      what I have worked out     one mutable markdown file
-
-The journal is evidence: immutable, timestamped, deduplicated on `(ts, text)`,
-union-merged across machines. Making *that* editable would have cost the
-append-only property the sync design, the XP fold and the calibration all rely
-on.
-
-A note is knowledge, and knowledge gets revised. A plain markdown file is the
-right shape for it: hand-editable, greppable, diffable, mergeable by git like
-any other text, and readable without this app existing. Images embed as
-ordinary markdown pointing at `/media/...`.
-
-That last property is the reason this is markdown rather than a block editor's
-JSON. Storage decisions are permanent; which editor renders them is not.
+Not the journal, which stays append-only events in the log. A note is knowledge
+and gets revised; markdown keeps it hand-editable and git-mergeable.
 """
 from __future__ import annotations
 
@@ -41,12 +24,8 @@ def notes_dir() -> Path:
 
 
 def path_for(domain_id: str, node_id: str) -> Path:
-    """`data/notes/<domain>/<node>.md`, with both ids validated as slugs.
-
-    Both come off the URL, so they are checked against the same pattern the
-    writer enforces rather than trusted — otherwise `../` walks out of the
-    notes directory and writes wherever it likes.
-    """
+    """`data/notes/<domain>/<node>.md`. Ids come off the URL, so they are
+    validated rather than trusted — `../` would escape the directory."""
     for value, what in ((domain_id, "domain"), (node_id, "node")):
         if not SLUG_OK.match(value or ""):
             raise NoteError(f"invalid {what} id `{value}`")
@@ -83,11 +62,7 @@ def write(domain_id: str, node_id: str, text: str) -> Path:
 
 
 def append(domain_id: str, node_id: str, text: str) -> Path:
-    """Add to the end of a note, keeping a blank line between blocks.
-
-    Used by the photo import: a Shortcut has nowhere to show an editor, so it
-    appends and gets out of the way.
-    """
+    """Append, keeping a blank line between blocks. Used by the photo import."""
     existing = read(domain_id, node_id)
     joined = f"{existing.rstrip()}\n\n{text}\n" if existing.strip() else f"{text}\n"
     return write(domain_id, node_id, joined)

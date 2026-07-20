@@ -62,23 +62,12 @@ def append(
 
 
 def read_all() -> tuple[list[dict], list[str]]:
-    """Every event ever recorded, ordered by timestamp. Returns (events, warnings).
+    """Every event, ordered by timestamp. Returns (events, warnings).
 
-    Ordering matters once two machines write the same log. The fold resolves a
-    day's toggles by "last one wins", which on one machine meant file order —
-    but a `merge=union` interleaves two machines' lines arbitrarily, so file
-    order stops meaning anything. Sorting by `ts` restores a single answer that
-    both machines agree on.
-
-    The sort is **stable, with no content in the key**, which matters more than
-    it looks: `session, undo, session` within one second is a legitimate
-    double-toggle whose correct outcome is *checked*, and any key that reorders
-    or collapses those three lines gets it wrong. Ties keep file order.
-
-    Nothing is deduplicated here for the same reason. Duplicate lines are
-    already harmless to the fold — sessions, completions and phases are all
-    last-wins, and todos are keyed by id — with journal entries the one
-    exception, deduplicated in `state._fold` where their identity is known.
+    Sorted by `ts` so a union-merged log resolves the same on any machine, and
+    **stably with no content in the key**: `session, undo, session` inside one
+    second is a real double-toggle and must keep file order. No dedupe — the
+    fold is last-wins everywhere it matters.
     """
     events: list[dict] = []
     warnings: list[str] = []

@@ -1,29 +1,14 @@
 """Levels and experience.
 
-READ THIS FIRST — this file breaks the rule the rest of the app is built on.
-The README says there is no scoring and nothing adaptive, and XP is scoring. So
-the crossing is contained by one hard constraint, which every function here
-obeys:
+Breaks the app's no-scoring rule, contained by one constraint every function
+here obeys: **XP never changes what the board shows.** Nothing feeds
+`_pick_active`, `_status`, seasons or due-ness. A read-only fold over the log,
+stored nowhere — so retuning a constant re-scores everything at once, with no
+migration because there is no state.
 
-    **XP NEVER CHANGES WHAT THE BOARD SHOWS YOU.**
+    SESSION_XP x tier x streak x spread
 
-Nothing in here feeds `_pick_active`, `_status`, seasons, cadence or due-ness.
-It is a pure read-only fold over the event log, stored nowhere, derived fresh
-every request. Delete this module and the app still decides what to work on in
-exactly the same way. That keeps the recommendation engine deterministic and
-unscored — which was the actual value of the original rule — while still
-letting the bar go up.
-
-The other consequence of deriving rather than storing: retuning any constant
-below re-scores your whole history immediately and consistently. There is no
-migration, because there is no state.
-
-HOW ONE SESSION IS SCORED
-
-    SESSION_XP  x  tier multiplier  x  streak multiplier  x  spread multiplier
-
-Todos are flat: no tier, no streak, no spread. They are errands, not practice,
-and should not be a way to farm a streak bonus.
+Todos are flat: errands should not farm a practice bonus.
 """
 from __future__ import annotations
 

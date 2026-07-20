@@ -9,16 +9,11 @@ interface.
     python desktop.py --data-dir /mnt/shared/pgs
     python desktop.py --browser           # no window; just open the default browser
 
-WHY NOT TAURI: Tauri wraps a *Rust* binary. This backend is Python, so a Tauri
-build would need the Rust toolchain plus a PyInstaller sidecar to carry the
-Python half anyway — two build systems to maintain for the same window.
-pywebview drives WebKitGTK directly, so nothing is bundled. If a tray icon or
-an auto-updater is ever wanted, the frontend and API stay exactly as they are
-and only this file gets replaced.
+Not Tauri: that wraps a Rust binary, and this backend is Python — it would need
+the Rust toolchain plus a PyInstaller sidecar for the same window. pywebview
+drives WebKitGTK directly.
 
-Linux only. The cross-platform guards below are kept because they cost nothing
-and removing them would be a change with no upside, but nothing else here is
-tested anywhere but Linux.
+Linux only; the cross-platform guards below are untested elsewhere.
 """
 from __future__ import annotations
 
@@ -114,21 +109,9 @@ def serve(port: int, host: str = "127.0.0.1") -> tuple["uvicorn.Server", threadi
 
 
 def shutdown(server, thread, timeout: float = 5.0) -> None:
-    """Stop the server and *wait for it*, before the interpreter tears down.
-
-    Marking the thread `daemon` stops it holding the process open, but it does
-    not stop it running. uvicorn only notices `should_exit` when its event loop
-    next ticks (~100ms), so returning immediately after setting it raced
-    interpreter finalization against uvloop's C timer callback:
-
-        main thread   Py_Exit -> __run_exit_handlers -> _dl_fini
-        uvloop thread uv__run_timers -> PyGILState_Ensure -> SIGSEGV
-
-    PyGILState_Ensure cannot allocate a thread state once finalization has
-    begun, so the process segfaulted on every clean exit — after all work was
-    already flushed, which is why it cost nothing but noise and a 13MB core
-    dump each time. Joining the thread removes the race entirely.
-    """
+    """Stop the server and wait for it. `daemon` stops the thread holding the
+    process open but not running: exiting while uvloop is mid-callback
+    segfaults in PyGILState_Ensure during interpreter finalization."""
     server.should_exit = True
     thread.join(timeout=timeout)
     if thread.is_alive():
@@ -138,21 +121,15 @@ def shutdown(server, thread, timeout: float = 5.0) -> None:
 
 
 def _prepare_linux_gui() -> None:
-    """Two Linux-only papercuts, both fixed before the window is created.
-
-    1. WebKitGTK's compositing fails on a native Wayland surface here — the
-       window opens and then dies with `Error 71 (Protocol error) dispatching
-       to Wayland display`. Rendering through XWayland works, and XWayland is
-       present in every Wayland session that can run GTK apps at all. Only set
-       when the user has not chosen a backend themselves.
-    2. pywebview probes Qt before GTK and prints an import traceback when qtpy
-       is absent, which it always is here. Naming the backend skips the noise.
-    """
+    """Three Linux fixes, applied before the window is created:
+    Wayland -> XWayland (WebKitGTK dies on a native surface), naming the GTK
+    backend (pywebview probes Qt first and prints a traceback), and disabling
+    the DMA-BUF renderer (GBM allocation fails on NVIDIA, giving a black
+    window with a fully loaded page behind it)."""
     if not sys.platform.startswith("linux"):
         return
-    # A Wayland session exports GDK_BACKEND=wayland itself, so "leave it alone
-    # if it is already set" would preserve precisely the value that breaks.
-    # Override it, and leave one explicit way out.
+    # A Wayland session sets GDK_BACKEND=wayland itself, so "leave it if set"
+    # would preserve the value that breaks. PGS_KEEP_GDK_BACKEND opts out.
     if not os.environ.get("PGS_KEEP_GDK_BACKEND"):
         if os.environ.get("WAYLAND_DISPLAY") and os.environ.get(
             "GDK_BACKEND", "wayland"
@@ -160,18 +137,7 @@ def _prepare_linux_gui() -> None:
             os.environ["GDK_BACKEND"] = "x11"
     os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
 
-    # 3. WebKitGTK 2.42+ composites through a DMA-BUF renderer that allocates
-    #    GBM buffers. On NVIDIA under XWayland that allocation fails —
-    #    `Failed to create GBM buffer of size WxH: Invalid argument`, logged
-    #    once per frame attempt at exactly the window size — and WebKit then
-    #    has nowhere to draw, so the window appears but stays **solid black**.
-    #    The page is loaded and fully interactive underneath; only the paint is
-    #    missing, which is why the DOM probes in testing all passed while the
-    #    window showed nothing.
-    #
-    #    Falling back to the pre-DMA-BUF path costs nothing perceptible for a
-    #    static dashboard and fixes it outright. Set PGS_KEEP_DMABUF=1 to keep
-    #    the accelerated path if a future driver makes this unnecessary.
+    # PGS_KEEP_DMABUF=1 to keep the accelerated path.
     if not os.environ.get("PGS_KEEP_DMABUF"):
         os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 

@@ -1,23 +1,10 @@
-"""Images attached to nodes.
+"""Images attached to nodes. Files on disk, no database.
 
-The first thing this app stores that is not a line of text, which is why it is
-kept deliberately dumb: files on disk, named by content-independent ids, with
-no database and no metadata beyond what the filesystem already knows.
+Not tracked by git: a year of photos is a repo nobody wants to clone, so these
+have one copy unless something else backs them up.
 
-**Not tracked by git.** `data/media/` is gitignored, so the repo stops being a
-complete backup the moment a photo lands here. That was a deliberate call — the
-alternative was a repo that grows by hundreds of megabytes a year — but it
-means these files have exactly one copy unless something else backs them up.
-
-Images are re-encoded on the way in rather than stored as received:
-
-  * downscaled to fit MAX_EDGE, which keeps a phone photo readable on a Retina
-    iPad while turning 5 MB into a few hundred KB
-  * EXIF rotation applied and then dropped, because a sideways photo in the
-    journal is worse than a slightly larger file, and the rest of EXIF is
-    location and device data nobody asked to keep
-  * re-encoded as JPEG, so an HEIC from an iPhone becomes something every
-    browser can draw
+Re-encoded on the way in — downscaled to MAX_EDGE, EXIF rotation applied then
+stripped, JPEG so an iPhone HEIC renders anywhere.
 """
 from __future__ import annotations
 
