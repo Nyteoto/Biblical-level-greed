@@ -1,8 +1,8 @@
 """Two machines, one log.
 
-The dual-boot case: the same `data/` is written by a Linux install and a
-Windows install and reconciled by `git merge=union`, which concatenates both
-sides of a conflict and preserves neither order nor uniqueness.
+The app is single-machine now, but the same `data/` can still be written from
+more than one checkout and reconciled by `git merge=union`, which concatenates
+both sides of a conflict and preserves neither order nor uniqueness.
 
 So the fold has to survive lines arriving **out of order** and **more than
 once**. It already nearly did — sessions, completions and phases are all

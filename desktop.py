@@ -90,8 +90,7 @@ def tailscale_ip() -> str | None:
         if "not running" in (out.stderr or "").lower():
             raise SystemExit(
                 "Tailscale is installed but its daemon is not running.\n"
-                "  Linux:   sudo systemctl enable --now tailscaled && sudo tailscale up\n"
-                "  Windows: open the Tailscale tray app and sign in"
+                "  sudo systemctl enable --now tailscaled && sudo tailscale up"
             )
     return None
 
@@ -223,8 +222,7 @@ def main() -> int:
         if not found:
             print(
                 "Could not find a Tailscale address. Is it installed and signed in?\n"
-                "  Linux:   sudo systemctl enable --now tailscaled && sudo tailscale up\n"
-                "  Windows: install from tailscale.com/download and sign in via the tray",
+                "  sudo systemctl enable --now tailscaled && sudo tailscale up",
                 file=sys.stderr,
             )
             return 1

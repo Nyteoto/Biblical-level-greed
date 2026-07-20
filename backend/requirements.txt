@@ -1,8 +1,7 @@
 fastapi>=0.115
 uvicorn[standard]>=0.32
 watchdog>=5.0
-# Native desktop window. Uses the OS engine — WebKitGTK on Linux (needs the
-# system python3-gobject), Edge WebView2 on Windows (ships with the OS).
-# The app still runs without it: `desktop.py --browser`.
+# Native desktop window, rendered by the system WebKitGTK (needs the distro's
+# python3-gobject). The app still runs without it: `desktop.py --browser`.
 pywebview>=5.0
 pytest>=8.0
