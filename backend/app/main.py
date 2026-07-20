@@ -255,6 +255,23 @@ async def upload_media(
 
     url = f"/media/{relative}"
     attached = False
+
+    # Naming only a domain attaches to whatever that domain is working on
+    # today. This is what makes a usable Shortcut two actions instead of six:
+    # the phone does not have to fetch a list, show a picker, and unpack the
+    # choice — it just says "guitar" and the server knows what that means.
+    if domain and not node:
+        view = store.domain_view(domain)
+        if view is None:
+            raise HTTPException(404, f"unknown domain `{domain}`")
+        if not view["active_nodes"]:
+            raise HTTPException(
+                409,
+                f"`{domain}` has nothing active today — it is "
+                f"{view['season']['state']} season. Name a node explicitly.",
+            )
+        node = view["active_nodes"][0]["id"]
+
     if domain and node:
         _node_view(domain, node)
         alt = caption.strip() or "photo"

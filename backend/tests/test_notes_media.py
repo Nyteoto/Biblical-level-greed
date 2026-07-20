@@ -196,3 +196,38 @@ def test_an_unknown_api_path_404s_rather_than_serving_the_app_shell():
 
     with TestClient(app) as client:
         assert client.get("/api/definitely-not-a-thing").status_code == 404
+
+
+def test_naming_only_a_domain_attaches_to_what_it_is_working_on(write_domain, conn):
+    """The whole reason the Shortcut can be two actions instead of six: the
+    phone says "guitar" and the server resolves what that means today, rather
+    than fetching a list, showing a picker and unpacking the choice."""
+    from fastapi.testclient import TestClient
+
+    write_domain(
+        "g",
+        """
+id = "g"
+title = "G"
+priority = 1
+
+[[node]]
+id = "first"
+title = "First"
+tier = 1
+estimate = 5
+""",
+    )
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        r = client.post(
+            "/api/media?domain=g",
+            content=_png(),
+            headers={"content-type": "image/png"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["attached_to_note"] is True
+        assert "![photo](/media/" in notes.read("g", "first")
