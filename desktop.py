@@ -188,6 +188,13 @@ def main() -> int:
         action="store_true",
         help="skip the native window and open the default browser instead",
     )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="serve and nothing else: no window, no browser. This is the mode a "
+        "background service wants, so a phone can reach the app whenever the "
+        "machine is on rather than only while someone is looking at it.",
+    )
     parser.add_argument("--port", type=int, default=0, help="fixed port (default: any free one)")
     parser.add_argument(
         "--host",
@@ -247,6 +254,17 @@ def main() -> int:
         shutdown(server, thread)
         print(f"server did not come up on {port}", file=sys.stderr)
         return 1
+
+    if args.headless:
+        print(f"serving {url}  (host {args.host})", flush=True)
+        try:
+            while True:
+                time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            shutdown(server, thread)
+        return 0
 
     if args.browser:
         import webbrowser

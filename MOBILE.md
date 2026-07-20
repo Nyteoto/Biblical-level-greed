@@ -54,8 +54,33 @@ safer than `0.0.0.0`: the app is reachable only by your own signed-in devices,
 which is what makes running it without a login defensible at all. If the daemon
 is down it tells you, rather than silently binding nothing.
 
-Then on the phone, open the printed URL in **Safari** → Add to Home Screen.
-Works from anywhere, not just your WiFi.
+### Run it as a service, not by hand
+
+This is the step that actually makes the phone work. Started from a terminal,
+the server dies with the shell — so the phone gets "cannot connect" the moment
+you close it, which looks exactly like a networking fault and is not one.
+
+```bash
+cp pgs.service.example ~/.config/systemd/user/pgs.service
+# edit the paths inside it to point at this checkout
+systemctl --user daemon-reload
+systemctl --user enable --now pgs.service
+```
+
+`--headless` serves and does nothing else: no window, no browser. Check it with
+`systemctl --user status pgs` and `journalctl --user -u pgs -f`.
+
+It runs while you are logged in. To keep it up across logout and from boot:
+`sudo loginctl enable-linger $USER`.
+
+Then on the phone, open the URL in **Safari** → Add to Home Screen. Works from
+anywhere, not just your WiFi.
+
+With MagicDNS on you get a name instead of an address:
+
+```
+http://p.tail1a906a.ts.net:8787
+```
 
 ### Home only — LAN
 
