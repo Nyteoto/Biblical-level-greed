@@ -91,8 +91,22 @@ def test_every_node_states_its_gate(path: Path):
     assert not missing, f"{path.name}: no `gate` on {missing}"
 
 
-def test_the_header_comments_survive():
-    """A UI edit rewrites the whole file and comments do not survive, so a
-    rewrite of all six is how the design rationale gets silently deleted."""
-    bare = [p.name for p in FILES if not p.read_text().lstrip().count("#")]
-    assert not bare, f"header rationale missing from {bare}"
+def test_the_trees_carry_no_prose():
+    """The rationale lives in docs/, not inside the data.
+
+    These files used to open with a comment block explaining where the
+    curriculum came from — written by a model, for models, and duplicated from
+    docs/sources.md. It could not survive a write, because the UI regenerates
+    the file from parsed data and TOML comments are discarded at parse. That
+    made every season switch delete it.
+
+    The fix was to stop keeping it there. A `.toml` is data the user edits; the
+    argument for the shape belongs in docs/sources.md and docs/domain-shapes.md,
+    which is where it already was.
+    """
+    prose = [
+        p.name
+        for p in FILES
+        if any(line.lstrip().startswith("#") for line in p.read_text().splitlines())
+    ]
+    assert not prose, f"rationale crept back into {prose} — it belongs in docs/"

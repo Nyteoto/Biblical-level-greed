@@ -6,25 +6,6 @@ color    = "amber"
 shape    = "strands"
 strands  = ["technique", "theory", "ear", "repertoire"]
 
-# Sequenced against the Berklee guitar major (BPS/OGUIT sample curriculum).
-# Full sourcing in docs/sources.md.
-#
-# SHAPE: strands. The domain that forced the shape to exist. Berklee runs
-# Private Lessons (technique), Harmony (theory) and Ear Training (ear)
-# concurrently every semester, and its published prerequisite chain proves the
-# dependency runs sideways: Scales 101 and Chords 101 both require Harmony 1
-# first. Theory gates the instrument.
-#
-# TITLES ARE CONCEPTS, NOT COURSE CODES. Earlier versions of this file used
-# Berklee's internal names — Guitar Chords 101, Getting Your Guitar Sound —
-# which are unsearchable at best and actively misleading at worst: searching
-# `Guitar Chords 101` returns beginner open-chord blogs, when the node is
-# about drop 2 voicings. Node ids are unchanged, so no history is orphaned.
-#
-# The default free spine for this whole domain is justinguitar.com, and the
-# default paid spine is Leavitt's A Modern Method for Guitar — the actual
-# Berklee textbook. Where a node says neither, it means neither covers it.
-
 [season]
 state    = "low"
 

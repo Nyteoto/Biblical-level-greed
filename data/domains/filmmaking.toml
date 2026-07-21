@@ -5,35 +5,6 @@ cadence  = { every_n_days = 3 }
 color    = "slate"
 shape    = "cycles"
 
-# Sequenced on the AFI Conservatory model: first-year "cycle films" (up to
-# three narrative shorts, each a complete production), then a second-year
-# thesis. Craft courses at AFI and NYU Tisch (Sound Image, Frame and Sequence,
-# Fundamentals of Sight and Sound) do not stand alone — they feed the next
-# cycle film.
-#
-# SHAPE: cycles. The board shows the film you are currently making, plus the
-# craft that film is waiting on. Not a ladder, because the unit of progress is
-# a finished film; not strands, because the craft strands all converge on the
-# same project rather than advancing independently.
-#
-# EVERY EDGE INTO A CYCLE FILM IS SOFT (`prefers`). This is the sharpest
-# contrast in the whole system with electrical-engineering.toml, where every
-# edge is hard. AFI puts a camera in your hands in the first weeks and has you
-# direct three complete films before you are ready for any of them — that is
-# the method, not an accident. A locked `cycle-1` would teach the opposite.
-#
-# The cycle films are `project` nodes and therefore carry NO estimate.
-# `estimate = 20` on a film would be a number invented to fill a required
-# field: a shoot is four fourteen-hour days after three idle weeks, and you
-# cannot do 12% of a shoot day.
-#
-# THIS IS THE HARDEST DOMAIN HERE TO SELF-TEACH, and not because of the
-# material — the books and software are cheap or free, and the post-production
-# suite (DaVinci Resolve) is the industry standard at zero cost. It is hard
-# because it is the most social: actors, crew, locations, an audience. The
-# `entry` lines below say where to find people, not just what to read, because
-# finding people is the actual bottleneck.
-
 [season]
 state    = "low"
 

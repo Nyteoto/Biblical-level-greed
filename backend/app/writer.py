@@ -1,9 +1,12 @@
 """Serialises a Domain back to TOML.
 
-The files stay the source of truth and stay hand-editable — but a write from the
-UI rewrites the whole file, so comments in it do not survive. stdlib has a TOML
-reader and no writer; this is deliberately the smallest one that covers our
-schema rather than a general-purpose emitter.
+The files stay the source of truth and stay hand-editable. A write from the UI
+regenerates the whole file, so anything not in the schema — comments especially
+— does not survive it. That is why no rationale is kept in the trees: it lives
+in docs/, where editing a season cannot delete it.
+
+stdlib has a TOML reader and no writer; this is deliberately the smallest one
+that covers our schema rather than a general-purpose emitter.
 """
 from __future__ import annotations
 

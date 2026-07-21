@@ -6,27 +6,6 @@ color    = "violet"
 shape    = "strands"
 strands  = ["hands", "reading", "coordination", "styles"]
 
-# Sequenced against the Berklee drum set core: grip and stroke, the 40 PAS
-# rudiments, snare reading, then two-, three- and four-way coordination, then
-# the style vocabulary (R&B, pop-rock, funk, jazz, Brazilian, Afro-Cuban) and
-# the odd meters. Standard texts: Stone's "Stick Control", Reed's
-# "Progressive Steps to Syncopation".
-#
-# SHAPE: strands. The hands and the reading develop independently for a long
-# time and only merge at chart reading — a drummer with fast hands who cannot
-# read is a common and specific failure, and so is the reverse.
-#
-# This is the domain with the most `metric` fields, and the reason the feature
-# exists: every gate here is a tempo-and-cleanliness reading. Logging the bpm
-# you actually hit turns a check-off into a measurement. The app stores the
-# number you type and does nothing clever with it.
-#
-# This domain is the cheapest here to self-teach and always was: the canon is
-# two books that cost about $20 together, the rudiment reference is free and
-# official, and a practice pad substitutes for a kit through most of the hands
-# strand. The other five files were rewritten to match what this one already
-# did — name the book and the page, not just the skill.
-
 [season]
 state    = "low"
 

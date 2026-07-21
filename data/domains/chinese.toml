@@ -5,23 +5,6 @@ cadence  = "daily"
 color    = "rose"
 shape    = "ladder"
 
-# Sequenced against HSK 3.0. Full sourcing in docs/sources.md.
-#
-# NO NODE HERE REQUIRES SITTING AN EXAM. Every level is a `study` node gated on
-# unseen mock papers you mark yourself. The HSK levels are syllabi — the word
-# lists, grammar points and past papers are all published free — and the
-# syllabus is separable from the test centre. Only `certificate` is an `exam`,
-# it is the last node, and nothing depends on it. If you never sit one, this
-# domain still completes.
-#
-# Vocabulary counts are the CURRENT (Nov 2025 CTI syllabus, in force July 2026)
-# figures, which are much lower than the 2021 proposal that most sites still
-# quote. Character counts are omitted because the per-level recognition vs
-# handwriting split is not something I could verify.
-
-[season]
-state    = "low"
-
 [[node]]
 id       = "pinyin-tones"
 title    = "Pinyin and the four tones"

@@ -6,29 +6,6 @@ color    = "sky"
 shape    = "strands"
 strands  = ["foundations", "systems", "practice"]
 
-# Sequenced against the nine subjects of Teach Yourself CS (programming,
-# architecture, algorithms and data structures, math for CS, operating
-# systems, networking, databases, languages and compilers, distributed
-# systems), interleaved with the practitioner skills a CS curriculum leaves
-# out entirely: version control, testing, shipping, review, operations.
-# TYCS suggests 100-200 hours per subject, which is where the counts come from.
-#
-# SHAPE: strands. `foundations` and `systems` are the theory; `practice` is
-# the craft, and it runs from day one rather than waiting for the theory.
-#
-# MOST EDGES HERE ARE SOFT. This is the deliberate contrast with
-# electrical-engineering.toml, where every edge is hard. People ship working
-# software knowing none of the theory, every day. The tree encodes what stops
-# you being blocked by things you cannot name — a weaker claim than "you may
-# not proceed", and the file should say which one it means.
-#
-# TYCS names one book and one video course per subject, and those pairs are
-# reproduced in the `entry` of each theory node below. The `practice` strand is
-# not from TYCS and its resources are not either.
-
-[season]
-state    = "low"
-
 [[node]]
 id       = "programming-fundamentals"
 title    = "One language, properly"

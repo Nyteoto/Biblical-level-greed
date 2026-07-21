@@ -6,29 +6,6 @@ color    = "emerald"
 shape    = "strands"
 strands  = ["math", "physics", "circuits", "computing", "systems"]
 
-# Sequenced against MIT Course 6-5 (Electrical Engineering with Computing,
-# which replaced 6-1/6-2 from Fall 2024) plus the standard ABET BSEE spine.
-#
-# SHAPE: strands. Five tracks that a real degree runs in parallel across
-# semesters. The maths strand always leads the others — that is not a
-# stylistic choice, it is the prerequisite chain.
-#
-# EVERY EDGE IN THIS FILE IS HARD (`requires`, not `prefers`), and this is the
-# one domain where that is true. The prerequisites are physical: attempting
-# signals and systems without linear algebra does not produce slow progress,
-# it produces zero progress. Compare filmmaking.toml, where the same
-# relationship is inverted.
-#
-# Nodes are `study`, not `drill` — comprehension holds once held, so nothing
-# here decays, and there are no `decay_days`. That is also what makes this the
-# only domain here that may be parked outright: season `off` is legal exactly
-# because nothing rots.
-#
-# This is the best-served domain here for a self-learner: essentially the whole
-# degree is free and legal via MIT OpenCourseWare, and where OCW is thin the
-# gap is filled by other free full texts (dspguide.com, allaboutcircuits.com).
-# Money is needed only where atoms are: a board, a meter, a fab order.
-
 [season]
 state    = "high"
 strands  = ["math", "circuits"]
