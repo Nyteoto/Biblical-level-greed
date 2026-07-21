@@ -337,6 +337,10 @@
 		</p>
 	{/if}
 
+	<!-- Keyed on the tab so switching builds a fresh scroll container. Both tabs
+	     shared one before, so opening the journal inherited however far down the
+	     params form you happened to be. -->
+	{#key tab}
 	<div class="flex-1 overflow-y-auto p-4">
 		{#if tab === 'params'}
 			<div class="space-y-3.5">
@@ -757,6 +761,7 @@
 			</div>
 		{/if}
 	</div>
+	{/key}
 </aside>
 
 {#if editingNote}
