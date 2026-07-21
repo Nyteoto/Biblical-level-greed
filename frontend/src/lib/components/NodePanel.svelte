@@ -25,15 +25,27 @@
 		today: string;
 		onchange: () => Promise<void> | void;
 		onclose: () => void;
+		/** Open straight into the note. Set when a `?note=` link brought us here
+		 * rather than a click through the tree. */
+		openNote?: boolean;
 	}
 
-	let { domainId, node, nodes, strands = [], today, onchange, onclose }: Props = $props();
+	let {
+		domainId,
+		node,
+		nodes,
+		strands = [],
+		today,
+		onchange,
+		onclose,
+		openNote = false
+	}: Props = $props();
 
 	let tab = $state<'params' | 'journal'>('params');
 	// Notes open full screen rather than into this 340px rail: a document you
 	// revise needs room, and the journal below stays a narrow list on purpose
 	// because it is a log of short entries, not a document.
-	let editingNote = $state(false);
+	let editingNote = $state(openNote);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	// Renamed from `entry` when the node schema gained an `entry` field of its

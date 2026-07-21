@@ -55,9 +55,20 @@
 		}
 	}
 
+	// `?note=<id>` opens straight into that node's note. A link you can bookmark
+	// or send to yourself, rather than clicking down through the tree.
+	//
+	// Read once, not reactively: this must not re-run the effect below. And the
+	// param is deliberately left in the URL — stripping it here called
+	// `replaceState` before SvelteKit's router was initialised, which threw,
+	// aborted this effect, and left the page with no domains loaded at all.
+	const pendingNote: string | null = new URLSearchParams(page.url.search).get('note');
+	let openNote = $state(false);
+
 	$effect(() => {
 		domainId;
-		selected = null;
+		selected = pendingNote;
+		openNote = !!pendingNote;
 		linking = null;
 		addingTier = null;
 		editingDomain = false;
@@ -88,6 +99,9 @@
 		}
 		linking = null;
 		selected = selected === node.id ? null : node.id;
+		// Only the arriving `?note=` opens the note; picking a node by hand
+		// opens the panel, as it always did.
+		openNote = false;
 	}
 
 	/** Titled at creation: the id is slugged from it and then never changes,
@@ -432,6 +446,7 @@
 			nodes={view.nodes}
 			strands={view.strands}
 			today={todayKey}
+			{openNote}
 			onchange={load}
 			onclose={() => (selected = null)}
 		/>

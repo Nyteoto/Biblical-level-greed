@@ -24,6 +24,8 @@
 		"vite": "^8.0.16"
 	},
 	"dependencies": {
-		"marked": "^18.0.6"
+		"@milkdown/crepe": "^7.21.3",
+		"@milkdown/kit": "^7.21.3",
+		"@milkdown/theme-nord": "^7.21.3"
 	}
 }

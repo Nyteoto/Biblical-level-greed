@@ -229,6 +229,15 @@ export const completeTodo = (id: string) =>
 // Distinct from the journal, which stays an append-only log of events. A note
 // is knowledge and gets revised; a journal entry is evidence and does not.
 
+export const getNote = (domain: string, node: string) =>
+	call<{ text: string }>(`/domains/${domain}/nodes/${node}/note`);
+
+export const saveNote = (domain: string, node: string, text: string) =>
+	call<{ ok: boolean; text: string }>(`/domains/${domain}/nodes/${node}/note`, {
+		method: 'PUT',
+		body: JSON.stringify({ text })
+	});
+
 export interface MediaUpload {
 	ok: boolean;
 	url: string;
@@ -240,25 +249,19 @@ export interface MediaUpload {
  * of ours: the server sniffs the bytes, and `call` would force JSON on it. */
 export async function uploadMedia(
 	file: Blob,
-	domain: string,
-	node: string,
+	domain = '',
+	node = '',
 	caption = ''
 ): Promise<MediaUpload> {
-	const query = new URLSearchParams({ domain, node });
+	const query = new URLSearchParams();
+	// Omitted when the editor is open: it inserts the image itself, and having
+	// the server append it too would put the photo in the note twice.
+	if (domain && node) query.set('domain', domain), query.set('node', node);
 	if (caption) query.set('caption', caption);
 	const res = await fetch(`/api/media?${query}`, { method: 'POST', body: file });
 	if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
 	return res.json() as Promise<MediaUpload>;
 }
-
-export const getNote = (domain: string, node: string) =>
-	call<{ text: string }>(`/domains/${domain}/nodes/${node}/note`);
-
-export const saveNote = (domain: string, node: string, text: string) =>
-	call<{ ok: boolean; text: string }>(`/domains/${domain}/nodes/${node}/note`, {
-		method: 'PUT',
-		body: JSON.stringify({ text })
-	});
 
 export const addJournal = (domain: string, node: string, text: string) =>
 	call<{ node: TreeNode }>(`/domains/${domain}/nodes/${node}/journal`, {
