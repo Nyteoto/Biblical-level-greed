@@ -185,40 +185,6 @@ estimate = 5
         assert "![photo](/media/" in notes.read("h", "first")
 
 
-def test_an_unknown_domain_stores_nothing(write_domain, conn):
-    """A mistyped domain used to save the image and *then* 404, leaving a file
-    nothing referenced — indistinguishable from a real photo afterwards."""
-    from fastapi.testclient import TestClient
-
-    write_domain(
-        "k",
-        """
-id = "k"
-title = "K"
-priority = 1
-
-[[node]]
-id = "first"
-title = "First"
-tier = 1
-estimate = 5
-""",
-    )
-    from backend.app.main import app
-    from backend.app.store import store
-
-    with TestClient(app) as client:
-        store.reload_domains()
-        before = list(media.media_dir().rglob("*.jpg"))
-        r = client.post(
-            "/api/media?domain=nope-not-a-domain&node=first",
-            content=_png(),
-            headers={"content-type": "image/png"},
-        )
-        assert r.status_code == 404, r.text
-        assert list(media.media_dir().rglob("*.jpg")) == before, "orphan file written"
-
-
 def test_exif_orientation_is_applied_then_dropped(data_dir):
     """A sideways photo in the journal is worse than a slightly larger file,
     and the rest of EXIF is location and device data nobody asked to keep."""
@@ -252,8 +218,8 @@ def test_media_paths_cannot_escape_the_media_root(data_dir, escape):
 
 
 def test_a_photo_can_be_appended_to_a_note(data_dir):
-    """The Shortcut flow, end to end at the module level: an image lands on
-    disk and the note gains a markdown reference to it."""
+    """End to end at the module level: an image lands on disk and the note
+    gains a markdown reference to it."""
     rel = media.save(_png(), "2026-07-20")
     notes.append("guitar", "hands-and-tone", f"![whiteboard](/media/{rel})")
     text = notes.read("guitar", "hands-and-tone")
@@ -264,15 +230,14 @@ def test_a_photo_can_be_appended_to_a_note(data_dir):
 # -- the API surface --------------------------------------------------------
 
 
-def test_every_endpoint_the_shortcut_needs_is_registered():
-    """Added after a cleanup edit silently deleted the notes, media and active
-    routes at once: the tests all passed, because none of them asked the app
-    which routes it actually has."""
+def test_every_endpoint_notes_and_media_need_is_registered():
+    """Added after a cleanup edit silently deleted the notes and media routes at
+    once: the tests all passed, because none of them asked the app which routes
+    it actually has."""
     from backend.app.main import app
 
     paths = {r.path for r in app.routes}
     for required in (
-        "/api/active",
         "/api/media",
         "/media/{relative:path}",
         "/api/domains/{domain_id}/nodes/{node_id}/note",
@@ -283,8 +248,7 @@ def test_every_endpoint_the_shortcut_needs_is_registered():
 
 def test_an_unknown_api_path_404s_rather_than_serving_the_app_shell():
     """The SPA fallback must not swallow /api/. Returning 200 + HTML for a
-    mistyped endpoint makes a client — an iOS Shortcut, say — report success
-    while silently doing nothing."""
+    mistyped endpoint makes a client report success while doing nothing."""
     from fastapi.testclient import TestClient
 
     from backend.app.main import app
@@ -293,17 +257,16 @@ def test_an_unknown_api_path_404s_rather_than_serving_the_app_shell():
         assert client.get("/api/definitely-not-a-thing").status_code == 404
 
 
-def test_naming_only_a_domain_attaches_to_what_it_is_working_on(write_domain, conn):
-    """The whole reason the Shortcut can be two actions instead of six: the
-    phone says "guitar" and the server resolves what that means today, rather
-    than fetching a list, showing a picker and unpacking the choice."""
+def test_an_unknown_domain_stores_nothing(write_domain, conn):
+    """A mistyped domain used to save the image and *then* 404, leaving a file
+    nothing referenced — indistinguishable from a real photo afterwards."""
     from fastapi.testclient import TestClient
 
     write_domain(
-        "g",
+        "k",
         """
-id = "g"
-title = "G"
+id = "k"
+title = "K"
 priority = 1
 
 [[node]]
@@ -318,11 +281,11 @@ estimate = 5
 
     with TestClient(app) as client:
         store.reload_domains()
+        before = list(media.media_dir().rglob("*.jpg"))
         r = client.post(
-            "/api/media?domain=g",
+            "/api/media?domain=nope-not-a-domain&node=first",
             content=_png(),
             headers={"content-type": "image/png"},
         )
-        assert r.status_code == 200, r.text
-        assert r.json()["attached_to_note"] is True
-        assert "![photo](/media/" in notes.read("g", "first")
+        assert r.status_code == 404, r.text
+        assert list(media.media_dir().rglob("*.jpg")) == before, "orphan file written"

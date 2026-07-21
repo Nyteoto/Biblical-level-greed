@@ -229,45 +229,12 @@ async def upload_media(
     node: str | None = None,
     caption: str = "",
 ) -> dict:
-    """Accept an image and, if a node is named, append it to that node's note.
-
-    Deliberately tolerant about how the bytes arrive, because the caller is an
-    iOS Shortcut and `Get Contents of URL` can send a file either as multipart
-    or as the raw request body depending on how it was assembled.
-    """
-    content_type = request.headers.get("content-type", "")
-    if content_type.startswith("multipart/form-data"):
-        form = await request.form()
-        upload = next((v for v in form.values() if hasattr(v, "read")), None)
-        if upload is None:
-            raise HTTPException(400, "multipart body carried no file")
-        data = await upload.read()
-        caption = caption or str(form.get("caption", "") or "")
-        domain = domain or (str(form.get("domain")) if form.get("domain") else None)
-        node = node or (str(form.get("node")) if form.get("node") else None)
-    else:
-        data = await request.body()
+    """Accept an image and, if a node is named, append it to that node's note."""
+    data = await request.body()
 
     # Resolve where it is going before writing a byte. Saving first meant a
-    # mistyped domain stored the image and then 404'd, leaving a file nothing
+    # mistyped node stored the image and then 404'd, leaving a file nothing
     # references and no way to tell it apart from a real one later.
-    #
-    # Naming only a domain attaches to whatever that domain is working on
-    # today. This is what makes a usable Shortcut two actions instead of six:
-    # the phone does not have to fetch a list, show a picker, and unpack the
-    # choice — it just says "guitar" and the server knows what that means.
-    if domain and not node:
-        view = store.domain_view(domain)
-        if view is None:
-            raise HTTPException(404, f"unknown domain `{domain}`")
-        if not view["active_nodes"]:
-            raise HTTPException(
-                409,
-                f"`{domain}` has nothing active today — it is "
-                f"{view['season']['state']} season. Name a node explicitly.",
-            )
-        node = view["active_nodes"][0]["id"]
-
     if domain and node:
         _node_view(domain, node)
 
@@ -299,31 +266,6 @@ def get_media(relative: str):
     return FileResponse(
         target, headers={"cache-control": "public, max-age=31536000, immutable"}
     )
-
-
-@app.get("/api/active")
-def active_nodes() -> dict:
-    """Everything the board says is active right now, flattened.
-
-    Exists for the Shortcut: it has no good way to pick from 107 nodes, so it
-    reads this and offers the handful that are actually in season today.
-    """
-    out = []
-    for domain in store.domains:
-        view = store.domain_view(domain.id)
-        if not view:
-            continue
-        for node in view["active_nodes"]:
-            out.append(
-                {
-                    "domain": domain.id,
-                    "domain_title": domain.title,
-                    "node": node["id"],
-                    "title": node["title"],
-                    "label": f"{domain.title} — {node['title']}",
-                }
-            )
-    return {"active": out}
 
 
 @app.get("/api/domains")

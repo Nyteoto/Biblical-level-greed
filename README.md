@@ -21,7 +21,6 @@ Tests: `.venv/bin/python -m pytest backend/tests -q`
 Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm run dev`
 
 - [MOBILE.md](MOBILE.md) — iPad/iPhone over Tailscale
-- [SHORTCUTS.md](SHORTCUTS.md) — sending photos from iOS
 - [SYNC.md](SYNC.md) — backups, moving machines
 - [docs/sources.md](docs/sources.md) — where the six trees came from
 - [docs/domain-shapes.md](docs/domain-shapes.md) — the taxonomy argument

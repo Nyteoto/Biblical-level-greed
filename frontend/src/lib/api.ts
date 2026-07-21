@@ -229,6 +229,28 @@ export const completeTodo = (id: string) =>
 // Distinct from the journal, which stays an append-only log of events. A note
 // is knowledge and gets revised; a journal entry is evidence and does not.
 
+export interface MediaUpload {
+	ok: boolean;
+	url: string;
+	path: string;
+	attached_to_note: boolean;
+}
+
+/** Send one image and attach it to a node's note. Raw body and no content-type
+ * of ours: the server sniffs the bytes, and `call` would force JSON on it. */
+export async function uploadMedia(
+	file: Blob,
+	domain: string,
+	node: string,
+	caption = ''
+): Promise<MediaUpload> {
+	const query = new URLSearchParams({ domain, node });
+	if (caption) query.set('caption', caption);
+	const res = await fetch(`/api/media?${query}`, { method: 'POST', body: file });
+	if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+	return res.json() as Promise<MediaUpload>;
+}
+
 export const getNote = (domain: string, node: string) =>
 	call<{ text: string }>(`/domains/${domain}/nodes/${node}/note`);
 
@@ -237,18 +259,6 @@ export const saveNote = (domain: string, node: string, text: string) =>
 		method: 'PUT',
 		body: JSON.stringify({ text })
 	});
-
-export interface ActiveNode {
-	domain: string;
-	domain_title: string;
-	node: string;
-	title: string;
-	label: string;
-}
-
-/** What the board says is active right now, flattened. Exists so a Shortcut
- * can offer a handful of nodes instead of all 107. */
-export const getActive = () => call<{ active: ActiveNode[] }>('/active');
 
 export const addJournal = (domain: string, node: string, text: string) =>
 	call<{ node: TreeNode }>(`/domains/${domain}/nodes/${node}/journal`, {
