@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import edits, eventlog, media, notes, todos, watcher
+from . import edits, eventlog, media, notes, storage, todos, watcher
 from .config import ROOT
 from .media import MediaError
 from .models import DomainError
@@ -163,6 +163,14 @@ def health() -> dict:
         "domain_errors": store.errors,
         "version": store.version,
     }
+
+
+@app.get("/api/storage")
+def storage_report() -> dict:
+    """What the app is using on disk. Walks the tree on request rather than
+    tracking it: this is opened rarely and a stale number is worse than a slow
+    one."""
+    return storage.report()
 
 
 @app.get("/api/dashboard")

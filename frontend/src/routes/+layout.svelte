@@ -4,10 +4,12 @@
 
 	let { children } = $props();
 
+	// The Manual lives under Settings now. It is read closely once and skimmed
+	// rarely after that, which does not earn a permanent tab.
 	const tabs = [
 		{ href: '/', label: 'Today' },
 		{ href: '/tree', label: 'Tech Tree' },
-		{ href: '/manual', label: 'Manual' }
+		{ href: '/settings', label: 'Settings' }
 	];
 
 	const isActive = (href: string) =>

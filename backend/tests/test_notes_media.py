@@ -289,3 +289,46 @@ estimate = 5
         )
         assert r.status_code == 404, r.text
         assert list(media.media_dir().rglob("*.jpg")) == before, "orphan file written"
+
+
+# -- storage ----------------------------------------------------------------
+
+
+def test_storage_parts_sum_to_the_total(data_dir):
+    """The breakdown has to account for everything under data/, or the page is
+    quietly lying about where the space went."""
+    from backend.app import storage
+
+    notes.write("guitar", "hands-and-tone", "x" * 500)
+    media.save(_png(), "2026-07-20")
+
+    report = storage.report()
+    assert report["total_bytes"] == sum(p["bytes"] for p in report["parts"])
+    assert report["total_files"] == sum(p["files"] for p in report["parts"])
+
+
+def test_storage_counts_photos_separately(data_dir):
+    """Media is the one bucket git does not cover, so it is the number that
+    actually matters on this page."""
+    from backend.app import storage
+
+    media.save(_png(size=(400, 300)), "2026-07-20")
+    parts = {p["key"]: p for p in storage.report()["parts"]}
+    assert parts["media"]["files"] == 1
+    assert parts["media"]["bytes"] > 0
+
+
+def test_storage_survives_a_missing_data_dir(tmp_path, monkeypatch):
+    """Opening settings on a fresh install must not 500."""
+    from backend.app import config, storage
+
+    empty = tmp_path / "nothing"
+    monkeypatch.setattr(config, "DATA_DIR", empty)
+    monkeypatch.setattr(storage, "DATA_DIR", empty)
+    monkeypatch.setattr(storage, "LOG_DIR", empty / "log")
+    monkeypatch.setattr(storage, "DOMAINS_DIR", empty / "domains")
+    monkeypatch.setattr(storage, "INDEX_PATH", empty / "index.sqlite")
+
+    report = storage.report()
+    assert report["total_bytes"] == 0
+    assert all(p["bytes"] == 0 for p in report["parts"])

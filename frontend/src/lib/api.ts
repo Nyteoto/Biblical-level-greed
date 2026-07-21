@@ -196,6 +196,39 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getDashboard = () => call<Dashboard>('/dashboard');
 
+/** One slice of what the app is using on disk. */
+export interface StoragePart {
+	key: string;
+	label: string;
+	hint: string;
+	bytes: number;
+	files: number;
+	/** Derived data — deleting it costs nothing but a rebuild. */
+	recoverable: boolean;
+}
+
+export interface StorageReport {
+	path: string;
+	total_bytes: number;
+	total_files: number;
+	parts: StoragePart[];
+}
+
+export const getStorage = () => call<StorageReport>('/storage');
+
+/** Bytes as something a human reads at a glance. */
+export function bytes(n: number): string {
+	if (n < 1024) return `${n} B`;
+	const units = ['KB', 'MB', 'GB', 'TB'];
+	let value = n / 1024;
+	let unit = 0;
+	while (value >= 1024 && unit < units.length - 1) {
+		value /= 1024;
+		unit += 1;
+	}
+	return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
 export const getDomain = (id: string) => call<DomainView>(`/domains/${id}`);
 
 export const toggleSession = (domain: string, node: string, on?: boolean, value?: number) =>
