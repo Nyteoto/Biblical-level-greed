@@ -4,13 +4,18 @@
 
 	interface Props {
 		domainId: string;
-		nodeId: string;
-		nodeTitle: string;
+		/** Filename stem inside the domain's folder. */
+		slug: string;
+		title: string;
 		onclose: () => void;
 	}
 
-	let { domainId, nodeId, nodeTitle, onclose }: Props = $props();
+	let { domainId, slug, title, onclose }: Props = $props();
 
+	// One editor for everything written by hand. Notes and the journal used to be
+	// separate — knowledge you revise versus evidence you append — and merging
+	// them means this is the only writing surface in the app.
+	//
 	// WYSIWYG, via Milkdown's Crepe: the editor they ship, not primitives
 	// assembled here. It brings the toolbar, the slash menu, block handles,
 	// tables, code blocks and the whole image experience — picker, drag, paste,
@@ -48,7 +53,7 @@
 	$effect(() => {
 		let cancelled = false;
 		loading = true;
-		getNote(domainId, nodeId)
+		getNote(domainId, slug)
 			.then((r) => {
 				if (cancelled) return;
 				text = r.text;
@@ -64,7 +69,7 @@
 		busy = true;
 		error = null;
 		try {
-			const r = await saveNote(domainId, nodeId, text);
+			const r = await saveNote(domainId, slug, text);
 			saved = r.text;
 		} catch (e) {
 			error = (e as Error).message.replace(/^\d+ [^:]+: /, '');
@@ -115,9 +120,9 @@
 			← back
 		</button>
 		<div class="min-w-0 flex-1">
-			<div class="truncate text-[13px] text-stone-200">{nodeTitle}</div>
+			<div class="truncate text-[13px] text-stone-200">{title}</div>
 			<div class="font-mono text-[10px] text-stone-600">
-				notes · {domainId}/{nodeId}.md
+				{domainId}/{slug}.md
 			</div>
 		</div>
 

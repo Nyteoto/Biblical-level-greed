@@ -48,7 +48,6 @@ class NodeFacts:
     # actually take", which is not the same as "how many sessions exist" —
     # upkeep logged after completion must not inflate the measurement.
     completed_day: str = ""
-    journal: list[dict] = field(default_factory=list)
     phases_done: set[str] = field(default_factory=set)
     # Bought, and what it cost. Spending is permanent, so there is no undo to
     # fold — the first unlock is the only one.
@@ -73,7 +72,6 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
     # One reflection per node per day. Keyed like the session toggle, so the
     # last thing written that day is what stands — which lets you revise this
     # evening's entry without the log ever losing what you first wrote.
-    per_journal: dict[tuple[str, str], dict] = {}
     per_phase: dict[tuple[str, str], str] = {}  # (node, phase) -> phase|phase_undo
     facts: dict[str, NodeFacts] = {}
 
@@ -87,11 +85,9 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
                     {"day": row["day"], "value": value}
                 )
         elif kind == eventlog.JOURNAL:
-            per_journal[(row["node"], row["day"])] = {
-                "ts": row["ts"],
-                "day": row["day"],
-                "text": row["text"],
-            }
+            # Historical only. Journals merged into domain notes; the log keeps
+            # every entry ever written, nothing here surfaces them.
+            continue
         elif kind in (eventlog.PHASE, eventlog.PHASE_UNDO):
             per_phase[(row["node"], row["text"])] = kind
         elif kind == eventlog.UNLOCK:
@@ -111,14 +107,11 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
         node_facts = facts.setdefault(node_id, _blank())
         node_facts.completed = kind == eventlog.COMPLETE
         node_facts.completed_day = day if node_facts.completed else ""
-    for (node_id, _day), entry in per_journal.items():
-        facts.setdefault(node_id, _blank()).journal.append(entry)
     for (node_id, phase), kind in per_phase.items():
         if kind == eventlog.PHASE:
             facts.setdefault(node_id, _blank()).phases_done.add(phase)
 
     for node_facts in facts.values():
-        node_facts.journal.sort(key=lambda entry: entry["day"], reverse=True)
         # Duplicated log lines need no special handling any more: keyed by
         # (node, day), a repeated entry overwrites itself.
         node_facts.readings.sort(key=lambda entry: entry["day"])
@@ -426,7 +419,6 @@ def build_domain_view(
                     and status in STARTABLE
                     and progress_done >= progress_target
                 ),
-                "journal": node_facts.journal,
                 "last_session_day": (
                     max(node_facts.session_days) if node_facts.session_days else None
                 ),

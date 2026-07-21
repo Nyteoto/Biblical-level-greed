@@ -84,43 +84,6 @@ def test_duplicated_session_lines_are_harmless(write_domain, view):
     assert node["progress_done"] == 1
 
 
-def test_duplicated_journal_lines_do_not_double_up(write_domain, view):
-    """The one kind that accumulates instead of resolving, so the only one a
-    repeated line would visibly duplicate."""
-    write_domain("d", DOMAIN)
-    entry = _event("10:00:00", eventlog.JOURNAL, text="tried the new fingering")
-    _write_lines([entry, entry, entry])
-    assert len(view("d")["nodes"][0]["journal"]) == 1
-
-
-def test_a_second_entry_on_the_same_day_revises_the_first(write_domain, view):
-    """One entry per node per day. Writing again revises it — which is the
-    whole point of keying by day rather than accumulating: you can fix this
-    evening's reflection without the log ever losing what you first wrote."""
-    write_domain("d", DOMAIN)
-    _write_lines(
-        [
-            _event("10:00:00", eventlog.JOURNAL, text="first thought"),
-            _event("21:00:00", eventlog.JOURNAL, text="revised at bedtime"),
-        ]
-    )
-    journal = view("d")["nodes"][0]["journal"]
-    assert len(journal) == 1
-    assert journal[0]["text"] == "revised at bedtime"
-
-
-def test_entries_on_different_days_all_survive(write_domain, view):
-    write_domain("d", DOMAIN)
-    _write_lines(
-        [
-            _event("21:00:00", eventlog.JOURNAL, day=f"2026-07-{d}", text=f"day {d}")
-            for d in (18, 19, 20)
-        ]
-    )
-    journal = view("d")["nodes"][0]["journal"]
-    assert [e["text"] for e in journal] == ["day 20", "day 19", "day 18"]
-
-
 def test_backdated_events_sharing_a_timestamp_all_survive(write_domain, view):
     """Importing history writes many events in one second with different days.
     Nothing may treat those as the same event."""
@@ -179,3 +142,13 @@ def test_todos_added_in_the_same_second_keep_their_order(data_dir):
     ]
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     assert [t["text"] for t in todos.live()] == ["first", "second", "third"]
+
+
+def test_journal_events_survive_in_the_log_but_surface_nowhere(write_domain, view):
+    """Journals merged into domain notes. The events are history and the log is
+    append-only, so nothing is deleted — but the board stopped reading them, and
+    a node no longer carries a journal at all."""
+    write_domain("d", DOMAIN)
+    _write_lines([_event("10:00:00", eventlog.JOURNAL, text="tried the new fingering")])
+    node = view("d")["nodes"][0]
+    assert "journal" not in node

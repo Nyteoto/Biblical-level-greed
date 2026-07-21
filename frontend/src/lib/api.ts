@@ -24,12 +24,6 @@ export type NodeKind = 'drill' | 'study' | 'project' | 'exam' | 'social' | 'remi
 /** Decides how many nodes are active at once. */
 export type DomainShape = 'ladder' | 'strands' | 'cycles';
 
-export interface JournalEntry {
-	ts: string;
-	day: string;
-	text: string;
-}
-
 export interface Reading {
 	day: string;
 	value: number;
@@ -100,7 +94,6 @@ export interface TreeNode {
 	checked_today: boolean;
 	ready_to_complete: boolean;
 	last_session_day: string | null;
-	journal: JournalEntry[];
 }
 
 /** Acquiring, holding, or parked. The scheduling primitive. */
@@ -296,18 +289,75 @@ export const addTodo = (text: string) =>
 export const completeTodo = (id: string) =>
 	call<{ todos: Todo[] }>(`/todos/${id}`, { method: 'DELETE' });
 
-// -- notes: one mutable markdown document per node --------------------------
-// Distinct from the journal, which stays an append-only log of events. A note
-// is knowledge and gets revised; a journal entry is evidence and does not.
+// -- notes: titled markdown documents, one folder per domain ----------------
+// Node notes and the journal merged into this. What you write while working is
+// knowledge and record at once; being made to choose which was friction.
 
-export const getNote = (domain: string, node: string) =>
-	call<{ text: string }>(`/domains/${domain}/nodes/${node}/note`);
+export interface NoteSummary {
+	slug: string;
+	/** The document's own `# heading` when it has one, else its filename. */
+	title: string;
+	bytes: number;
+	updated: number;
+	preview: string;
+}
 
-export const saveNote = (domain: string, node: string, text: string) =>
-	call<{ ok: boolean; text: string }>(`/domains/${domain}/nodes/${node}/note`, {
+export const listNotes = (domain: string) =>
+	call<{ notes: NoteSummary[] }>(`/domains/${domain}/notes`);
+
+export const createNote = (domain: string, title: string) =>
+	call<{ slug: string; notes: NoteSummary[] }>(`/domains/${domain}/notes`, {
+		method: 'POST',
+		body: JSON.stringify({ title })
+	});
+
+export const getNote = (domain: string, slug: string) =>
+	call<{ slug: string; text: string }>(`/domains/${domain}/notes/${slug}`);
+
+export const saveNote = (domain: string, slug: string, text: string) =>
+	call<{ ok: boolean; text: string }>(`/domains/${domain}/notes/${slug}`, {
 		method: 'PUT',
 		body: JSON.stringify({ text })
 	});
+
+export const deleteNote = (domain: string, slug: string) =>
+	call<{ notes: NoteSummary[] }>(`/domains/${domain}/notes/${slug}`, { method: 'DELETE' });
+
+// -- tools: the instruments a domain is practised with ----------------------
+// Retirement is a date, never a delete: what a domain used to be practised on
+// is the interesting half of the shelf.
+
+export interface Tool {
+	id: string;
+	name: string;
+	/** Path under /media, from the upload endpoint. */
+	image: string;
+	price_kind: 'diy' | 'paid';
+	price: string;
+	acquired: string;
+	retired: string;
+	type: string;
+	model: string;
+}
+
+export type ToolFields = Omit<Tool, 'id'>;
+
+export const listTools = (domain: string) => call<{ tools: Tool[] }>(`/domains/${domain}/tools`);
+
+export const addTool = (domain: string, fields: Partial<ToolFields>) =>
+	call<{ tools: Tool[] }>(`/domains/${domain}/tools`, {
+		method: 'POST',
+		body: JSON.stringify(fields)
+	});
+
+export const patchTool = (domain: string, id: string, fields: Partial<ToolFields>) =>
+	call<{ tools: Tool[] }>(`/domains/${domain}/tools/${id}`, {
+		method: 'PATCH',
+		body: JSON.stringify(fields)
+	});
+
+export const deleteTool = (domain: string, id: string) =>
+	call<{ tools: Tool[] }>(`/domains/${domain}/tools/${id}`, { method: 'DELETE' });
 
 export interface MediaUpload {
 	ok: boolean;
@@ -338,12 +388,6 @@ export async function uploadMedia(
 export const unlockNode = (domain: string, node: string) =>
 	call<{ node: TreeNode; xp: Xp }>(`/domains/${domain}/nodes/${node}/unlock`, {
 		method: 'POST'
-	});
-
-export const addJournal = (domain: string, node: string, text: string) =>
-	call<{ node: TreeNode }>(`/domains/${domain}/nodes/${node}/journal`, {
-		method: 'POST',
-		body: JSON.stringify({ text })
 	});
 
 // -- structural edits: these rewrite the domain's .toml file -----------------

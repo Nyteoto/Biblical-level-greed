@@ -6,6 +6,8 @@
 	import DomainRail from '$lib/components/DomainRail.svelte';
 	import NodeForm from '$lib/components/NodeForm.svelte';
 	import NodePanel from '$lib/components/NodePanel.svelte';
+	import NotesFolder from '$lib/components/NotesFolder.svelte';
+	import ToolShelf from '$lib/components/ToolShelf.svelte';
 	import {
 		accent,
 		domainFace,
@@ -72,6 +74,8 @@
 	// aborted this effect, and left the page with no domains loaded at all.
 	const pendingNote: string | null = new URLSearchParams(page.url.search).get('note');
 	let openNote = $state(false);
+	// The domain's folder of written documents — notes and journal, merged.
+	let readingNotes = $state(false);
 
 	$effect(() => {
 		domainId;
@@ -278,6 +282,12 @@
 				>
 					{view?.title ?? '…'}
 				</h1>
+				<button
+					onclick={() => (readingNotes = true)}
+					class="text-[11px] tracking-[0.16em] text-stone-600 uppercase hover:text-amber-300"
+				>
+					journal
+				</button>
 				{#if !view?.foundation}
 					<!-- No edit affordance: the foundation is compiled in, and the
 					     server refuses to write it. -->
@@ -474,13 +484,6 @@
 										>
 									{/if}
 
-									{#if node.journal.length}
-										<span
-											class="absolute top-1 right-1 text-[8px] text-stone-600"
-											title="{node.journal.length} journal entries">✎</span
-										>
-									{/if}
-
 									<!-- Start an edge from this node. -->
 									<button
 										onclick={() => (linking = linking === node.id ? null : node.id)}
@@ -511,6 +514,16 @@
 			</div>
 		</div>
 	</section>
+
+	{#if view}
+		<!-- Docked over the empty bottom half of the canvas. Collapsed on arrival:
+		     landing on a tree is about the work, not the kit. -->
+		<ToolShelf {domainId} tone={a.text} />
+	{/if}
+
+	{#if readingNotes && view}
+		<NotesFolder {domainId} domainTitle={view.title} onclose={() => (readingNotes = false)} />
+	{/if}
 
 	{#if detail && view}
 		<NodePanel

@@ -9,11 +9,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import edits, eventlog, media, notes, storage, todos, watcher, xp
+from . import edits, eventlog, media, notes, storage, todos, tools, watcher, xp
 from .config import ROOT
 from .media import MediaError
 from .models import DomainError
 from .notes import NoteError
+from .tools import ToolError
 from .store import store
 from .timeutil import day_key
 
@@ -128,14 +129,6 @@ class NoteIn(BaseModel):
     text: str
 
 
-class JournalIn(BaseModel):
-    text: str
-
-
-class NoteIn(BaseModel):
-    text: str
-
-
 class EdgeIn(BaseModel):
     source: str  # the prerequisite
     target: str  # the node that now requires it
@@ -214,28 +207,119 @@ def complete_todo(item_id: str) -> dict:
     return {"todos": todos.live()}
 
 
-# -- notes: one mutable markdown document per node --------------------------
+# -- notes: titled markdown documents, one folder per domain ----------------
+# Node-level notes and the separate journal both collapsed into this. What you
+# write while working is knowledge and record at once, and being made to choose
+# was friction with nothing on the other side.
 
 
-@app.get("/api/domains/{domain_id}/nodes/{node_id}/note")
-def get_note(domain_id: str, node_id: str) -> dict:
-    _node_view(domain_id, node_id)  # 404s if either id is unknown
+class NoteIn(BaseModel):
+    text: str
+
+
+class NoteNew(BaseModel):
+    title: str
+
+
+@app.get("/api/domains/{domain_id}/notes")
+def list_notes(domain_id: str) -> dict:
+    _domain_view(domain_id)
     try:
-        return {"text": notes.read(domain_id, node_id)}
+        return {"notes": notes.listing(domain_id)}
     except NoteError as exc:
         raise HTTPException(400, str(exc)) from exc
 
 
-@app.put("/api/domains/{domain_id}/nodes/{node_id}/note")
-def put_note(domain_id: str, node_id: str, body: NoteIn) -> dict:
-    """Replaces the note. Unlike the journal, this is meant to be edited —
-    which is exactly why it is a file and not an event."""
-    _node_view(domain_id, node_id)
+@app.post("/api/domains/{domain_id}/notes", status_code=201)
+def create_note(domain_id: str, body: NoteNew) -> dict:
+    _domain_view(domain_id)
     try:
-        notes.write(domain_id, node_id, body.text)
+        slug = notes.create(domain_id, body.title)
     except NoteError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"ok": True, "text": notes.read(domain_id, node_id)}
+    return {"slug": slug, "notes": notes.listing(domain_id)}
+
+
+@app.get("/api/domains/{domain_id}/notes/{slug}")
+def get_note(domain_id: str, slug: str) -> dict:
+    _domain_view(domain_id)
+    try:
+        return {"slug": slug, "text": notes.read(domain_id, slug)}
+    except NoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.put("/api/domains/{domain_id}/notes/{slug}")
+def put_note(domain_id: str, slug: str, body: NoteIn) -> dict:
+    _domain_view(domain_id)
+    try:
+        notes.write(domain_id, slug, body.text)
+    except NoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "text": notes.read(domain_id, slug)}
+
+
+@app.delete("/api/domains/{domain_id}/notes/{slug}")
+def drop_note(domain_id: str, slug: str) -> dict:
+    _domain_view(domain_id)
+    try:
+        notes.delete(domain_id, slug)
+    except NoteError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"notes": notes.listing(domain_id)}
+
+
+# -- tools: the instruments a domain is practised with ----------------------
+
+
+class ToolIn(BaseModel):
+    name: str = ""
+    image: str = ""
+    price_kind: str = "paid"
+    price: str = ""
+    acquired: str = ""
+    retired: str = ""
+    type: str = ""
+    model: str = ""
+
+
+@app.get("/api/domains/{domain_id}/tools")
+def list_tools(domain_id: str) -> dict:
+    _domain_view(domain_id)
+    try:
+        return {"tools": tools.read(domain_id)}
+    except ToolError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/domains/{domain_id}/tools", status_code=201)
+def add_tool(domain_id: str, body: ToolIn) -> dict:
+    _domain_view(domain_id)
+    try:
+        tools.add(domain_id, body.model_dump())
+    except ToolError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"tools": tools.read(domain_id)}
+
+
+@app.patch("/api/domains/{domain_id}/tools/{tool_id}")
+def patch_tool(domain_id: str, tool_id: str, body: ToolIn) -> dict:
+    _domain_view(domain_id)
+    try:
+        tools.update(domain_id, tool_id, body.model_dump())
+    except ToolError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"tools": tools.read(domain_id)}
+
+
+@app.delete("/api/domains/{domain_id}/tools/{tool_id}")
+def drop_tool(domain_id: str, tool_id: str) -> dict:
+    _domain_view(domain_id)
+    try:
+        tools.remove(domain_id, tool_id)
+    except ToolError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"tools": tools.read(domain_id)}
 
 
 # -- media ------------------------------------------------------------------
@@ -394,34 +478,6 @@ def unlock_node(domain_id: str, node_id: str) -> dict:
         raise HTTPException(409, str(exc)) from exc
 
     return {"node": _node_view(domain_id, node_id), "xp": store.dashboard()["xp"]}
-
-
-@app.post("/api/domains/{domain_id}/nodes/{node_id}/journal")
-def add_journal(domain_id: str, node_id: str, body: JournalIn) -> dict:
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(400, "an entry needs some text")
-    try:
-        store.record(domain_id, node_id, eventlog.JOURNAL, text=text)
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"node": _node_view(domain_id, node_id)}
-
-
-# -- structural edits ------------------------------------------------------
-# These write the .toml file. Validation runs first, so a rejected edit leaves
-# the file on disk untouched.
-
-
-def _edit(domain_id: str, change) -> dict:
-    try:
-        store.mutate(domain_id, change)
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    view = store.domain_view(domain_id)
-    if view is None:
-        raise HTTPException(404, f"unknown domain `{domain_id}`")
-    return view
 
 
 @app.post("/api/domains", status_code=201)

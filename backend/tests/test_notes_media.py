@@ -240,8 +240,9 @@ def test_every_endpoint_notes_and_media_need_is_registered():
     for required in (
         "/api/media",
         "/media/{relative:path}",
-        "/api/domains/{domain_id}/nodes/{node_id}/note",
-        "/api/domains/{domain_id}/nodes/{node_id}/journal",
+        "/api/domains/{domain_id}/notes",
+        "/api/domains/{domain_id}/notes/{slug}",
+        "/api/domains/{domain_id}/tools",
     ):
         assert required in paths, f"{required} is not registered"
 
@@ -428,3 +429,122 @@ def test_unlocking_before_the_prerequisite_is_refused(write_domain, conn):
         r = client.post("/api/domains/u/nodes/second/unlock")
         assert r.status_code == 409
         assert "first" in r.json()["detail"]
+
+
+# -- domain notes -----------------------------------------------------------
+
+
+def test_a_domain_folder_starts_empty(data_dir):
+    assert notes.listing("guitar") == []
+
+
+def test_creating_a_note_titles_the_file_and_the_document(data_dir):
+    slug = notes.create("guitar", "Tone chasing, week 3")
+    assert slug == "tone-chasing-week-3"
+    assert notes.read("guitar", slug).startswith("# Tone chasing, week 3")
+
+
+def test_two_notes_with_the_same_title_do_not_collide(data_dir):
+    first = notes.create("guitar", "Practice log")
+    second = notes.create("guitar", "Practice log")
+    assert first != second
+    assert len(notes.listing("guitar")) == 2
+
+
+def test_the_listing_reads_the_title_from_the_document(data_dir):
+    """A note that names itself should not also be named by its filename."""
+    notes.write("guitar", "whatever", "# The real title\n\nbody text here\n")
+    entry = notes.listing("guitar")[0]
+    assert entry["title"] == "The real title"
+    assert entry["preview"] == "body text here"
+
+
+def test_old_per_node_notes_are_readable_as_domain_notes(data_dir):
+    """The migration is that there isn't one: `chinese/pinyin-tones.md` was a
+    node note yesterday and reads as a titled document today."""
+    notes.write("chinese", "pinyin-tones", "third tone sandhi is the whole thing")
+    entry = notes.listing("chinese")[0]
+    assert entry["slug"] == "pinyin-tones"
+    assert entry["title"] == "Pinyin tones"
+
+
+def test_newest_note_leads_the_list(data_dir):
+    import os
+    import time
+
+    notes.write("guitar", "older", "x")
+    time.sleep(0.01)
+    notes.write("guitar", "newer", "y")
+    os.utime(notes.path_for("guitar", "newer"), (time.time(), time.time()))
+    assert [n["slug"] for n in notes.listing("guitar")][0] == "newer"
+
+
+@pytest.mark.parametrize("bad", ["../etc", "a/b", ""])
+def test_note_ids_that_would_escape_the_folder_are_refused(data_dir, bad):
+    with pytest.raises(NoteError):
+        notes.write("guitar", bad, "x")
+
+
+# -- tools ------------------------------------------------------------------
+
+
+def test_a_tool_shelf_starts_empty(data_dir):
+    from backend.app import tools
+
+    assert tools.read("guitar") == []
+
+
+def test_a_tool_needs_a_name(data_dir):
+    from backend.app import tools
+    from backend.app.tools import ToolError
+
+    with pytest.raises(ToolError):
+        tools.add("guitar", {"model": "Stratocaster"})
+
+
+def test_a_tool_round_trips_every_field(data_dir):
+    from backend.app import tools
+
+    made = tools.add(
+        "guitar",
+        {
+            "name": "The Strat",
+            "image": "2026-07/abc.jpg",
+            "price_kind": "paid",
+            "price": "700",
+            "acquired": "2019-04-02",
+            "type": "electric guitar",
+            "model": "Fender Player Stratocaster",
+        },
+    )
+    stored = tools.read("guitar")[0]
+    assert stored["id"] == made["id"]
+    assert stored["model"] == "Fender Player Stratocaster"
+    assert stored["retired"] == ""
+
+
+def test_retiring_is_a_date_not_a_delete(data_dir):
+    """What a domain used to be practised on is the interesting part of the
+    list, so retirement must never remove the profile."""
+    from backend.app import tools
+
+    made = tools.add("guitar", {"name": "First amp"})
+    tools.update("guitar", made["id"], {"retired": "2024-01-09"})
+    shelf = tools.read("guitar")
+    assert len(shelf) == 1
+    assert shelf[0]["retired"] == "2024-01-09"
+
+
+def test_an_unknown_price_kind_falls_back_to_paid(data_dir):
+    from backend.app import tools
+
+    made = tools.add("guitar", {"name": "Pad", "price_kind": "nonsense"})
+    assert made["price_kind"] == "paid"
+
+
+def test_tools_survive_a_reread(data_dir):
+    from backend.app import tools
+
+    tools.add("guitar", {"name": "Capo", "price_kind": "diy"})
+    tools.add("guitar", {"name": "Tuner"})
+    assert [t["name"] for t in tools.read("guitar")] == ["Capo", "Tuner"]
