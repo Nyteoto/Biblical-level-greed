@@ -5,9 +5,16 @@
 		domainId: string;
 		/** Domain accent, so the shelf reads as belonging to this tree. */
 		tone?: string;
+		accent?: string;
+		glow?: string;
 	}
 
-	let { domainId, tone = 'text-amber-300' }: Props = $props();
+	let {
+		domainId,
+		tone = 'text-amber-300',
+		accent = 'border-amber-400/70',
+		glow = ''
+	}: Props = $props();
 
 	// Collapsed by default, and deliberately not opened by navigation: arriving
 	// at a tree is about the work, not the kit. You open this when you are
@@ -110,13 +117,19 @@
 <div class="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-start">
 	<button
 		onclick={() => (open = !open)}
-		class="pointer-events-auto ml-3 flex items-center gap-2 rounded-t-sm border border-b-0 border-stone-800 bg-[#171310] px-3 py-1 text-[10px] tracking-[0.16em] text-stone-500 uppercase transition hover:text-stone-300"
+		class="pointer-events-auto ml-3 flex items-center gap-2.5 rounded-t-md border border-b-0 {accent} bg-[#171310] px-4 py-2 text-[11px] tracking-[0.18em] uppercase transition hover:bg-white/5 {tone} {open ? '' : glow}"
 	>
+		<!-- The icon carries the domain's colour: the shelf is per-domain, and the
+		     tab is the only part of it visible most of the time. -->
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-4 w-4">
+			<path d="M14.7 6.3a4 4 0 0 0 5 5L15 16l-3-3 2.7-6.7Z" stroke-linejoin="round" />
+			<path d="M12 13 5 20a1.8 1.8 0 0 1-2.5-2.5L9.5 10" stroke-linecap="round" />
+		</svg>
 		<span>tools</span>
 		{#if tools.length}
-			<span class="font-mono text-[10px] {tone}">{live.length}</span>
+			<span class="rounded-full bg-white/10 px-1.5 font-mono text-[10px]">{live.length}</span>
 		{/if}
-		<span class="text-stone-700">{open ? '▾' : '▴'}</span>
+		<span class="opacity-60">{open ? '▾' : '▴'}</span>
 	</button>
 
 	{#if open}

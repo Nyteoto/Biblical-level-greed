@@ -548,3 +548,51 @@ def test_tools_survive_a_reread(data_dir):
     tools.add("guitar", {"name": "Capo", "price_kind": "diy"})
     tools.add("guitar", {"name": "Tuner"})
     assert [t["name"] for t in tools.read("guitar")] == ["Capo", "Tuner"]
+
+
+def test_patching_one_field_leaves_the_rest_alone(write_domain, conn):
+    """A PATCH is partial. Pydantic defaults made it a full overwrite: sending
+    only a photo arrived as an empty name, which failed validation, so the photo
+    never saved and every other field was cleared on any edit that did land."""
+    from fastapi.testclient import TestClient
+
+    from backend.app import tools
+    from backend.app.main import app
+    from backend.app.store import store
+
+    _priced_domain(write_domain)
+    with TestClient(app) as client:
+        store.reload_domains()
+        made = tools.add(
+            "u",
+            {"name": "The Strat", "type": "electric", "model": "Player Strat"},
+        )
+        r = client.patch(
+            f"/api/domains/u/tools/{made['id']}",
+            json={"image": "/media/2026-07/photo.jpg"},
+        )
+        assert r.status_code == 200, r.text
+        after = r.json()["tools"][0]
+        assert after["image"] == "/media/2026-07/photo.jpg"
+        assert after["name"] == "The Strat"
+        assert after["type"] == "electric"
+        assert after["model"] == "Player Strat"
+
+
+def test_clearing_a_field_on_purpose_still_works(write_domain, conn):
+    """`exclude_unset` must not make empty strings unsendable — coming back into
+    service is exactly a patch that sets `retired` to ""."""
+    from fastapi.testclient import TestClient
+
+    from backend.app import tools
+    from backend.app.main import app
+    from backend.app.store import store
+
+    _priced_domain(write_domain)
+    with TestClient(app) as client:
+        store.reload_domains()
+        made = tools.add("u", {"name": "Old amp", "retired": "2024-01-09"})
+        r = client.patch(f"/api/domains/u/tools/{made['id']}", json={"retired": ""})
+        assert r.status_code == 200, r.text
+        assert r.json()["tools"][0]["retired"] == ""
+        assert r.json()["tools"][0]["name"] == "Old amp"

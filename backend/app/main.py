@@ -304,9 +304,15 @@ def add_tool(domain_id: str, body: ToolIn) -> dict:
 
 @app.patch("/api/domains/{domain_id}/tools/{tool_id}")
 def patch_tool(domain_id: str, tool_id: str, body: ToolIn) -> dict:
+    """Partial by design: only the fields actually present in the request move.
+
+    `model_dump()` would return every field including its default, so a PATCH
+    carrying just a photo would arrive as an empty name and wipe the profile —
+    which is exactly what it did.
+    """
     _domain_view(domain_id)
     try:
-        tools.update(domain_id, tool_id, body.model_dump())
+        tools.update(domain_id, tool_id, body.model_dump(exclude_unset=True))
     except ToolError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"tools": tools.read(domain_id)}

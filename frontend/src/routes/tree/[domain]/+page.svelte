@@ -282,12 +282,6 @@
 				>
 					{view?.title ?? '…'}
 				</h1>
-				<button
-					onclick={() => (readingNotes = true)}
-					class="text-[11px] tracking-[0.16em] text-stone-600 uppercase hover:text-amber-300"
-				>
-					journal
-				</button>
 				{#if !view?.foundation}
 					<!-- No edit affordance: the foundation is compiled in, and the
 					     server refuses to write it. -->
@@ -516,9 +510,24 @@
 	</section>
 
 	{#if view}
+		<!-- Top-right of the canvas, clear of the tree itself. A domain's writing
+		     is a destination, not a footnote in the header. -->
+		<button
+			onclick={() => (readingNotes = true)}
+			title="{view.title} journal"
+			class="absolute top-3 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border {a.border} bg-[#171310] {a.text} shadow-lg transition hover:scale-105 hover:bg-white/5 {a.glow}"
+			aria-label="Open journal"
+		>
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5">
+				<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H18a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5v-14Z" />
+				<path d="M8 3v17" stroke-linecap="round" />
+				<path d="M11.5 8.5h4M11.5 12h4" stroke-linecap="round" />
+			</svg>
+		</button>
+
 		<!-- Docked over the empty bottom half of the canvas. Collapsed on arrival:
 		     landing on a tree is about the work, not the kit. -->
-		<ToolShelf {domainId} tone={a.text} />
+		<ToolShelf {domainId} tone={a.text} accent={a.border} glow={a.glow} />
 	{/if}
 
 	{#if readingNotes && view}
