@@ -24,6 +24,7 @@ Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm r
 - [SYNC.md](SYNC.md) — backups, moving machines
 - [docs/sources.md](docs/sources.md) — where the six trees came from
 - [docs/domain-shapes.md](docs/domain-shapes.md) — the taxonomy argument
+- [docs/authoring-trees.md](docs/authoring-trees.md) — how a new tree gets generated
 
 ## What decides the board
 
