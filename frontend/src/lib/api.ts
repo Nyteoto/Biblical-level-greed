@@ -330,6 +330,8 @@ export const deleteNote = (domain: string, slug: string) =>
 export interface Tool {
 	id: string;
 	name: string;
+	/** What it is, in your own words. Sits beside the photo. */
+	description: string;
 	/** Path under /media, from the upload endpoint. */
 	image: string;
 	price_kind: 'diy' | 'paid';

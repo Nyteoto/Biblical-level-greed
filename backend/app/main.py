@@ -274,6 +274,7 @@ def drop_note(domain_id: str, slug: str) -> dict:
 
 class ToolIn(BaseModel):
     name: str = ""
+    description: str = ""
     image: str = ""
     price_kind: str = "paid"
     price: str = ""

@@ -27,8 +27,19 @@ MAX_TOOLS = 200  # a shelf, not an inventory system
 
 # Everything a profile carries. Free text throughout — `type` and `model` are
 # whatever the domain calls them, and pretending otherwise would mean inventing
-# a taxonomy per domain.
-FIELDS = ("name", "image", "price_kind", "price", "acquired", "retired", "type", "model")
+# a taxonomy per domain. `price` is free text for the same reason, and applies
+# to a DIY build as much as a purchase: making a thing still costs.
+FIELDS = (
+    "name",
+    "description",
+    "image",
+    "price_kind",
+    "price",
+    "acquired",
+    "retired",
+    "type",
+    "model",
+)
 PRICE_KINDS = ("diy", "paid")
 
 

@@ -596,3 +596,22 @@ def test_clearing_a_field_on_purpose_still_works(write_domain, conn):
         assert r.status_code == 200, r.text
         assert r.json()["tools"][0]["retired"] == ""
         assert r.json()["tools"][0]["name"] == "Old amp"
+
+
+def test_a_tool_carries_a_description(data_dir):
+    from backend.app import tools
+
+    made = tools.add(
+        "guitar",
+        {"name": "Red-Guy", "description": "Auto-ranging, has NCV. Leads are stiff."},
+    )
+    assert tools.read("guitar")[0]["description"] == made["description"]
+
+
+def test_a_diy_tool_can_still_record_what_it_cost(data_dir):
+    """Making a thing costs money too — the price is not a purchase field."""
+    from backend.app import tools
+
+    made = tools.add("guitar", {"name": "Cable", "price_kind": "diy", "price": "~$12 in parts"})
+    assert made["price_kind"] == "diy"
+    assert made["price"] == "~$12 in parts"

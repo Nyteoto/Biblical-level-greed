@@ -134,20 +134,20 @@
 
 	{#if open}
 		<div
-			class="pointer-events-auto w-full border-t border-stone-800 bg-[#171310]/95 px-3 py-3 backdrop-blur-sm"
+			class="pointer-events-auto w-full border-t border-stone-800 bg-[#171310]/95 px-4 py-4 backdrop-blur-sm"
 		>
 			{#if error}
 				<p class="mb-2 text-[11px] text-rose-300">{error}</p>
 			{/if}
 
-			<div class="flex items-stretch gap-2.5 overflow-x-auto pb-1">
+			<div class="flex items-stretch gap-3 overflow-x-auto pb-1">
 				{#each [...live, ...retired] as tool (tool.id)}
 					<button
 						onclick={() => (editing = tool)}
-						class="group w-[104px] shrink-0 text-left {tool.retired ? 'opacity-45' : ''}"
+						class="group w-[164px] shrink-0 text-left {tool.retired ? 'opacity-45' : ''}"
 					>
 						<div
-							class="flex h-[76px] w-full items-center justify-center overflow-hidden rounded-sm border border-stone-800 bg-black/40 transition group-hover:border-stone-700"
+							class="flex h-[124px] w-full items-center justify-center overflow-hidden rounded-sm border border-stone-800 bg-black/40 transition group-hover:border-stone-700"
 						>
 							{#if tool.image}
 								<img src={tool.image} alt={tool.name} class="h-full w-full object-cover" />
@@ -158,9 +158,12 @@
 							{/if}
 						</div>
 						<!-- Serif and italic: a tool is a named object, not a label in the UI. -->
-						<div class="mt-1 truncate font-serif text-[12px] text-stone-300 italic">
+						<div class="mt-1.5 truncate font-serif text-[14px] text-stone-200 italic">
 							{tool.name}
 						</div>
+						{#if tool.type}
+							<div class="truncate font-mono text-[9px] text-stone-600">{tool.type}</div>
+						{/if}
 						{#if tool.retired}
 							<div class="font-mono text-[9px] text-stone-700">retired</div>
 						{/if}
@@ -170,7 +173,7 @@
 				<button
 					onclick={make}
 					disabled={busy}
-					class="flex h-[76px] w-[104px] shrink-0 items-center justify-center rounded-sm border border-dashed border-stone-800 text-[11px] tracking-[0.16em] text-stone-700 uppercase transition hover:border-amber-500/50 hover:text-amber-400/80 disabled:opacity-40"
+					class="flex h-[124px] w-[164px] shrink-0 items-center justify-center rounded-sm border border-dashed border-stone-800 text-[11px] tracking-[0.16em] text-stone-700 uppercase transition hover:border-amber-500/50 hover:text-amber-400/80 disabled:opacity-40"
 				>
 					+ tool
 				</button>
@@ -190,15 +193,15 @@
 		></button>
 
 		<div
-			class="relative w-full max-w-md rounded-sm border border-stone-800 bg-[#171310] shadow-2xl"
+			class="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border border-stone-800 bg-[#171310] shadow-2xl"
 		>
-			<div class="flex items-start gap-3 border-b border-stone-800 p-4">
+			<div class="flex items-start gap-4 border-b border-stone-800 p-5">
 				<button
 					onclick={() => {
 						uploadFor = tool.id;
 						picker?.click();
 					}}
-					class="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-sm border border-stone-800 bg-black/40 transition hover:border-stone-600"
+					class="h-[164px] w-[164px] shrink-0 overflow-hidden rounded-sm border border-stone-800 bg-black/40 transition hover:border-stone-600"
 					title="Take a photo of it"
 				>
 					{#if tool.image}
@@ -208,20 +211,29 @@
 					{/if}
 				</button>
 
-				<div class="min-w-0 flex-1">
+				<div class="flex min-w-0 flex-1 flex-col self-stretch">
 					<input
 						value={tool.name}
 						onchange={(e) => save(tool, { name: e.currentTarget.value })}
-						class="w-full bg-transparent font-serif text-[18px] text-stone-100 italic focus:outline-none"
+						placeholder="name it"
+						class="w-full bg-transparent font-serif text-[24px] leading-tight text-stone-100 italic placeholder:text-stone-700 focus:outline-none"
 					/>
 					<p class="mt-0.5 font-mono text-[10px] text-stone-600">
 						{tool.retired ? `retired ${tool.retired}` : 'in service'}
 					</p>
+					<!-- Beside the photo on purpose: what the thing is, in your words,
+					     read together with the picture of it. -->
+					<textarea
+						value={tool.description}
+						onchange={(e) => save(tool, { description: e.currentTarget.value })}
+						placeholder="What it is, what it is good and bad at, what you learned using it…"
+						class="mt-2 min-h-[92px] w-full flex-1 resize-y rounded-sm border border-stone-800 bg-black/30 px-2 py-1.5 text-[12px] leading-relaxed text-stone-300 placeholder:text-stone-700 focus:border-amber-500/60 focus:outline-none"
+					></textarea>
 				</div>
 			</div>
 
-			<div class="space-y-3 p-4">
-				<div>
+			<div class="grid gap-3 p-5 sm:grid-cols-2">
+				<div class="sm:col-span-2">
 					<span class="text-[10px] tracking-[0.16em] text-stone-500 uppercase">Price</span>
 					<div class="mt-1 flex items-center gap-2">
 						<div class="flex overflow-hidden rounded-sm border border-stone-800">
@@ -237,14 +249,14 @@
 								</button>
 							{/each}
 						</div>
-						{#if tool.price_kind === 'paid'}
-							<input
-								value={tool.price}
-								onchange={(e) => save(tool, { price: e.currentTarget.value })}
-								placeholder="what it cost"
-								class="min-w-0 flex-1 rounded-sm border border-stone-800 bg-black/40 px-2 py-1 text-[12px] text-stone-200 focus:border-amber-500/60 focus:outline-none"
-							/>
-						{/if}
+						<!-- Shown for both: building a thing still costs, and that is
+						     worth writing down. -->
+						<input
+							value={tool.price}
+							onchange={(e) => save(tool, { price: e.currentTarget.value })}
+							placeholder={tool.price_kind === 'diy' ? 'what the parts cost' : 'what it cost'}
+							class="min-w-0 flex-1 rounded-sm border border-stone-800 bg-black/40 px-2 py-1 text-[12px] text-stone-200 focus:border-amber-500/60 focus:outline-none"
+						/>
 					</div>
 				</div>
 
@@ -270,7 +282,7 @@
 					/>
 				</label>
 
-				<div class="flex items-center gap-2 border-t border-stone-800 pt-3">
+				<div class="flex items-center gap-2 border-t border-stone-800 pt-3 sm:col-span-2">
 					{#if tool.retired}
 						<!-- Un-retiring is ordinary: things come back into service. -->
 						<button
