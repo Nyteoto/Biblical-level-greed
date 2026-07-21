@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import edits, eventlog, media, notes, storage, todos, watcher
+from . import edits, eventlog, media, notes, storage, todos, watcher, xp
 from .config import ROOT
 from .media import MediaError
 from .models import DomainError
@@ -52,10 +52,6 @@ class Toggle(BaseModel):
 class PhaseIn(BaseModel):
     phase: str
     on: bool | None = None
-
-
-class JournalIn(BaseModel):
-    text: str
 
 
 class DomainIn(BaseModel):
@@ -132,6 +128,14 @@ class NoteIn(BaseModel):
     text: str
 
 
+class JournalIn(BaseModel):
+    text: str
+
+
+class NoteIn(BaseModel):
+    text: str
+
+
 class EdgeIn(BaseModel):
     source: str  # the prerequisite
     target: str  # the node that now requires it
@@ -140,6 +144,13 @@ class EdgeIn(BaseModel):
 
 class ReorderIn(BaseModel):
     direction: int  # -1 up, +1 down, within the node's tier
+
+
+def _domain_view(domain_id: str) -> dict:
+    view = store.domain_view(domain_id)
+    if view is None:
+        raise HTTPException(404, f"unknown domain `{domain_id}`")
+    return view
 
 
 def _node_view(domain_id: str, node_id: str) -> dict:
@@ -351,6 +362,38 @@ def toggle_phase(domain_id: str, node_id: str, body: PhaseIn) -> dict:
     except DomainError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"changed": True, "node": _node_view(domain_id, node_id)}
+
+
+@app.post("/api/domains/{domain_id}/nodes/{node_id}/unlock")
+def unlock_node(domain_id: str, node_id: str) -> dict:
+    """Buy a node out of `sealed`. Permanent: there is no relock.
+
+    The price is written into the event, so retuning the economy later cannot
+    make a past purchase unaffordable or change what it cost. Affordability is
+    checked here rather than in the board, because the bank is global and a
+    domain view only knows about itself.
+    """
+    node = _node_view(domain_id, node_id)
+    price = xp.unlock_price(node["tier"])
+    if price <= 0:
+        raise HTTPException(409, f"`{node_id}` is tier I and costs nothing")
+    if node["unlocked"]:
+        raise HTTPException(409, f"`{node_id}` is already unlocked")
+
+    blocked = [c for c in node["conditions"] if not c["met"] and c["key"] != "unlock_price"]
+    if blocked:
+        raise HTTPException(
+            409,
+            f"`{node_id}` is not ready to unlock: "
+            + "; ".join(c["detail"] or c["label"] for c in blocked),
+        )
+
+    try:
+        store.spend_unlock(domain_id, node_id, price)
+    except DomainError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    return {"node": _node_view(domain_id, node_id), "xp": store.dashboard()["xp"]}
 
 
 @app.post("/api/domains/{domain_id}/nodes/{node_id}/journal")

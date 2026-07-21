@@ -1,26 +1,38 @@
+/** One evaluated gate on starting a node. */
+export interface NodeCondition {
+	key: string;
+	met: boolean;
+	label: string;
+	detail: string;
+	/** XP it costs to clear. 0 when the condition is not bought, but met. */
+	cost: number;
+}
+
 export type NodeStatus =
 	| 'locked' // a hard prerequisite is unmet — you cannot usefully start
 	| 'open' // only soft prerequisites are unmet — start anyway if you like
 	| 'available'
 	| 'active'
 	| 'done'
-	| 'maintenance'; // a completed drill that has gone stale
+	| 'maintenance' // a completed drill that has gone stale
+	| 'sealed' // prerequisites met, the XP price is not paid
+	| 'standing'; // a reminder: nothing to start, nothing to finish
 
 /** Decides how a node accrues, whether it completes, and how it renders. */
-export type NodeKind = 'drill' | 'study' | 'project' | 'exam' | 'social';
+export type NodeKind = 'drill' | 'study' | 'project' | 'exam' | 'social' | 'reminder';
 
 /** Decides how many nodes are active at once. */
 export type DomainShape = 'ladder' | 'strands' | 'cycles';
-
-export interface Reading {
-	day: string;
-	value: number;
-}
 
 export interface JournalEntry {
 	ts: string;
 	day: string;
 	text: string;
+}
+
+export interface Reading {
+	day: string;
+	value: number;
 }
 
 /** Estimate vs what it actually took. `settled` means the gate was called,
@@ -76,6 +88,13 @@ export interface TreeNode {
 	entry: string[];
 	note: string;
 	status: NodeStatus;
+	/** What starting this node costs. 0 for tier I, which is free everywhere. */
+	unlock_price: number;
+	unlocked: boolean;
+	unlock_paid: number;
+	/** Every gate on starting this node, already evaluated. Rendered as-is, so
+	 * a new kind of condition appears in the UI without this file changing. */
+	conditions: NodeCondition[];
 	blocked_by: string[];
 	waiting_on: string[];
 	checked_today: boolean;
@@ -114,6 +133,8 @@ export interface DomainView {
 	cadence_label: string;
 	cadence_n: number;
 	source: string;
+	/** Compiled into the app: not editable, not deletable, nothing priced. */
+	foundation: boolean;
 	shape: DomainShape;
 	strands: string[];
 	nodes: TreeNode[];
@@ -144,19 +165,36 @@ export interface Todo {
  * predictable rather than becoming a black box. */
 export interface XpBreakdown {
 	sessions: number;
+	/** Of those, how many were maintenance rather than acquisition. */
+	upkeep_sessions: number;
 	todos: number;
 	session_xp: number;
 	todo_xp: number;
 	streak_mult: number;
-	spread_mult: number;
+	focus_mult: number;
 	acquiring_domains: string[];
-	spread_penalised: boolean;
+	/** True while you are acquiring in `focus_domains` or fewer. */
+	focused: boolean;
 }
 
 /** Derived fresh from the log every request; stored nowhere, and it never
  * influences what the board shows. */
+export interface Unlock {
+	day: string;
+	domain: string;
+	node: string;
+	paid: number;
+}
+
 export interface Xp {
+	/** Lifetime. Drives the level and never goes down. */
 	total: number;
+	/** Everything spent on unlocks, at the price paid on the day. */
+	spent: number;
+	/** total - spent. The currency. */
+	bank: number;
+	unlocks: Unlock[];
+	upkeep_total: number;
 	level: number;
 	into_level: number;
 	level_span: number;
@@ -296,6 +334,12 @@ export async function uploadMedia(
 	return res.json() as Promise<MediaUpload>;
 }
 
+/** Buy a node out of `sealed`. Permanent — there is no relock. */
+export const unlockNode = (domain: string, node: string) =>
+	call<{ node: TreeNode; xp: Xp }>(`/domains/${domain}/nodes/${node}/unlock`, {
+		method: 'POST'
+	});
+
 export const addJournal = (domain: string, node: string, text: string) =>
 	call<{ node: TreeNode }>(`/domains/${domain}/nodes/${node}/journal`, {
 		method: 'POST',
@@ -399,6 +443,9 @@ const ROMAN: [number, string][] = [
 
 /** Tier headers are Roman numerals, as in the reference. */
 export function roman(value: number): string {
+	// Tier 0 is the substrate. There is no roman numeral for it, and calling it
+	// "—" would read as missing rather than as foundational.
+	if (value === 0) return '0';
 	let left = value;
 	let out = '';
 	for (const [size, glyph] of ROMAN) {
@@ -410,47 +457,70 @@ export function roman(value: number): string {
 	return out || '—';
 }
 
-/** Per-domain accent, resolved to literal classes so Tailwind can see them. */
-export const accents: Record<string, { text: string; border: string; bg: string; glow: string }> = {
+/** Per-domain accent, resolved to literal classes so Tailwind can see them.
+ *
+ * `buy` is the price pill's affordable state. It is spelled out rather than
+ * composed from the fields above, because Tailwind scans this file as text: a
+ * class built at runtime as `hover:${a.bg}` resolves correctly in the browser
+ * and is never generated into the stylesheet.
+ */
+export const accents: Record<
+	string,
+	{ text: string; border: string; bg: string; glow: string; buy: string }
+> = {
 	amber: {
 		text: 'text-amber-300',
 		border: 'border-amber-400/70',
 		bg: 'bg-amber-400',
+		buy: 'border-amber-400/70 text-amber-300 hover:bg-amber-400 hover:text-[#14100c] hover:border-amber-300',
 		glow: 'shadow-[0_0_24px_-4px_rgba(251,191,36,0.55)]'
 	},
 	sky: {
 		text: 'text-sky-300',
 		border: 'border-sky-400/70',
 		bg: 'bg-sky-400',
+		buy: 'border-sky-400/70 text-sky-300 hover:bg-sky-400 hover:text-[#14100c] hover:border-sky-300',
 		glow: 'shadow-[0_0_24px_-4px_rgba(56,189,248,0.55)]'
 	},
 	emerald: {
 		text: 'text-emerald-300',
 		border: 'border-emerald-400/70',
 		bg: 'bg-emerald-400',
+		buy: 'border-emerald-400/70 text-emerald-300 hover:bg-emerald-400 hover:text-[#14100c] hover:border-emerald-300',
 		glow: 'shadow-[0_0_24px_-4px_rgba(52,211,153,0.55)]'
 	},
 	rose: {
 		text: 'text-rose-300',
 		border: 'border-rose-400/70',
 		bg: 'bg-rose-400',
+		buy: 'border-rose-400/70 text-rose-300 hover:bg-rose-400 hover:text-[#14100c] hover:border-rose-300',
 		glow: 'shadow-[0_0_24px_-4px_rgba(251,113,133,0.55)]'
 	},
 	violet: {
 		text: 'text-violet-300',
 		border: 'border-violet-400/70',
 		bg: 'bg-violet-400',
+		buy: 'border-violet-400/70 text-violet-300 hover:bg-violet-400 hover:text-[#14100c] hover:border-violet-300',
 		glow: 'shadow-[0_0_24px_-4px_rgba(167,139,250,0.55)]'
 	},
 	slate: {
 		text: 'text-slate-300',
 		border: 'border-slate-400/70',
 		bg: 'bg-slate-400',
+		buy: 'border-slate-400/70 text-slate-300 hover:bg-slate-400 hover:text-[#14100c] hover:border-slate-300',
 		glow: 'shadow-[0_0_24px_-4px_rgba(148,163,184,0.55)]'
 	}
 };
 
 export const accent = (color: string) => accents[color] ?? accents.slate;
+
+/** How a domain's name is set. The foundation is the only serif in the app.
+ *
+ * Every other tree is a skill you chose. That one is the body doing the
+ * choosing, and it should not look like a sibling of "Drumming" — the typeface
+ * is the cheapest way to say so without a label explaining it. */
+export const domainFace = (foundation: boolean) =>
+	foundation ? 'font-serif tracking-[0.14em] italic' : '';
 
 /** What each node kind is called, and what its progress unit is.
  *
@@ -463,7 +533,12 @@ export const kinds: Record<NodeKind, { label: string; unit: string; hint: string
 	study: { label: 'study', unit: 'units', hint: 'Comprehension. Holds once held.' },
 	project: { label: 'project', unit: 'phases', hint: 'One indivisible burst of work.' },
 	exam: { label: 'exam', unit: 'prep', hint: 'Scored by someone else, on their date.' },
-	social: { label: 'social', unit: 'occasions', hint: 'Needs other people. Never forced to complete.' }
+	social: { label: 'social', unit: 'occasions', hint: 'Needs other people. Never forced to complete.' },
+	reminder: {
+		label: 'reminder',
+		unit: '',
+		hint: 'A standing sentence. Nothing to start, nothing to finish — read it, and retire it when it is true and boring.'
+	}
 };
 
 /** Status colours. `open` must never read as `locked` — that distinction is the
@@ -472,9 +547,11 @@ export const statusTone: Record<NodeStatus, string> = {
 	locked: 'text-stone-700',
 	open: 'text-stone-400',
 	available: 'text-stone-300',
+	sealed: 'text-stone-500',
 	active: 'text-stone-100',
 	done: 'text-emerald-500',
-	maintenance: 'text-amber-500'
+	maintenance: 'text-amber-500',
+	standing: 'text-stone-400'
 };
 
 /** What each season is called, and what it claims about your time. */

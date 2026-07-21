@@ -89,6 +89,31 @@ def session_events(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def completion_events(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every complete/reopen event, across all domains, in order.
+
+    XP needs these to tell acquisition from upkeep: a session logged after the
+    gate was called is maintenance, and maintenance is paid on the decay
+    cadence rather than per repetition.
+    """
+    return conn.execute(
+        "SELECT day, domain, node, kind FROM events "
+        "WHERE kind IN ('complete', 'reopen') ORDER BY seq"
+    ).fetchall()
+
+
+def unlock_events(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Every unlock, with the price paid at the time.
+
+    The price is read off the event rather than recomputed, so retuning the
+    economy cannot retroactively change what something cost.
+    """
+    return conn.execute(
+        "SELECT day, domain, node, value FROM events "
+        "WHERE kind = 'unlock' ORDER BY seq"
+    ).fetchall()
+
+
 def events_for_domain(conn: sqlite3.Connection, domain: str) -> list[sqlite3.Row]:
     return conn.execute(
         "SELECT ts, day, node, kind, text, value FROM events WHERE domain = ? "

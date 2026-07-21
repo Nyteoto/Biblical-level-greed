@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Checklist from '$lib/components/Checklist.svelte';
-	import LevelBar from '$lib/components/LevelBar.svelte';
 	import NodeCard from '$lib/components/NodeCard.svelte';
+	import { setXp } from '$lib/xpstore.svelte';
 	import {
 		accent,
 		addTodo,
@@ -26,6 +26,7 @@
 	async function load() {
 		try {
 			data = await getDashboard();
+			setXp(data.xp);
 			error = null;
 		} catch (e) {
 			error = (e as Error).message;
@@ -174,7 +175,6 @@
 			</div>
 		{/each}
 
-		<LevelBar xp={data.xp} />
 
 		<!-- Not a tree. Specific one-off things with no tier, no gate and no
 		     accrual, which would be nonsense as nodes. Sits above the board

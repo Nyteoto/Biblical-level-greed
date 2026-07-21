@@ -15,8 +15,12 @@ REOPEN = "reopen"
 JOURNAL = "journal"
 PHASE = "phase"  # a project phase was ticked; `text` is the phase name
 PHASE_UNDO = "phase_undo"
+# `value` carries the price paid, so retuning the economy later cannot change
+# what a past unlock cost. There is deliberately no counterpart: spending is
+# permanent, unlike every other toggle in here.
+UNLOCK = "unlock"
 
-KINDS = {SESSION, UNDO, COMPLETE, REOPEN, JOURNAL, PHASE, PHASE_UNDO}
+KINDS = {SESSION, UNDO, COMPLETE, REOPEN, JOURNAL, PHASE, PHASE_UNDO, UNLOCK}
 
 
 def log_path_for(day: str) -> Path:

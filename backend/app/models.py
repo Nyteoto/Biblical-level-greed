@@ -5,11 +5,13 @@ from dataclasses import dataclass, field
 
 # Node status values, in the order a node moves through them.
 LOCKED = "locked"  # a hard prerequisite is unmet — you cannot usefully start
+SEALED = "sealed"  # every prerequisite is met; the XP price has not been paid
 OPEN = "open"  # only *soft* prerequisites are unmet — start anyway if you like
 AVAILABLE = "available"
 ACTIVE = "active"
 DONE = "done"
 MAINTENANCE = "maintenance"  # a completed drill that has gone stale
+STANDING = "standing"  # a reminder: nothing to start, nothing to finish
 
 # Node kinds. These decide how a node accrues, whether it completes, and how it
 # renders. `drill` is the default so a file that names no kind behaves exactly
@@ -19,8 +21,12 @@ STUDY = "study"  # comprehension; holds once held
 PROJECT = "project"  # indivisible burst of work with phases; no session count
 EXAM = "exam"  # externally scored on a date somebody else picked
 SOCIAL = "social"  # needs other people; never *required* to complete
+# A standing sentence, not a task. Never started, never completed, never
+# counted — it exists to be read and eventually retired. Only the compiled-in
+# foundation domain uses this.
+REMINDER = "reminder"
 
-KINDS = (DRILL, STUDY, PROJECT, EXAM, SOCIAL)
+KINDS = (DRILL, STUDY, PROJECT, EXAM, SOCIAL, REMINDER)
 
 # Domain shapes. These decide how many nodes are active at once.
 LADDER = "ladder"  # one thing at a time (Chinese)
@@ -87,8 +93,8 @@ class Node:
 
     @property
     def counts_sessions(self) -> bool:
-        """Project nodes track phases instead. Everything else counts days."""
-        return self.kind != PROJECT
+        """Projects track phases; reminders track nothing at all."""
+        return self.kind not in (PROJECT, REMINDER)
 
     @property
     def target(self) -> int:
@@ -136,6 +142,9 @@ class Domain:
     shape: str = LADDER
     strands: tuple[str, ...] = ()  # declared track names, in display order
     season: Season = field(default_factory=Season)
+    # Compiled into the app rather than loaded from a file: not editable, not
+    # deletable, exempt from unlock prices and from the focus count.
+    foundation: bool = False
 
     @property
     def decaying_nodes(self) -> tuple[Node, ...]:

@@ -8,7 +8,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import asdict, dataclass, field
 
-from . import eventlog, index
+from . import conditions, eventlog, index, xp
 from .models import (
     ACTIVE,
     AVAILABLE,
@@ -21,7 +21,10 @@ from .models import (
     OFF,
     OPEN,
     PROJECT,
+    REMINDER,
+    SEALED,
     SOCIAL,
+    STANDING,
     STRANDS,
     STUDY,
     Cadence,
@@ -47,6 +50,10 @@ class NodeFacts:
     completed_day: str = ""
     journal: list[dict] = field(default_factory=list)
     phases_done: set[str] = field(default_factory=set)
+    # Bought, and what it cost. Spending is permanent, so there is no undo to
+    # fold — the first unlock is the only one.
+    unlocked: bool = False
+    unlock_paid: float = 0.0
     readings: list[dict] = field(default_factory=list)  # measurable-gate values
 
 
@@ -87,6 +94,12 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
             }
         elif kind in (eventlog.PHASE, eventlog.PHASE_UNDO):
             per_phase[(row["node"], row["text"])] = kind
+        elif kind == eventlog.UNLOCK:
+            # No undo to fold: spending is permanent, so the first one stands.
+            node_facts = facts.setdefault(row["node"], _blank())
+            if not node_facts.unlocked:
+                node_facts.unlocked = True
+                node_facts.unlock_paid = float(row["value"] or 0.0)
         else:
             completion[row["node"]] = (kind, row["day"])
 
@@ -98,16 +111,16 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
         node_facts = facts.setdefault(node_id, _blank())
         node_facts.completed = kind == eventlog.COMPLETE
         node_facts.completed_day = day if node_facts.completed else ""
+    for (node_id, _day), entry in per_journal.items():
+        facts.setdefault(node_id, _blank()).journal.append(entry)
     for (node_id, phase), kind in per_phase.items():
         if kind == eventlog.PHASE:
             facts.setdefault(node_id, _blank()).phases_done.add(phase)
-    for (node_id, _day), entry in per_journal.items():
-        facts.setdefault(node_id, _blank()).journal.append(entry)
 
     for node_facts in facts.values():
+        node_facts.journal.sort(key=lambda entry: entry["day"], reverse=True)
         # Duplicated log lines need no special handling any more: keyed by
         # (node, day), a repeated entry overwrites itself.
-        node_facts.journal.sort(key=lambda entry: entry["day"], reverse=True)
         node_facts.readings.sort(key=lambda entry: entry["day"])
         # An undone session leaves its reading behind; drop readings for days
         # that are no longer checked off so the chart matches the counter.
@@ -171,8 +184,12 @@ def _calibration(node: Node, facts: NodeFacts) -> dict:
         "actual": actual,
         "delta": delta,
         # None rather than 0 when nothing was logged: an unmeasured node has no
-        # ratio, and pretending it is 0.0 would poison any average.
-        "ratio": round(actual / node.estimate, 3) if actual else None,
+        # ratio, and pretending it is 0.0 would poison any average. Also None
+        # when nothing was estimated — a node with no guess (the foundation's
+        # drills, a project) has nothing to be right or wrong about.
+        "ratio": (
+            round(actual / node.estimate, 3) if actual and node.estimate else None
+        ),
         "settled": facts.completed,
         "over": delta > 0,
     }
@@ -202,8 +219,18 @@ def _domain_calibration(nodes: list[dict]) -> dict:
     }
 
 
-def _status(node: Node, facts: NodeFacts, done_ids: set[str], today: str) -> str:
-    missing_hard = [r for r in node.requires if r not in done_ids]
+def _status(
+    node: Node,
+    facts: NodeFacts,
+    done_ids: set[str],
+    today: str,
+    unmet: list[conditions.Condition],
+) -> str:
+    # A reminder is a sentence, not a task: nothing to start, nothing to
+    # finish, and no gate that could ever be unmet.
+    if node.kind == REMINDER:
+        return STANDING
+
     missing_soft = [r for r in node.prefers if r not in done_ids]
 
     if facts.completed:
@@ -214,7 +241,14 @@ def _status(node: Node, facts: NodeFacts, done_ids: set[str], today: str) -> str
             if idle >= node.decay_days:
                 return MAINTENANCE
         return DONE
-    if missing_hard:
+    # Conditions are ordered by how fundamental they are, so the first unmet one
+    # names the status: a prerequisite you have not cleared reads as locked, a
+    # price you have not paid reads as sealed.
+    for gate in unmet:
+        if gate.key == "prerequisites":
+            return LOCKED
+        if gate.key == "unlock_price":
+            return SEALED
         return LOCKED
     if missing_soft:
         return OPEN
@@ -325,7 +359,20 @@ def build_domain_view(
     nodes: list[dict] = []
     for node in domain.nodes:
         node_facts = facts.get(node.id, empty)
-        status = _status(node, node_facts, done_ids, today)
+        # The foundation is never bought. You do not unlock sleep.
+        price = 0.0 if domain.foundation else xp.unlock_price(node.tier)
+        gates = conditions.evaluate(
+            conditions.Context(
+                node=node,
+                domain_id=domain.id,
+                done_ids=done_ids,
+                unlocked=node_facts.unlocked,
+                price=price,
+                today=today,
+            )
+        )
+        unmet = conditions.unmet(gates)
+        status = _status(node, node_facts, done_ids, today, unmet)
         progress_done, progress_target = _progress(node, node_facts)
 
         days_until = (
@@ -361,24 +408,40 @@ def build_domain_view(
                 "entry": list(node.entry),
                 "note": node.note,
                 "status": status,
+                # The price, and whether it has been paid. Affordability is not
+                # decided here: the bank is global and the board is per-domain,
+                # so the client compares them.
+                "unlock_price": price,
+                "unlocked": node_facts.unlocked or price <= 0,
+                "unlock_paid": node_facts.unlock_paid,
+                "conditions": conditions.as_dicts(gates),
                 "blocked_by": [r for r in node.requires if r not in done_ids],
                 "waiting_on": [r for r in node.prefers if r not in done_ids],
                 "checked_today": today in node_facts.session_days,
                 # Accrual met, but completion is always a deliberate human click.
+                # The foundation's drills are perpetual: there is no day you
+                # are finished with sleeping.
                 "ready_to_complete": (
-                    status in STARTABLE and progress_done >= progress_target
+                    not domain.foundation
+                    and status in STARTABLE
+                    and progress_done >= progress_target
                 ),
+                "journal": node_facts.journal,
                 "last_session_day": (
                     max(node_facts.session_days) if node_facts.session_days else None
                 ),
-                "journal": node_facts.journal,
             }
         )
 
     season = domain.season
     by_id = {n["id"]: n for n in nodes}
 
-    if season.state == OFF:
+    if domain.foundation:
+        # Always on, season notwithstanding. The two drills are the whole of
+        # today's work here; every other node is a standing sentence that is
+        # read, not done.
+        active_ids = [n["id"] for n in nodes if n["status"] in STARTABLE]
+    elif season.state == OFF:
         # Nothing rots here (the loader enforced that), so there is genuinely
         # nothing to show and no cost to showing nothing.
         active_ids: list[str] = []
@@ -450,6 +513,8 @@ def build_domain_view(
         "cadence_label": domain.cadence.label(),
         "cadence_n": domain.cadence.n,
         "source": domain.source,
+        # Compiled into the app: not editable, not deletable, priced at nothing.
+        "foundation": domain.foundation,
         "nodes": nodes,
         "tiers": sorted({n["tier"] for n in nodes}),
         "active_node_ids": active_ids,

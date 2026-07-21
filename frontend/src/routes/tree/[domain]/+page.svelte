@@ -1,17 +1,20 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { setXp } from '$lib/xpstore.svelte';
 	import DomainForm from '$lib/components/DomainForm.svelte';
 	import DomainRail from '$lib/components/DomainRail.svelte';
 	import NodeForm from '$lib/components/NodeForm.svelte';
 	import NodePanel from '$lib/components/NodePanel.svelte';
 	import {
 		accent,
+		domainFace,
 		connectNodes,
 		createDomain,
 		createNode,
 		deleteDomain,
 		getDashboard,
+		unlockNode,
 		getDomain,
 		patchDomain,
 		roman,
@@ -34,6 +37,9 @@
 	let selected = $state<string | null>(null);
 	let linking = $state<string | null>(null);
 	let busy = $state(false);
+	// What the bank holds, for the price pills. Read-only here: affordability
+	// decides whether a pill is clickable, never what the board shows.
+	let bank = $state(0);
 
 	// Creation dialogs. `addingTier` doubles as the open flag and the prefill.
 	let addingTier = $state<number | null>(null);
@@ -46,6 +52,8 @@
 	async function load() {
 		try {
 			const [board, one] = await Promise.all([getDashboard(), getDomain(domainId)]);
+			setXp(board.xp);
+			bank = board.xp.bank;
 			domains = board.domains;
 			todayKey = board.today;
 			view = one;
@@ -88,6 +96,19 @@
 		} finally {
 			busy = false;
 		}
+	}
+
+	/** Buy a node out of `sealed`. Permanent, so it asks first. */
+	async function buy(node: TreeNode) {
+		const ok = confirm(
+			`Unlock "${node.title}" for ${node.unlock_price} XP?\n\n` +
+				`This is permanent — there are no refunds. You have ${Math.floor(bank)} banked.`
+		);
+		if (!ok) return;
+		await run(async () => {
+			const res = await unlockNode(domainId, node.id);
+			setXp(res.xp);
+		});
 	}
 
 	function onNodeClick(node: TreeNode) {
@@ -244,21 +265,29 @@
 	}}
 />
 
-<div class="flex h-[calc(100vh-2.75rem)]">
+<div class="relative flex h-[calc(100vh-2.75rem)]">
 	<DomainRail {domains} current={domainId} oncreate={() => (creatingDomain = true)} />
 
 	<section class="flex min-w-0 flex-1 flex-col">
 		<header class="relative border-b border-black/50 px-6 py-3">
 			<div class="flex items-center justify-center gap-3">
-				<h1 class="text-[15px] font-semibold tracking-[0.24em] uppercase {a.text}">
+				<h1
+					class="text-[15px] font-semibold tracking-[0.24em] {a.text}
+					{view?.foundation ? '' : 'uppercase'}
+					{domainFace(view?.foundation ?? false)}"
+				>
 					{view?.title ?? '…'}
 				</h1>
-				<button
-					onclick={() => (editingDomain = true)}
-					class="text-[11px] tracking-[0.16em] text-stone-600 uppercase hover:text-stone-300"
-				>
-					edit
-				</button>
+				{#if !view?.foundation}
+					<!-- No edit affordance: the foundation is compiled in, and the
+					     server refuses to write it. -->
+					<button
+						onclick={() => (editingDomain = true)}
+						class="text-[11px] tracking-[0.16em] text-stone-600 uppercase hover:text-stone-300"
+					>
+						edit
+					</button>
+				{/if}
 			</div>
 			<p class="mt-0.5 text-center font-mono text-[10px] text-stone-600">
 				priority {view?.priority} · {view?.cadence_label} · {view?.done_nodes}/{view?.total_nodes}
@@ -378,18 +407,58 @@
 										</button>
 									</div>
 
-									<!-- Accrual pill, in the position of the reference's XP cost.
-									     A project shows phases here, not days. -->
-									<div
-										class="pointer-events-none absolute -bottom-[9px] left-9 rounded-sm border px-1.5 font-mono text-[9px] tabular-nums
-										{done
-											? 'border-amber-700/70 bg-[#3a2a12] text-amber-300'
-											: 'border-stone-800 bg-[#1c1712] text-stone-400'}"
-									>
-										{node.progress_done}/{node.progress_target}{node.counts_sessions ? '' : 'ph'}
-									</div>
+									{#if node.kind === 'reminder'}
+										<!-- A standing sentence has nothing to count and nothing to
+										     buy. Deliberately no pill at all: any number here would
+										     be a costume. -->
+									{:else if !node.unlocked && node.unlock_price > 0}
+										{@const buyable = node.status === 'sealed'}
+										{@const affordable = bank >= node.unlock_price}
+										<!-- The price of starting, in the slot the accrual pill used
+										     to hold. Before you own a node, what it costs is the only
+										     number worth showing. Vibrant once the tree allows it:
+										     a price you cannot act on yet is information, one you can
+										     is an offer, and they must not look alike. -->
+										<button
+											onclick={(e) => (e.stopPropagation(), buy(node))}
+											disabled={busy || !buyable || !affordable}
+											title={buyable
+												? affordable
+													? `Unlock for ${node.unlock_price} XP — permanent, no refund`
+													: `${node.unlock_price} XP needed · ${Math.floor(bank)} banked · ${Math.ceil(node.unlock_price - bank)} short`
+												: `${node.unlock_price} XP — finish what it requires first`}
+											class="absolute -bottom-[9px] left-9 flex items-center gap-1 rounded-sm border px-1.5 font-mono text-[9px] tabular-nums transition
+											{buyable
+												? affordable
+													? `${a.buy} bg-[#1c1712] cursor-pointer ${a.glow}`
+													: `${a.border} ${a.text} bg-[#1c1712] cursor-not-allowed opacity-60`
+												: 'pointer-events-none border-stone-800 bg-[#1c1712] text-stone-600'}"
+										>
+											{node.unlock_price}
+											<span class="text-[8px] opacity-60">XP</span>
+										</button>
+									{:else}
+										<!-- Accrual, once the node is yours. A project shows phases
+										     here, not days. -->
+										<div
+											class="pointer-events-none absolute -bottom-[9px] left-9 rounded-sm border px-1.5 font-mono text-[9px] tabular-nums
+											{done
+												? 'border-amber-700/70 bg-[#3a2a12] text-amber-300'
+												: 'border-stone-800 bg-[#1c1712] text-stone-400'}"
+										>
+											{#if view?.foundation}
+												<!-- No estimate, so no denominator. This is a count of
+												     days kept, not progress towards being finished. -->
+												{node.sessions_done}
+											{:else}
+												{node.progress_done}/{node.progress_target}{node.counts_sessions
+													? ''
+													: 'ph'}
+											{/if}
+										</div>
+									{/if}
 
-									{#if node.kind !== 'drill'}
+									{#if node.kind !== 'drill' && node.kind !== 'reminder'}
 										<span
 											class="pointer-events-none absolute -top-[7px] left-9 rounded-sm border border-stone-800 bg-[#1c1712] px-1 font-mono text-[8px] tracking-wider text-stone-500 uppercase"
 										>
@@ -425,13 +494,17 @@
 								</div>
 							{/each}
 
-							<button
-								onclick={() => (addingTier = tier)}
-								disabled={busy}
-								class="flex h-[42px] w-[170px] items-center justify-center rounded-sm border border-dashed border-stone-800 text-[11px] tracking-[0.16em] text-stone-700 uppercase transition hover:border-amber-500/50 hover:text-amber-400/80"
-							>
-								+ node
-							</button>
+							{#if !view?.foundation}
+								<!-- The foundation's shape is the argument it makes. Adding a
+								     node to it would be editing a claim, not planning work. -->
+								<button
+									onclick={() => (addingTier = tier)}
+									disabled={busy}
+									class="flex h-[42px] w-[170px] items-center justify-center rounded-sm border border-dashed border-stone-800 text-[11px] tracking-[0.16em] text-stone-700 uppercase transition hover:border-amber-500/50 hover:text-amber-400/80"
+								>
+									+ node
+								</button>
+							{/if}
 						</div>
 					{/each}
 				</div>

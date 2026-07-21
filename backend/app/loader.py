@@ -6,6 +6,7 @@ import tomllib
 from pathlib import Path
 
 from .config import DOMAINS_DIR
+from . import foundation
 from .models import (
     CYCLES,
     HIGH,
@@ -385,7 +386,9 @@ def load_all() -> tuple[list[Domain], list[str]]:
     A broken file never takes down the app — its error is surfaced in the UI and
     the remaining domains still load.
     """
-    domains: list[Domain] = []
+    # The foundation is compiled in, so it is present before any file is read
+    # and cannot be removed by deleting one. A `.toml` claiming its id loses.
+    domains: list[Domain] = [foundation.build()]
     errors: list[str] = []
 
     if not DOMAINS_DIR.exists():

@@ -12,7 +12,7 @@ os.environ["PGS_INDEX_PATH"] = str(_TMP / "index.sqlite")
 
 import pytest  # noqa: E402
 
-from backend.app import config, eventlog, index, loader, state  # noqa: E402
+from backend.app import config, eventlog, index, loader, state, xp  # noqa: E402
 
 
 @pytest.fixture
@@ -76,6 +76,23 @@ def log():
         eventlog.append(domain, node, kind, day=day, text=text, value=value)
 
     return _log
+
+
+@pytest.fixture
+def unlock(log):
+    """Buy a node's unlock, at whatever its tier costs.
+
+    Tier II and above are sealed until paid for, so any test that walks a tree
+    upward has to spend — which is the point of the mechanic, and the reason
+    this is a fixture rather than something the board does for you.
+    """
+
+    def _unlock(domain: str, node: str, tier: int, day: str = "2026-07-01") -> None:
+        eventlog.append(
+            domain, node, eventlog.UNLOCK, day=day, value=xp.unlock_price(tier)
+        )
+
+    return _unlock
 
 
 @pytest.fixture

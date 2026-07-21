@@ -111,10 +111,40 @@ class Store:
             self.version += 1
         return event
 
+    def spend_unlock(self, domain_id: str, node_id: str, price: float) -> dict:
+        """Buy a node's unlock, if the bank covers it.
+
+        The balance check and the write happen under one lock. Split them and
+        two unlocks fired together could both see enough XP and both spend it —
+        the only place in this app where a race could put a number below zero.
+        """
+        domain = self.domain(domain_id)
+        if domain is None:
+            raise DomainError(f"unknown domain `{domain_id}`")
+        if domain.node(node_id) is None:
+            raise DomainError(f"unknown node `{node_id}` in domain `{domain_id}`")
+
+        with self._lock:
+            bank = xp.build(self.conn, self.domains)["bank"]
+            if bank < price:
+                raise DomainError(
+                    f"{price:g} XP needed, {bank:g} banked — {price - bank:g} short"
+                )
+            event = eventlog.append(
+                domain_id, node_id, eventlog.UNLOCK, value=price
+            )
+            index.add(self.conn, event)
+            self.version += 1
+        return event
+
     # -- structural edits --------------------------------------------------
 
     def mutate(self, domain_id: str, change: Callable[[Domain], Domain]) -> Domain:
         """Apply an edit to a domain, validate it, then write the file.
+
+        The foundation is compiled in and has no file, so there is nothing to
+        write and nothing to delete. Refusing here rather than in the handlers
+        means every structural endpoint is covered by one check.
 
         Validation runs before the write, so a rejected edit leaves the file on
         disk untouched.
@@ -123,6 +153,10 @@ class Store:
             domain = self.domain(domain_id)
             if domain is None:
                 raise DomainError(f"unknown domain `{domain_id}`")
+            if domain.foundation:
+                raise DomainError(
+                    f"`{domain_id}` is built into the app and cannot be edited"
+                )
 
             updated = loader.validate(change(domain))
             if updated.id != domain.id:
@@ -143,8 +177,13 @@ class Store:
         """Removes the file only. Its log events stay on disk, harmless and
         ignored, so deleting by mistake loses no history."""
         with self._lock:
-            if self.domain(domain_id) is None:
+            existing = self.domain(domain_id)
+            if existing is None:
                 raise DomainError(f"unknown domain `{domain_id}`")
+            if existing.foundation:
+                raise DomainError(
+                    f"`{domain_id}` is built into the app and cannot be deleted"
+                )
             writer.delete(domain_id)
             self.reload_domains()
 

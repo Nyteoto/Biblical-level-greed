@@ -48,8 +48,12 @@ sessions = 1
 """
 
 
-def test_hard_prerequisite_locks_but_soft_only_advises(write_domain, node_of):
+def test_hard_prerequisite_locks_but_soft_only_advises(write_domain, node_of, unlock):
     write_domain("d", SOFT_AND_HARD)
+    # Both children are tier II, so buy them out of `sealed` first: this test is
+    # about prerequisites, not about the price.
+    unlock("d", "hard-child", 2)
+    unlock("d", "soft-child", 2)
     assert node_of("d", "hard-child")["status"] == LOCKED
     assert node_of("d", "soft-child")["status"] == OPEN
 
@@ -61,8 +65,10 @@ def test_soft_blocked_node_reports_what_it_is_waiting_on(write_domain, node_of):
     assert soft["blocked_by"] == []  # nothing is actually blocking it
 
 
-def test_completing_the_prerequisite_clears_both(write_domain, node_of, log):
+def test_completing_the_prerequisite_clears_both(write_domain, node_of, log, unlock):
     write_domain("d", SOFT_AND_HARD)
+    unlock("d", "hard-child", 2)
+    unlock("d", "soft-child", 2)
     log("d", "root", eventlog.COMPLETE, "2026-07-19")
     assert node_of("d", "hard-child")["status"] in (AVAILABLE, ACTIVE)
     assert node_of("d", "soft-child")["status"] in (AVAILABLE, ACTIVE)
@@ -177,8 +183,9 @@ def test_strands_activate_one_node_each(write_domain, view):
     assert view("s")["active_node_ids"] == ["l1", "r1"]
 
 
-def test_strands_advance_independently(write_domain, view, log):
+def test_strands_advance_independently(write_domain, view, log, unlock):
     write_domain("s", STRANDS)
+    unlock("s", "l2", 2)
     log("s", "l1", eventlog.COMPLETE, "2026-07-19")
     # The left strand moves on; the right strand is untouched by it.
     assert view("s")["active_node_ids"] == ["l2", "r1"]
@@ -249,9 +256,10 @@ prefers = ["craft"]
 """
 
 
-def test_cycles_activate_the_project_plus_what_it_waits_on(write_domain, view):
+def test_cycles_activate_the_project_plus_what_it_waits_on(write_domain, view, unlock):
     """The AFI finding: the film is startable now, craft feeds it."""
     write_domain("c", CYCLES)
+    unlock("c", "film", 2)
     active = view("c")["active_node_ids"]
     assert active[0] == "film"  # the project leads
     assert "craft" in active  # the craft it is waiting on comes with it
@@ -454,7 +462,7 @@ def test_undoing_a_session_drops_its_reading(write_domain, node_of, log):
 
 
 def test_a_social_node_satisfies_dependents_without_being_completed(
-    write_domain, node_of, log
+    write_domain, node_of, log, unlock
 ):
     """You cannot schedule other people, so it should not be a hard gate."""
     write_domain(
@@ -477,6 +485,7 @@ tier = 2
 requires = ["band"]
 """,
     )
+    unlock("so", "after", 2)
     assert node_of("so", "after")["status"] == LOCKED
     log("so", "band", eventlog.SESSION, "2026-07-18")
     log("so", "band", eventlog.SESSION, "2026-07-19")
@@ -593,7 +602,7 @@ sessions = 3
     domains, errors = loader.load_all()
     assert not errors, errors
 
-    original = domains[0]
+    original = next(d for d in domains if d.id != "mementomori")
     reparsed = loader.load_domain_file(
         _rewrite(original)
     )
@@ -883,7 +892,9 @@ def test_season_survives_a_rewrite(write_domain):
     write_domain("s", SEASONAL)
     domains, errors = loader.load_all()
     assert not errors, errors
-    reparsed = loader.load_domain_file(_rewrite(domains[0]))
+    reparsed = loader.load_domain_file(
+        _rewrite(next(d for d in domains if d.id != "mementomori"))
+    )
     assert reparsed.season.state == "high"
     assert reparsed.season.strands == ("hands",)
     assert reparsed.season.until == "2026-09-01"
@@ -895,7 +906,9 @@ def test_dropping_a_strand_does_not_strand_the_season(write_domain):
     that no longer exists would make the domain unloadable."""
     write_domain("s", SEASONAL)
     domains, _ = loader.load_all()
-    narrowed = edits.update_domain(domains[0], shape="ladder", strands=[])
+    narrowed = edits.update_domain(
+        next(d for d in domains if d.id != "mementomori"), shape="ladder", strands=[]
+    )
     assert narrowed.season.strands == ()
     loader.validate(narrowed)
 
@@ -924,13 +937,13 @@ def test_the_old_sessions_key_still_loads(write_domain):
     write_domain("e", ESTIMATED.replace("estimate = 10", "sessions = 10"))
     domains, errors = loader.load_all()
     assert not errors, errors
-    assert domains[0].node("guess").estimate == 10
+    assert next(d for d in domains if d.id != "mementomori").node("guess").estimate == 10
 
 
 def test_the_writer_emits_the_new_name(write_domain):
     write_domain("e", ESTIMATED.replace("estimate = 10", "sessions = 10"))
     domains, _ = loader.load_all()
-    text = writer.to_toml(domains[0])
+    text = writer.to_toml(next(d for d in domains if d.id == "e"))
     assert "estimate = 10" in text
     assert "sessions" not in text
 

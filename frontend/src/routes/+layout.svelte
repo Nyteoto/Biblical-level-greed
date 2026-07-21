@@ -1,6 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import XpMeter from '$lib/components/XpMeter.svelte';
+	import { xpState } from '$lib/xpstore.svelte';
 
 	let { children } = $props();
 
@@ -39,6 +41,14 @@
 				</a>
 			{/each}
 		</div>
+
+		<!-- XP rides in the corner, on every page. It decides what you can start
+		     now, so it cannot live on one screen you have to go and look at. -->
+		{#if xpState.xp}
+			<div class="absolute inset-y-0 right-3 flex items-center">
+				<XpMeter xp={xpState.xp} />
+			</div>
+		{/if}
 	</header>
 
 	<main class="flex-1">

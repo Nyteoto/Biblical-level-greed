@@ -332,3 +332,99 @@ def test_storage_survives_a_missing_data_dir(tmp_path, monkeypatch):
     report = storage.report()
     assert report["total_bytes"] == 0
     assert all(p["bytes"] == 0 for p in report["parts"])
+
+
+# -- unlocking, through the API ---------------------------------------------
+
+
+def _priced_domain(write_domain):
+    write_domain(
+        "u",
+        """
+id = "u"
+title = "U"
+priority = 1
+
+[[node]]
+id = "first"
+title = "First"
+tier = 1
+estimate = 1
+
+[[node]]
+id = "second"
+title = "Second"
+tier = 2
+estimate = 5
+requires = ["first"]
+""",
+    )
+
+
+def test_unlocking_without_the_xp_is_refused(write_domain, conn):
+    """The bank is checked server-side. A client that hides the button is not a
+    guarantee, and going negative is the one thing this economy must not do."""
+    from fastapi.testclient import TestClient
+
+    _priced_domain(write_domain)
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        client.post("/api/domains/u/nodes/first/complete")
+        r = client.post("/api/domains/u/nodes/second/unlock")
+        assert r.status_code == 409
+        assert "short" in r.json()["detail"]
+
+
+def test_unlocking_spends_the_bank_and_leaves_the_level(write_domain, conn):
+    from fastapi.testclient import TestClient
+
+    _priced_domain(write_domain)
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        client.post("/api/domains/u/nodes/first/complete")
+        # Enough banked to afford tier II.
+        eventlog.append("u", "first", eventlog.SESSION, day="2026-07-01")
+        store.reindex()
+
+        before = client.get("/api/dashboard").json()["xp"]
+        eventlog.append("u", "first", eventlog.UNLOCK, day="2026-07-02", value=0.0)
+        store.reindex()
+
+        after = client.get("/api/dashboard").json()["xp"]
+        assert after["total"] == before["total"]
+        assert after["level"] == before["level"]
+
+
+def test_a_tier_one_node_cannot_be_bought(write_domain, conn):
+    from fastapi.testclient import TestClient
+
+    _priced_domain(write_domain)
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        r = client.post("/api/domains/u/nodes/first/unlock")
+        assert r.status_code == 409
+        assert "costs nothing" in r.json()["detail"]
+
+
+def test_unlocking_before_the_prerequisite_is_refused(write_domain, conn):
+    """The price is not the only gate, and it is not the first one."""
+    from fastapi.testclient import TestClient
+
+    _priced_domain(write_domain)
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        r = client.post("/api/domains/u/nodes/second/unlock")
+        assert r.status_code == 409
+        assert "first" in r.json()["detail"]
