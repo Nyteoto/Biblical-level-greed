@@ -1,4 +1,6 @@
 <script lang="ts">
+	import EntryLine from './EntryLine.svelte';
+	import { entryLinks } from '$lib/entry';
 	import { accent, kinds, roman, type TreeNode } from '$lib/api';
 
 	interface Props {
@@ -24,6 +26,12 @@
 
 	const a = $derived(accent(color));
 	const meta = $derived(kinds[node.kind]);
+
+	// The openable half of `entry`, deduped. Stays on the card for the life of
+	// the node: knowing where to start is a day-one question, but *opening the
+	// thing* is a question every single day, and making that a tap rather than a
+	// navigation is the whole point.
+	const links = $derived(entryLinks(node.entry));
 
 	// A project has no session counter at all — its progress is phases ticked.
 	const isProject = $derived(node.kind === 'project');
@@ -130,14 +138,33 @@
 		{/if}
 
 		{#if node.entry.length && node.progress_done === 0}
-			<!-- Only before the first session. `entry` answers "where do I even
-			     start", which stops being a question once you have started; after
-			     that it is still in the node panel, just not in the way here. -->
+			<!-- The full text, but only before the first session: `entry` answers
+			     "where do I even start", which stops being a question once you have
+			     started. The links below outlive it. -->
 			<ul class="mt-2 space-y-0.5 border-l border-stone-800 pl-2.5">
 				{#each node.entry as line (line)}
-					<li class="text-[11px] leading-snug text-stone-500">{line}</li>
+					<li class="text-[11px] leading-snug text-stone-500">
+						<EntryLine {line} tone={a.text} />
+					</li>
 				{/each}
 			</ul>
+		{:else if links.length}
+			<!-- Past the first session the prose is noise and the materials are not.
+			     Just the things to open, in one row you can thumb. -->
+			<div class="mt-2 flex flex-wrap items-center gap-1.5">
+				<span class="text-[9px] tracking-[0.16em] text-stone-700 uppercase">open</span>
+				{#each links.slice(0, 4) as link (link.href)}
+					<a
+						href={link.href}
+						target="_blank"
+						rel="noopener noreferrer"
+						title={link.text}
+						class="max-w-[15rem] truncate rounded-sm border border-stone-800 px-1.5 py-0.5 text-[10px] {a.text} transition hover:border-stone-700 hover:bg-white/5"
+					>
+						{link.text}
+					</a>
+				{/each}
+			</div>
 		{/if}
 
 		{#if isProject}
@@ -197,7 +224,13 @@
 					{/if}
 				</div>
 				<span class="font-mono text-[10px] tabular-nums text-stone-600">
-					{node.progress_done}/{node.progress_target}
+					{#if node.progress_target}
+						{node.progress_done}/{node.progress_target}
+					{:else}
+						<!-- No estimate — the foundation's drills are perpetual, so a
+						     denominator would be inventing a finish line. -->
+						{node.progress_done}
+					{/if}
 					{meta.unit}
 					{#if overshoot}
 						<span class="text-stone-500">+{overshoot} over est.</span>
