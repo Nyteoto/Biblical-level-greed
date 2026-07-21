@@ -33,6 +33,29 @@ def _month_dir(day: str) -> Path:
     return media_dir() / day[:7]
 
 
+_heif_ready = False
+
+
+def _register_heif() -> None:
+    """Teach Pillow to read HEIC, which it cannot do on its own.
+
+    An iPhone shoots HEIC by default, so without this the entire photo path
+    fails at `Image.open` with "cannot identify image file". Registering is
+    idempotent but not free, hence the flag.
+    """
+    global _heif_ready
+    if _heif_ready:
+        return
+    try:
+        from pillow_heif import register_heif_opener
+    except ImportError:  # pragma: no cover - dependency is declared
+        # Everything else still imports; only HEIC is lost.
+        _heif_ready = True
+        return
+    register_heif_opener()
+    _heif_ready = True
+
+
 def save(data: bytes, day: str) -> str:
     """Store one image. Returns its path relative to `data/media`."""
     if not data:
@@ -44,6 +67,8 @@ def save(data: bytes, day: str) -> str:
         from PIL import Image, ImageOps
     except ImportError as exc:  # pragma: no cover - dependency is declared
         raise MediaError("Pillow is not installed") from exc
+
+    _register_heif()
 
     try:
         image = Image.open(io.BytesIO(data))

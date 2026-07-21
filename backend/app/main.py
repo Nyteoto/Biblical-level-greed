@@ -248,14 +248,10 @@ async def upload_media(
     else:
         data = await request.body()
 
-    try:
-        relative = media.save(data, day_key())
-    except MediaError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-    url = f"/media/{relative}"
-    attached = False
-
+    # Resolve where it is going before writing a byte. Saving first meant a
+    # mistyped domain stored the image and then 404'd, leaving a file nothing
+    # references and no way to tell it apart from a real one later.
+    #
     # Naming only a domain attaches to whatever that domain is working on
     # today. This is what makes a usable Shortcut two actions instead of six:
     # the phone does not have to fetch a list, show a picker, and unpack the
@@ -274,6 +270,16 @@ async def upload_media(
 
     if domain and node:
         _node_view(domain, node)
+
+    try:
+        relative = media.save(data, day_key())
+    except MediaError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    url = f"/media/{relative}"
+    attached = False
+
+    if domain and node:
         alt = caption.strip() or "photo"
         try:
             notes.append(domain, node, f"![{alt}]({url})")

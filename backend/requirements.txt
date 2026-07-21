@@ -6,6 +6,9 @@ watchdog>=5.0
 pywebview>=5.0
 # Image import: downscale, apply EXIF rotation, re-encode HEIC to JPEG.
 Pillow>=10.0
+# Pillow cannot read HEIC on its own, and an iPhone shoots HEIC by default —
+# without this every photo from an iPhone fails as "cannot identify image".
+pillow-heif>=0.16
 # multipart/form-data, so an iOS Shortcut can post a file either way.
 python-multipart>=0.0.9
 pytest>=8.0

@@ -23,6 +23,18 @@ def _png(size=(40, 30), colour=(200, 40, 40)) -> bytes:
     return buf.getvalue()
 
 
+def _heic(size=(40, 30), colour=(40, 90, 200)) -> bytes:
+    """What an iPhone actually sends. Real HEIC bytes, not a PNG standing in
+    for one — the difference is what let the import ship broken."""
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    buf = io.BytesIO()
+    Image.new("RGB", size, colour).save(buf, format="HEIF")
+    return buf.getvalue()
+
+
 # -- notes ------------------------------------------------------------------
 
 
@@ -116,12 +128,95 @@ def test_a_small_image_is_not_upscaled(data_dir):
 
 
 def test_output_is_jpeg_whatever_went_in(data_dir):
-    """An iPhone sends HEIC; a browser cannot draw it."""
+    """A browser cannot draw HEIC, so nothing may leave here as anything else."""
     from PIL import Image
 
     rel = media.save(_png(), "2026-07-20")
     with Image.open(media.path_for(rel)) as out:
         assert out.format == "JPEG"
+
+
+def test_an_iphone_heic_is_accepted(data_dir):
+    """Pillow cannot read HEIC unaided, and an iPhone shoots it by default —
+    so this is the whole photo path, and it failed at `Image.open` until
+    pillow-heif was registered. The old test asserted HEIC in its docstring
+    and passed a PNG, which is why nobody noticed.
+    """
+    from PIL import Image
+
+    rel = media.save(_heic(size=(60, 40)), "2026-07-20")
+    with Image.open(media.path_for(rel)) as out:
+        assert out.format == "JPEG"
+        assert out.size == (60, 40)
+
+
+def test_a_heic_upload_survives_the_endpoint(write_domain, conn):
+    """End to end, the way an iPhone actually posts it: raw HEIC body, straight
+    at the endpoint. Every other endpoint test sends a PNG, which no phone
+    sends, so all of them passed while the real path was broken."""
+    from fastapi.testclient import TestClient
+
+    write_domain(
+        "h",
+        """
+id = "h"
+title = "H"
+priority = 1
+
+[[node]]
+id = "first"
+title = "First"
+tier = 1
+estimate = 5
+""",
+    )
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        r = client.post(
+            "/api/media?domain=h&node=first",
+            content=_heic(),
+            headers={"content-type": "image/heic"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["attached_to_note"] is True
+        assert "![photo](/media/" in notes.read("h", "first")
+
+
+def test_an_unknown_domain_stores_nothing(write_domain, conn):
+    """A mistyped domain used to save the image and *then* 404, leaving a file
+    nothing referenced — indistinguishable from a real photo afterwards."""
+    from fastapi.testclient import TestClient
+
+    write_domain(
+        "k",
+        """
+id = "k"
+title = "K"
+priority = 1
+
+[[node]]
+id = "first"
+title = "First"
+tier = 1
+estimate = 5
+""",
+    )
+    from backend.app.main import app
+    from backend.app.store import store
+
+    with TestClient(app) as client:
+        store.reload_domains()
+        before = list(media.media_dir().rglob("*.jpg"))
+        r = client.post(
+            "/api/media?domain=nope-not-a-domain&node=first",
+            content=_png(),
+            headers={"content-type": "image/png"},
+        )
+        assert r.status_code == 404, r.text
+        assert list(media.media_dir().rglob("*.jpg")) == before, "orphan file written"
 
 
 def test_exif_orientation_is_applied_then_dropped(data_dir):
