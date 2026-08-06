@@ -487,6 +487,24 @@ def unlock_node(domain_id: str, node_id: str) -> dict:
     return {"node": _node_view(domain_id, node_id), "xp": store.dashboard()["xp"]}
 
 
+def _edit(domain_id: str, change) -> dict:
+    """Apply a structural edit and return the domain as the UI wants it back.
+
+    Every structural endpoint goes through here so that validation, the write
+    and the refreshed view stay in one place: `store.mutate` validates the new
+    Domain before it touches the file, so a rejected edit is a 400 and the
+    `.toml` on disk is untouched.
+    """
+    try:
+        store.mutate(domain_id, change)
+    except DomainError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    view = store.domain_view(domain_id)
+    if view is None:
+        raise HTTPException(404, f"unknown domain `{domain_id}`")
+    return view
+
+
 @app.post("/api/domains", status_code=201)
 def create_domain(body: DomainIn) -> dict:
     try:

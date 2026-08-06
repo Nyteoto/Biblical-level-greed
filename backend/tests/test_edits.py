@@ -123,3 +123,79 @@ def test_bad_edits_are_refused_with_a_readable_message(write_domain, call, fragm
     domain = build(write_domain)
     with pytest.raises(DomainError, match=fragment):
         call(domain)
+
+
+# Everything above calls `edits` directly, which is where the rules live — and
+# that is exactly how every structural endpoint stayed broken through a green
+# suite. The shared `_edit` helper was deleted with the journal routes it sat
+# beside; the eight callers kept calling it, and each one raised NameError and
+# returned a 500. The rules were fine. Nothing reached them.
+#
+# So these go over HTTP. They assert little about behaviour and everything
+# about the route existing and returning something other than a 500.
+
+
+def _client(write_domain):
+    from fastapi.testclient import TestClient
+
+    from backend.app.main import app
+    from backend.app.store import store
+
+    build(write_domain)
+    client = TestClient(app)
+    with client:
+        store.reload_domains()
+        yield client
+
+
+@pytest.fixture
+def client(write_domain):
+    yield from _client(write_domain)
+
+
+def test_renaming_a_domain_over_http_succeeds(client):
+    r = client.patch("/api/domains/korean", json={"title": "Korean, properly"})
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "Korean, properly"
+
+    assert loader.load_domain_file(writer.path_for("korean")).title == (
+        "Korean, properly"
+    )
+
+
+def test_every_structural_endpoint_is_reachable(client):
+    """One call per endpoint that goes through `_edit`. A 500 here means the
+    route is wired to something that does not exist."""
+    calls = [
+        ("patch", "/api/domains/korean", {"priority": 3}),
+        ("post", "/api/domains/korean/season", {"state": "low"}),
+        ("post", "/api/domains/korean/nodes", {"title": "Particles"}),
+        ("patch", "/api/domains/korean/nodes/hangul", {"title": "Hangul, again"}),
+        ("post", "/api/domains/korean/edges", {"source": "grammar", "target": "particles"}),
+        ("post", "/api/domains/korean/nodes/grammar/reorder", {"direction": "up"}),
+    ]
+    for method, path, body in calls:
+        r = getattr(client, method)(path, json=body)
+        assert r.status_code < 500, f"{method.upper()} {path} → {r.status_code}: {r.text}"
+
+    assert client.request(
+        "DELETE", "/api/domains/korean/edges", params={"source": "grammar", "target": "particles"}
+    ).status_code < 500
+    assert client.delete("/api/domains/korean/nodes/particles").status_code < 500
+
+
+def test_a_rejected_edit_is_a_400_and_leaves_the_file_alone(client):
+    before = writer.path_for("korean").read_text(encoding="utf-8")
+    r = client.patch("/api/domains/korean", json={"title": "   "})
+    assert r.status_code == 400, r.text
+    assert writer.path_for("korean").read_text(encoding="utf-8") == before
+
+
+def test_editing_an_unknown_domain_is_refused_not_crashed(client):
+    """Pinning what actually happens rather than what reads tidily: `mutate`
+    raises DomainError for an unknown id, so this is a 400 with a readable
+    message. The 404 branch in `_edit` covers a domain that vanishes between
+    the write and the re-read, which is not this."""
+    r = client.patch("/api/domains/ghost", json={"title": "X"})
+    assert r.status_code == 400, r.text
+    assert "ghost" in r.json()["detail"]
