@@ -332,8 +332,24 @@ def load_domain_file(path: Path) -> Domain:
             raw = tomllib.load(handle)
     except tomllib.TOMLDecodeError as exc:
         raise DomainError(f"{where}: invalid TOML — {exc}") from exc
+    except UnicodeDecodeError as exc:
+        # `tomllib` decodes as UTF-8 and raises this rather than a TOML error,
+        # so it escapes the clause above. An editor that saved as UTF-16 is the
+        # usual cause, and the user needs to be told that, not a byte offset.
+        raise DomainError(
+            f"{where}: not UTF-8 text ({exc.reason}) — domain files are plain "
+            f"UTF-8 TOML; re-save it in that encoding"
+        ) from exc
 
     domain_id = raw.get("id") or path.stem
+    # Checked as types, not just as truthy values. `id = 5` parses as valid TOML
+    # and only detonates much later — sorting domains by title, or quoting one
+    # for the writer — by which point it is well outside the per-file `except`
+    # in `load_all` that is supposed to contain a bad file's blast radius.
+    for value, key in ((domain_id, "id"), (raw.get("title", domain_id), "title")):
+        if not isinstance(value, str):
+            raise DomainError(f"{where}: {key} must be a string (got {value!r})")
+
     priority = raw.get("priority", 100)
     if not isinstance(priority, int):
         raise DomainError(f"{where}: priority must be an integer")
@@ -358,10 +374,21 @@ def load_domain_file(path: Path) -> Domain:
     if len(set(strands_raw)) != len(strands_raw):
         raise DomainError(f"{where}: duplicate strand name")
 
-    nodes = tuple(
-        _parse_node(entry, i, where)
-        for i, entry in enumerate(raw.get("node", []))
-    )
+    # `[[node]]` declares an array of tables. `[node]` — one bracket, the
+    # easiest typo in this schema — declares a single table, and iterating that
+    # yields its *key strings*, which `_parse_node` then calls `.get` on. Named
+    # here because the useful error is "you wrote [node]", not an AttributeError
+    # raised three frames down while the app is still starting.
+    raw_nodes = raw.get("node", [])
+    if not isinstance(raw_nodes, list) or any(
+        not isinstance(entry, dict) for entry in raw_nodes
+    ):
+        raise DomainError(
+            f"{where}: nodes must be declared as `[[node]]`, an array of tables "
+            f"— a single `[node]` table is not a list of nodes"
+        )
+
+    nodes = tuple(_parse_node(entry, i, where) for i, entry in enumerate(raw_nodes))
 
     domain = Domain(
         id=domain_id,
@@ -401,6 +428,20 @@ def load_all() -> tuple[list[Domain], list[str]]:
             errors.append(str(exc))
         except OSError as exc:
             errors.append(f"{path.name}: could not read — {exc}")
+        except Exception as exc:  # noqa: BLE001 — deliberately the widest net
+            # These files are hand-authored, so they can be malformed in ways
+            # no check above anticipates, and the parser reports that with
+            # whatever exception it likes. The promise made in the docstring —
+            # one bad file costs you that file and nothing else — only holds if
+            # the backstop is this wide.
+            #
+            # It has to be, because this runs at startup: an uncaught exception
+            # here means uvicorn never binds, and the user is locked out of the
+            # only UI that could fix the file. Same reasoning as `index.connect`.
+            errors.append(
+                f"{path.name}: could not be read as a domain — "
+                f"{type(exc).__name__}: {exc}"
+            )
 
     seen: dict[str, str] = {}
     unique: list[Domain] = []

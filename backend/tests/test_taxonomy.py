@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app import edits, eventlog, loader, writer
+from backend.app import config, edits, eventlog, loader, writer
 from backend.app.models import (
     ACTIVE,
     AVAILABLE,
@@ -534,6 +534,51 @@ def test_strands_without_the_strands_shape_is_rejected(write_domain):
     )
     _, errors = loader.load_all()
     assert any("only meaningful when shape is" in e for e in errors)
+
+
+# -- a malformed file costs you that file and nothing else ------------------
+# These trees are hand-authored, so the interesting question is not whether a
+# bad file is reported but whether reporting it keeps the app alive. `load_all`
+# runs at startup: anything that escapes it means uvicorn never binds, and the
+# user is locked out of the UI that would let them repair the file.
+
+
+def test_a_single_bracket_node_table_is_reported_not_raised(write_domain):
+    """`[node]` instead of `[[node]]`, the easiest typo in this schema."""
+    write_domain(
+        "typo",
+        """
+id = "typo"
+title = "Typo"
+
+[node]
+id = "a"
+title = "A"
+tier = 1
+""",
+    )
+    domains, errors = loader.load_all()
+    assert any("array of tables" in e for e in errors), errors
+    assert not any(d.id == "typo" for d in domains)
+
+
+def test_a_file_that_is_not_utf8_is_reported_not_raised(data_dir):
+    (config.DOMAINS_DIR / "utf16.toml").write_bytes('title = "x"\n'.encode("utf-16"))
+    _, errors = loader.load_all()
+    assert any("not UTF-8 text" in e for e in errors), errors
+
+
+def test_an_unanticipated_malformation_still_only_costs_its_own_file(write_domain):
+    """The backstop, exercised by a shape no specific check looks for.
+
+    A non-string title parses fine and only detonates further down, which is
+    exactly the class of failure the wide `except` in `load_all` exists for.
+    """
+    write_domain("broken", "id = 5\ntitle = 7\n")
+    write_domain("fine", 'id = "fine"\ntitle = "Fine"\n')
+    domains, errors = loader.load_all()
+    assert any(d.id == "fine" for d in domains), "one bad file took out a good one"
+    assert not errors or all("broken" in e for e in errors), errors
 
 
 # -- the writer must round-trip every new field -----------------------------

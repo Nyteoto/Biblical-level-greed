@@ -96,8 +96,11 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
             if not node_facts.unlocked:
                 node_facts.unlocked = True
                 node_facts.unlock_paid = float(row["value"] or 0.0)
-        else:
+        elif kind in (eventlog.COMPLETE, eventlog.REOPEN):
             completion[row["node"]] = (kind, row["day"])
+        # Anything else is a kind this fold does not model, and is dropped.
+        # Named explicitly rather than left to an `else`, which would make any
+        # kind added to `eventlog.KINDS` in future silently mark nodes *done*.
 
     for (node_id, day), kind in per_day.items():
         if kind != eventlog.SESSION:
