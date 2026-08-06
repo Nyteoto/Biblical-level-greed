@@ -29,6 +29,11 @@ same kind: a rule that was load-bearing but only discoverable by reading code.
   appending its inverse (`undo`, `reopen`), never by deletion.
 - **Never test a destructive path against real data.** Create a scratch domain
   first. Deleting against live data has already cost an unrecoverable photo.
+- **Never weaken `backup.sh`'s refusals.** It exits rather than writing when the
+  destination resolves to the same device as `data/`, and it has no `--delete`.
+  Both look like over-caution and are not: the first is what catches an
+  unmounted backup disk, and the second is what stops a local mistake being
+  mirrored over the only other copy.
 
 ## The shape of the thing
 

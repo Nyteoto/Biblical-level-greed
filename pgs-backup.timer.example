@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily backup of Personal Growth System data
+Documentation=file:///path/to/Iteration01/SYNC.md
+
+[Timer]
+OnCalendar=daily
+# Run on next boot if the machine was off when it was due. A desktop that is
+# suspended overnight would otherwise skip the run silently and never catch up,
+# which is exactly how a backup quietly stops existing.
+Persistent=true
+# Spread the run rather than firing at exactly 00:00 with everything else.
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

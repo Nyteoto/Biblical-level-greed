@@ -1,0 +1,14 @@
+[Unit]
+Description=Back up Personal Growth System data to a second disk
+Documentation=file:///path/to/Iteration01/SYNC.md
+# Nothing to do if the backup disk is not mounted. The script refuses in that
+# case anyway — this just keeps the journal quiet about it.
+ConditionPathIsMountPoint=/mnt/data
+
+[Service]
+Type=oneshot
+ExecStart=/path/to/Iteration01/backup.sh
+# The app writes data/ as this user, so the backup runs as this user too. No
+# root anywhere in the copy path; the only thing root did was mount the disk.
+Nice=10
+IOSchedulingClass=idle

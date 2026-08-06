@@ -24,14 +24,36 @@ It never was a complete one — notes and media were always out — but it used 
 carry your trees and your history, and now it does not. **Everything in the
 table above marked "not tracked" exists in exactly one copy on this disk.**
 
-If it matters, copy it. All of it is ordinary files:
+So there is a backup, and it runs on a timer:
 
 ```bash
-rsync -a data/ /mnt/backup/pgs/ --exclude index.sqlite
+./backup.sh                     # by hand, any time, safe to repeat
+systemctl --user list-timers pgs-backup.timer
+cat /mnt/data/pgs-backup/.last-backup
 ```
 
-That one line covers trees, log, checklist, notes and photographs. The index is
-the only thing you may lose without consequence — it replays from the log.
+`pgs-backup.timer` runs `backup.sh` once a day, `Persistent=true` so a machine
+that was asleep when it was due catches up on the next boot rather than silently
+skipping. It copies everything except `index.sqlite`, which replays from the log
+and is the only thing you may lose without consequence.
+
+Two refusals are built in, because a backup that quietly does nothing is worse
+than no backup at all:
+
+- **It will not write to the same device as your data.** If `/mnt/data` is not
+  mounted it is just an empty directory on the system disk, and a copy there
+  protects nothing. The script exits non-zero and says so.
+- **It never deletes.** No `--delete`, so a truncated log, a tree lost to a
+  misclick or a notes folder wiped by a bad command is *not* mirrored into the
+  backup. The destination only grows, which for a few hundred kilobytes a year
+  is a trade worth making.
+
+The backup disk is `sda2` (ext4, label `data`), mounted at `/mnt/data` — a
+physically separate device from the NVMe that carries `/home`. That protects
+against the system disk failing. It does **not** protect against theft, fire or
+the machine being destroyed; for that, copy `/mnt/data/pgs-backup` somewhere
+off-site, or run `./backup.sh /run/media/you/ssd` against an external disk when
+you plug one in.
 
 Worth knowing what each loss actually costs:
 
@@ -54,10 +76,10 @@ The install script creates `data/` and copies `data/seed/*.toml` into
 tree you deleted in the UI stays deleted, and a tree you edited is never
 reverted by re-running the script.
 
-Then bring your own data across by hand, from wherever you copied it:
+Then bring your own data across from the backup:
 
 ```bash
-rsync -a /mnt/backup/pgs/ data/
+rsync -a /mnt/data/pgs-backup/ data/
 ```
 
 Do that *before* first launch if you want your history intact, and let it
