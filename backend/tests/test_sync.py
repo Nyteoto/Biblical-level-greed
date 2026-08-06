@@ -1,17 +1,23 @@
-"""Two machines, one log.
+"""The append-only streams: what they tolerate, and what they guarantee.
 
-The app is single-machine now, but the same `data/` can still be written from
-more than one checkout and reconciled by `git merge=union`, which concatenates
-both sides of a conflict and preserves neither order nor uniqueness.
+**Tolerance.** The fold has to survive lines arriving **out of order** and
+**more than once**. That requirement began with `git merge=union`, which
+concatenated both sides of a conflict and preserved neither order nor
+uniqueness. The streams are not tracked any more, so that particular source is
+gone — but a restored backup, a copied data directory or an interrupted write
+produce exactly the same shapes, so the tolerance stays and stays pinned. It
+already nearly worked — sessions, completions and phases are last-wins, todos
+are keyed by id — and these tests pin the two places it didn't.
 
-So the fold has to survive lines arriving **out of order** and **more than
-once**. It already nearly did — sessions, completions and phases are all
-last-wins, and todos are keyed by id — and these tests pin the two places it
-didn't.
+**Durability.** Both streams are now the only copy of what they record, so an
+appended line is `fsync`ed rather than merely flushed. That is a design
+commitment and not an implementation detail, which is why it is asserted here:
+dropping the sync would cost nothing visible until a power cut.
 """
 from __future__ import annotations
 
 import json
+import os
 
 from backend.app import config, eventlog, index, state, todos
 
@@ -175,3 +181,53 @@ def test_a_corrupt_index_is_discarded_rather_than_fatal(data_dir):
         assert config.INDEX_PATH.stat().st_size > 0
     finally:
         conn.close()
+
+
+# -- durability --------------------------------------------------------------
+# `flush()` only reaches the kernel's page cache: enough to survive the process
+# dying, not enough to survive the machine losing power. These two files hold
+# the only copy of every session, completion, paid unlock and ticked errand —
+# nothing else stores them, they are not in version control, and rebuilding the
+# index from the log cannot recover a line the log never got. So they sync.
+
+
+def _fsync_counter(monkeypatch):
+    """Count fsyncs, without stopping them actually happening."""
+    calls = []
+    real = os.fsync
+
+    def counting(fd):
+        calls.append(fd)
+        return real(fd)
+
+    monkeypatch.setattr(os, "fsync", counting)
+    return calls
+
+
+def test_an_appended_event_is_synced_not_merely_flushed(data_dir, monkeypatch):
+    calls = _fsync_counter(monkeypatch)
+    eventlog.append("d", "n", eventlog.SESSION, day="2026-07-20")
+    assert calls, (
+        "eventlog.append did not fsync. The log is the only record of a "
+        "session, and a power cut inside the writeback window would lose it."
+    )
+
+
+def test_an_appended_todo_op_is_synced_not_merely_flushed(data_dir, monkeypatch):
+    calls = _fsync_counter(monkeypatch)
+    todos.add("buy strings")
+    assert calls, "todos._append did not fsync"
+
+
+def test_syncing_does_not_change_what_lands_in_the_file(data_dir):
+    """The sync is a durability guarantee and nothing more — same one line,
+    same content, still readable by the ordinary reader."""
+    eventlog.append("d", "n", eventlog.SESSION, day="2026-07-20")
+    eventlog.append("d", "n", eventlog.COMPLETE, day="2026-07-21")
+
+    events, warnings = eventlog.read_all()
+    assert not warnings
+    assert [e["kind"] for e in events] == [eventlog.SESSION, eventlog.COMPLETE]
+
+    path = eventlog.log_path_for("2026-07-20")
+    assert len(path.read_text(encoding="utf-8").strip().splitlines()) == 2

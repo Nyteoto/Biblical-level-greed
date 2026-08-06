@@ -3,6 +3,7 @@ user has done; the SQLite index is a disposable projection of it."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from .config import LOG_DIR, ensure_dirs
@@ -62,6 +63,20 @@ def append(
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False) + "\n")
         handle.flush()
+        # Synced, not merely flushed. `flush()` only moves the bytes into the
+        # kernel's page cache — enough to survive the process dying, which is
+        # the common case, but not enough to survive the machine losing power
+        # before writeback runs some seconds later.
+        #
+        # This file earns the sync where most files would not. It is the only
+        # record of a session, a completion or a paid unlock; XP, level and
+        # streak are a fold over it and are stored nowhere else; and it is not
+        # in version control, so it has exactly one copy. The index is no help
+        # either — SQLite commits durably, but `store.start()` rebuilds it from
+        # this file on every launch, so an event the log lost is lost for good.
+        #
+        # It costs one sync per check-off, on the order of ten a day.
+        os.fsync(handle.fileno())
     return event
 
 

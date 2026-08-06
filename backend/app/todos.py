@@ -20,6 +20,7 @@ honest behaviour: things you meant to do do not stop mattering at midnight.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -51,6 +52,11 @@ def _append(op: str, item_id: str, text: str = "") -> dict:
     with path().open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         handle.flush()
+        # Synced for the same reason as the event log, which `eventlog.append`
+        # sets out in full: this stream is append-only, it is the only copy of
+        # the checklist, and it is not in version control. Ticked items also
+        # score XP, so a lost line is a lost number too.
+        os.fsync(handle.fileno())
     return record
 
 
