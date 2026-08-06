@@ -17,6 +17,12 @@ same kind: a rule that was load-bearing but only discoverable by reading code.
 - **Never `git restore` / `git checkout` anything under `data/`.** It is live
   application state, not source. A whole-file revert destroys real practice
   history. Fix data forward, by hand, one line at a time.
+- **Never put live data back in the repo.** `data/*` is gitignored with exactly
+  one exception, `data/seed/` — the six researched trees, as shipped, read-only
+  reference. The user's own trees, log, checklist, notes and photos are theirs
+  and stay on their disk. Copying a live tree into `data/seed/` pushes it to the
+  remote, which is the thing this arrangement exists to prevent; a test asserts
+  that directory holds those six files and nothing else.
 - **Never edit or delete lines in `data/log/*.jsonl` or `data/todos.jsonl`.**
   Append-only is the core design commitment, not a style preference. Everything
   the UI shows is a fold over these files. A wrong event is corrected by
@@ -29,11 +35,17 @@ same kind: a rule that was load-bearing but only discoverable by reading code.
 The log is the truth. Everything else is a projection.
 
 ```
-data/domains/*.toml ─┐
-                     ├─→ state.py ─→ derived board ─→ API ─→ UI
-data/log/*.jsonl ────┘      ↑
-                     index.sqlite (disposable cache; rebuild() replays the log)
+data/seed/*.toml ── copied once, by install-linux.sh, into ─┐
+                                                            ▼
+                                          data/domains/*.toml ─┐
+                                                               ├─→ state.py ─→ board ─→ API ─→ UI
+                                          data/log/*.jsonl ────┘      ↑
+                                    index.sqlite (disposable cache; rebuild() replays the log)
 ```
+
+Only `data/seed/` is in the repo. Everything to the right of it is the user's,
+lives on one disk, and is gitignored — see SYNC.md, which is the document that
+says what a loss of each file actually costs.
 
 `data/index.sqlite` can be deleted at any moment and reproduced exactly. If a
 value cannot be recomputed from the log plus the TOML, it does not belong in the
@@ -93,9 +105,11 @@ editing frontend source leaves the app serving stale UI until you run
   - Note the history here: XP *used* to be forbidden from affecting the board.
     That rule is gone — `state.py` imports `xp`, and nodes above tier I are
     `sealed` until their price is paid. Older prose asserting otherwise is stale.
-- **`merge=union` on the append-only streams** (`.gitattributes`) is correct
-  there and nowhere else. Domain TOML is explicitly `-merge`. Out-of-order and
-  duplicated lines after a merge are handled *on read* — see `test_sync.py`.
+- **Out-of-order and duplicated log lines are handled *on read*** — events sort
+  by `ts` stably, and the fold is last-wins throughout. See `test_sync.py`. This
+  used to exist for `merge=union` in `.gitattributes`, which is gone now that
+  the streams are untracked; keep the read-side tolerance anyway, because a
+  restored backup or an interrupted write produces the same shapes.
 - **The checklist does not reset daily**, and ticking deletes from the list but
   nothing from the file.
 

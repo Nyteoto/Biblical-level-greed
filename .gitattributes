@@ -1,18 +1,14 @@
-# The append-only streams merge by taking BOTH sides. That is correct here and
-# nowhere else: a log line is an immutable fact, so two machines appending
-# different lines have not conflicted — they have each observed something true.
-# `union` skips the conflict entirely and keeps everything.
+# The append-only streams (`data/log/*.jsonl`, `data/todos.jsonl`) used to be
+# tracked and carried `merge=union`, so two machines appending different lines
+# merged without ever raising a conflict. They are not tracked any more — the
+# repo holds the app, not what you have done with it — so those rules would now
+# apply to nothing, and are removed rather than left here to be believed.
 #
-# Ordering after such a merge is arbitrary, and duplicates are possible. Both
-# are handled on read: events are sorted by timestamp, and the fold is
-# last-wins (sessions, completions, phases), keyed by id (todos) or explicitly
-# deduplicated (journal entries). See backend/tests/test_sync.py.
-data/log/*.jsonl   merge=union
-data/todos.jsonl   merge=union
-
-# Domain files are NOT union-merged: they are structured TOML, and gluing two
-# versions together produces a file that will not parse. Edits are rare and
-# small, so a real conflict here is worth reading by hand.
-data/domains/*.toml -merge
+# The *read-side* handling they relied on is still in place and still earns its
+# keep, because duplicated and out-of-order lines can arrive from any direction
+# and not only from a merge: events sort by `ts`, stably, so a `session, undo,
+# session` inside one second keeps file order and resolves to *checked*, and the
+# fold is last-wins throughout. `backend/tests/test_sync.py` still pins all of
+# it, and should keep doing so.
 
 * text=auto eol=lf

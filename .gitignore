@@ -2,16 +2,27 @@
 node_modules/
 frontend/build/
 frontend/.svelte-kit/
-data/index.sqlite
 __pycache__/
 .pytest_cache/
 
-# What you put INTO the app, as opposed to what the app is. Notes are your
-# writing and media is your photographs; both are private and neither belongs
-# in version control, even in a private repo. Photos have a second reason: a
-# year of daily images is a repo nobody wants to clone.
+# Everything under data/ is content, and content does not go in the repo. The
+# repo holds the app; this machine holds what you have done with it.
 #
-# The consequence is that the repo is NOT a complete backup. These files have
-# one copy unless something else copies them — see SYNC.md.
-data/media/
-data/notes/
+# That means all of it: your trees, because you edit them in the UI and do not
+# want a commit per season switch; the event log and checklist, because they
+# are the record of your practice rather than part of the program; your notes
+# and photographs, because they are private; and the index, because it is a
+# cache that rebuilds from the log.
+#
+# The consequence is that the repo is NOT a backup. Every file below exists in
+# one copy on this disk unless something else copies it — see SYNC.md.
+#
+# Written `data/*` and not `data/` on purpose: git does not descend into an
+# excluded *directory*, so the negation below would never be reached.
+data/*
+
+# ...except the seed trees. These are the six researched curricula as shipped,
+# not your live copies of them: read-only reference material that a fresh clone
+# copies into data/domains/ once, and that `test_shipped_data.py` checks has
+# not silently lost its estimates, gates or entry material.
+!data/seed/

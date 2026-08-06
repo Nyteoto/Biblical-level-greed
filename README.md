@@ -173,19 +173,29 @@ Structural edits rewrite the `.toml`, validated before the write, atomic via
 
 ```
 data/
-  domains/*.toml     hand-authored
-  log/YYYY-MM.jsonl  append-only, one line per click
+  seed/*.toml        the six researched trees, as shipped — the ONLY thing in git
+  domains/*.toml     your trees, hand-authored and rewritten by the UI
+  log/YYYY-MM.jsonl  append-only: every session, completion, phase and unlock
   todos.jsonl        append-only
-  notes/*/*.md       mutable, private — NOT in git
-  media/             images, private — NOT in git
-  index.sqlite       rebuildable cache — NOT in git
+  notes/*/*.md       mutable, private
+  media/             images, private
+  index.sqlite       rebuildable cache — delete it any time
 ```
 
-`notes/` and `media/` are what you put *into* the app; they stay local and have
-one copy unless you back them up yourself. See [SYNC.md](SYNC.md).
+**Only `data/seed/` is version-controlled.** The repo is the app; everything
+else in that tree is what you have done with it, and lives in one copy on your
+disk until you copy it somewhere. `install-linux.sh` seeds `domains/` from
+`seed/` once, into an empty directory, and never again. See [SYNC.md](SYNC.md)
+for what losing each file actually costs.
+
+The log is not a record of clicks — it is where the app's state lives. A ticked
+session *is* a `session` line; unticking appends an `undo` rather than editing
+one, which is why toggling shows up as two lines. XP, level, streak and every
+paid unlock are a fold over that file and are stored nowhere else.
 
 Every event carries a `day` precomputed in GMT+7. Events sort by timestamp,
-stably, so a merged log resolves identically on any machine.
+stably, so duplicated or out-of-order lines resolve identically however they
+arrived.
 
 ## Deliberately absent
 

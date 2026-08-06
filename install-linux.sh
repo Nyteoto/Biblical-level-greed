@@ -10,7 +10,7 @@ say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m  ! %s\033[0m\n' "$*"; }
 ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 
-say "1/5  System packages"
+say "1/6  System packages"
 # pywebview renders through the OS engine rather than bundling one. On Linux
 # that is WebKitGTK plus the PyGObject bindings, both distro packages.
 missing=()
@@ -45,7 +45,7 @@ else
 	exit 1
 fi
 
-say "2/5  Python environment"
+say "2/6  Python environment"
 [ -d .venv ] || python3 -m venv .venv
 .venv/bin/pip install -q --upgrade pip
 .venv/bin/pip install -q -r backend/requirements.txt
@@ -78,12 +78,28 @@ SYS_PY="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 VENV_PY="$(.venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 [ "$SYS_PY" = "$VENV_PY" ] || warn "venv is Python $VENV_PY but system PyGObject is built for $SYS_PY — delete .venv and re-run"
 
-say "3/5  Frontend"
+say "3/6  Data"
+# The repo holds the app, not your practice, so `data/` is created here rather
+# than arriving with the clone. The six researched trees are copied out of
+# data/seed/ — once, and only into an empty directory.
+#
+# Deliberately not a sync, and deliberately not done at startup. A tree you
+# deleted in the UI has to stay deleted, and one you have edited must never be
+# reverted by re-running this script.
+mkdir -p data/domains data/log
+if [ -z "$(ls -A data/domains 2>/dev/null)" ]; then
+	cp data/seed/*.toml data/domains/
+	ok "seeded data/domains/ with $(find data/seed -name '*.toml' | wc -l) trees"
+else
+	ok "data/domains/ already has trees — left untouched"
+fi
+
+say "4/6  Frontend"
 if [ ! -d frontend/node_modules ]; then (cd frontend && npm install --silent); fi
 (cd frontend && npm run build >/dev/null)
 ok "built to frontend/build"
 
-say "4/5  Launcher"
+say "5/6  Launcher"
 BIN="$HOME/.local/bin"
 APPS="$HOME/.local/share/applications"
 mkdir -p "$BIN" "$APPS"
@@ -110,7 +126,7 @@ EOF
 update-desktop-database "$APPS" 2>/dev/null || true
 ok "$APPS/pgs.desktop"
 
-say "5/5  Check"
+say "6/6  Check"
 .venv/bin/python -m pytest backend/tests -q 2>&1 | tail -1
 
 cat <<EOF
