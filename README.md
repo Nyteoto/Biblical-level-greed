@@ -113,41 +113,58 @@ declaring none, an undeclared strand, `season.state = "off"` where nodes decay.
 
 Each domain reports its estimating bias as a ratio of totals over settled nodes.
 
-## Journal, notes, checklist
+## Notes, checklist
 
-- **journal** — one entry per node per day, written at day's end. Keyed by day,
-  so writing again revises it; the log keeps every version.
-- **notes** — `data/notes/<domain>/<node>.md`. Mutable markdown, full screen.
-  Photos from iOS append here.
+- **notes** — `data/notes/<domain>/<slug>.md`. A domain owns a folder of freely
+  titled markdown documents, mutable and hand-editable. Photos append here.
+  There is no separate journal: a thing you write while working is both the
+  knowledge and the record, and having to choose was friction. Old per-node
+  files carry over as notes titled after their filename.
 - **checklist** — errands. No tier, no gate. Ticking removes; never resets.
 
 ## Levels and XP
 
-Breaks the no-scoring rule, contained by one constraint: **XP never changes
-what the board shows.** Read-only fold over the log, stored nowhere; a test
-asserts `state` does not import `xp`.
+XP began as decoration under the rule that it must never change what the board
+shows. That rule is gone: **starting a node above tier I costs XP**, so a node
+whose prerequisites are all met still reads `sealed` until it is paid for.
+
+What survives is the half worth keeping — an asymmetry:
+
+- **Earning is derived.** A read-only fold over the log, stored nowhere, so
+  retuning a constant re-scores all history with no migration.
+- **Spending is recorded.** The price is written into the `unlock` event, so
+  retuning tomorrow cannot make yesterday's purchase unaffordable. There is no
+  refund; spending is the one permanent toggle in the app.
+
+Two pools: `earned` is lifetime and drives the level, never going down. `bank`
+is earned minus spent, and is what you actually buy with.
 
 ```
-SESSION_XP × tier multiplier × streak multiplier × spread multiplier
+SESSION_XP × tier × streak × focus
 ```
 
-Defaults in `backend/app/xp.py`: 10/session, +15%/tier, +2%/day streak capped
-at +50%, −15% per acquiring domain beyond 2 (floored at 40%), todos flat 2 with
-no multipliers. Spread counts only `high`-season domains — upkeep is not
-spreading.
+Defaults in `backend/app/xp.py`: 8/session, +15%/tier, +2%/day streak capped at
++50%, focus +25% while acquiring in ≤2 domains and shrinking from there to a
+floor of 50%. Todos are flat 2 with no multipliers — errands should not farm a
+practice bonus. Focus counts only `high`-season domains; upkeep is not spread.
+
+`sleep` and `movement` in the foundation domain earn at double streak rate and
+buff everything else once held a fortnight. Nothing else compounds like sleeping
+properly, so nothing else is paid like it.
 
 ## API
 
 | | |
 |---|---|
-| GET | `/api/dashboard`, `/api/domains`, `/api/domains/{id}`, `/api/active` |
-| POST | `.../nodes/{n}/session` `/phase` `/complete` `/journal` |
-| GET/PUT | `.../nodes/{n}/note` |
-| POST | `/api/media?domain=&node=&caption=` · GET `/media/{path}` |
+| GET | `/api/health`, `/api/storage`, `/api/dashboard`, `/api/domains`, `/api/domains/{id}` |
+| POST | `.../nodes/{n}/session` `/complete` `/phase` `/unlock` |
+| notes | GET/POST `/api/domains/{id}/notes` · GET/PUT/DELETE `.../notes/{slug}` |
+| tools | GET/POST `/api/domains/{id}/tools` · PATCH/DELETE `.../tools/{tool_id}` |
+| media | POST `/api/media?domain=&node=&caption=` · GET `/media/{path}` |
 | POST | `/api/domains/{id}/season` |
 | POST/DELETE | `/api/todos`, `/api/todos/{id}` |
 | POST | `/api/admin/reindex`, `/api/admin/reload` |
-| CRUD | `/api/domains`, `.../nodes`, `.../edges`, `.../reorder` |
+| CRUD | `/api/domains`, `.../nodes`, `.../edges`, `.../reorder` (POST/PATCH/DELETE) |
 
 Structural edits rewrite the `.toml`, validated before the write, atomic via
 `os.replace`. **Comments in the file do not survive a UI edit.**
@@ -159,10 +176,13 @@ data/
   domains/*.toml     hand-authored
   log/YYYY-MM.jsonl  append-only, one line per click
   todos.jsonl        append-only
-  notes/*/*.md       mutable
-  media/             images — NOT in git
+  notes/*/*.md       mutable, private — NOT in git
+  media/             images, private — NOT in git
   index.sqlite       rebuildable cache — NOT in git
 ```
+
+`notes/` and `media/` are what you put *into* the app; they stay local and have
+one copy unless you back them up yourself. See [SYNC.md](SYNC.md).
 
 Every event carries a `day` precomputed in GMT+7. Events sort by timestamp,
 stably, so a merged log resolves identically on any machine.

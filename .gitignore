@@ -6,7 +6,12 @@ data/index.sqlite
 __pycache__/
 .pytest_cache/
 
-# Photos. Deliberately NOT tracked: a year of daily images is a repo nobody
-# wants to clone. The consequence is that the repo stops being a complete
-# backup — these files have one copy unless something else copies them.
+# What you put INTO the app, as opposed to what the app is. Notes are your
+# writing and media is your photographs; both are private and neither belongs
+# in version control, even in a private repo. Photos have a second reason: a
+# year of daily images is a repo nobody wants to clone.
+#
+# The consequence is that the repo is NOT a complete backup. These files have
+# one copy unless something else copies them — see SYNC.md.
 data/media/
+data/notes/
