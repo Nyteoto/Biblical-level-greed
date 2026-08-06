@@ -148,10 +148,6 @@ class NodePatch(BaseModel):
     metric_target: int | None = None
 
 
-class NoteIn(BaseModel):
-    text: str
-
-
 class EdgeIn(BaseModel):
     source: str  # the prerequisite
     target: str  # the node that now requires it

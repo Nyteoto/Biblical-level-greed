@@ -306,7 +306,6 @@ def build(
     # worth themselves and how much everything else is buffed that day, so they
     # have to be scored before anything can be multiplied by them.
     scores: dict[str, DayScore] = {}
-    substrate_streak_on: dict[str, int] = {}
 
     for key in substrate_keys:
         model = nodes_by_key.get(key)
@@ -373,7 +372,6 @@ def build(
             score.todo += TODO_XP
             score.todos += 1
 
-    del substrate_streak_on
     # Streaks run over days that contain *sessions*. A day of nothing but
     # ticked errands does not keep a practice streak alive.
     practice_days = sorted(d for d, s in scores.items() if s.sessions)

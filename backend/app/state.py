@@ -69,9 +69,10 @@ def _fold(rows: list[sqlite3.Row]) -> dict[str, NodeFacts]:
     """
     per_day: dict[tuple[str, str], str] = {}  # (node, day) -> session|undo
     completion: dict[str, tuple[str, str]] = {}  # node -> (complete|reopen, day)
-    # One reflection per node per day. Keyed like the session toggle, so the
-    # last thing written that day is what stands — which lets you revise this
-    # evening's entry without the log ever losing what you first wrote.
+    # Each phase of a project is its own independent toggle, keyed by name
+    # rather than by day: a phase is a piece of the work, not something you do
+    # daily, so the last event for that phase is what stands however long ago
+    # it was written.
     per_phase: dict[tuple[str, str], str] = {}  # (node, phase) -> phase|phase_undo
     facts: dict[str, NodeFacts] = {}
 

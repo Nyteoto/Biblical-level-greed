@@ -1,5 +1,14 @@
-"""Reads domain TOML files. These files are the source of truth and the app
-never writes them back."""
+"""Reads and validates domain TOML files. Never writes: that is `writer.py`.
+
+These files are the source of truth for a tree's *structure*, but they are not
+read-only. A structural edit in the UI regenerates the whole file, so anything
+outside the schema — comments especially — does not survive one. That is why
+rationale lives in `docs/` and never in the trees.
+
+The files are also hand-authored, which is why the validation below is as
+loud as it is, and why `load_all` treats any malformed file as that file's
+problem alone.
+"""
 from __future__ import annotations
 
 import tomllib

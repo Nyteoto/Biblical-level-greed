@@ -69,9 +69,14 @@ class Store:
     def dashboard(self) -> dict:
         with self._lock:
             payload = state.build_dashboard(self.conn, self.domains, self.errors)
-            # Derived alongside, stored nowhere, and deliberately not passed
-            # into build_dashboard: XP must never be able to change what the
-            # board decided to show.
+            # Derived alongside the board, and stored nowhere.
+            #
+            # This used to carry a rule that XP could never affect what the
+            # board showed. That rule is gone: `state.py` imports `xp` and
+            # seals every node above tier I until its price is paid. What is
+            # left is narrower — the *totals* below are a read-only fold, so
+            # retuning a constant in `xp.py` re-scores all history at once and
+            # needs no migration.
             payload["xp"] = xp.build(self.conn, self.domains)
         payload["version"] = self.version
         return payload

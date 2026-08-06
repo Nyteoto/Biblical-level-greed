@@ -56,8 +56,13 @@ system.
 | `xp.py` | earning (derived) and prices (recorded). See below. |
 | `store.py` | holds loaded domains + index connection, serialises access, bumps `version`. |
 | `foundation.py` | the `mementomori` domain, compiled in rather than loaded. |
+| `watcher.py` | re-reads the TOML when it changes on disk, so hand-edits land without a restart. |
 | `notes.py` `media.py` `tools.py` `todos.py` `storage.py` | per-feature, self-describing docstrings. |
 | `main.py` | thin FastAPI layer: parse, call the store, return derived state. |
+
+`desktop.py` sits at the repo root, outside the table: it is the packaged
+entrypoint, not part of the app. It picks a free loopback port, starts uvicorn
+and points a WebKitGTK window at it. Nothing else imports it.
 
 Every module opens with a docstring explaining *why it is shaped that way*.
 Read it before editing that module — the rationale is usually load-bearing and
@@ -104,7 +109,7 @@ the one acknowledged gap.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 254 tests, ~1s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 263 tests, ~1s. Run them.
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend
