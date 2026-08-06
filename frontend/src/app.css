@@ -56,6 +56,27 @@ main {
 	padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* How much room a full-height page actually has.
+   The three rules above add the insets back as padding but nothing subtracted
+   them again, so a page asking for `100vh - 2.75rem` was that much taller than
+   the screen: on iOS the overflow pushed anything docked to the bottom — the
+   tool shelf — under the fold, while desktop looked fine because its insets are
+   all 0. Subtract the same chrome that gets added, in one place, so no page has
+   to re-derive it.
+
+   `dvh` rather than `vh`: `vh` is the *largest* the viewport can be, which on
+   iOS is the size with the browser chrome retracted, not the size on screen. */
+:root {
+	/* The h-11 tab bar in +layout.svelte, plus its 1px bottom border. Leaving
+	   the border out left the page one pixel taller than the screen, which is
+	   invisible but enough to make iOS rubber-band on every drag. */
+	--tabbar-height: calc(2.75rem + 1px);
+	--content-height: calc(
+		100dvh - var(--tabbar-height) - env(safe-area-inset-top) -
+			env(safe-area-inset-bottom)
+	);
+}
+
 /* Touch targets: a 10px scrollbar is a mouse affordance, and on iOS the
    overlay scrollbar is drawn by the OS anyway. */
 @media (pointer: coarse) {

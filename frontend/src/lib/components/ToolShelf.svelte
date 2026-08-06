@@ -193,7 +193,7 @@
 		></button>
 
 		<div
-			class="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border border-stone-800 bg-[#171310] shadow-2xl"
+			class="relative max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-sm border border-stone-800 bg-[#171310] shadow-2xl"
 		>
 			<div class="flex items-start gap-4 border-b border-stone-800 p-5">
 				<button

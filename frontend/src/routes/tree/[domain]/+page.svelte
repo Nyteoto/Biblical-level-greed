@@ -269,7 +269,7 @@
 	}}
 />
 
-<div class="relative flex h-[calc(100vh-2.75rem)]">
+<div class="relative flex h-[var(--content-height)]">
 	<DomainRail {domains} current={domainId} oncreate={() => (creatingDomain = true)} />
 
 	<section class="flex min-w-0 flex-1 flex-col">

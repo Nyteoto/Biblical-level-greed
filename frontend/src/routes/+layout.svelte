@@ -22,7 +22,7 @@
 	<title>Personal Growth System</title>
 </svelte:head>
 
-<div class="flex min-h-screen flex-col bg-[#14100c] text-stone-300">
+<div class="flex min-h-dvh flex-col bg-[#14100c] text-stone-300">
 	<!-- Centred uppercase tabs, as in the reference. -->
 	<header class="relative border-b border-black/60 bg-gradient-to-b from-[#20191200] to-[#00000060]">
 		<div class="flex h-11 items-stretch justify-center gap-1">
