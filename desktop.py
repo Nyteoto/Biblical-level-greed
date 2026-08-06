@@ -53,11 +53,12 @@ def wait_until_up(port: int, timeout: float = 30.0) -> bool:
     return False
 
 
+# Linux only, as the rest of the app is. The Windows path that used to be here
+# survived both Windows-removal commits by being a string nobody grepped for.
 TAILSCALE_BINARIES = (
     "tailscale",
-    r"C:\Program Files\Tailscale\tailscale.exe",
     "/usr/bin/tailscale",
-    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    "/usr/local/bin/tailscale",
 )
 
 
@@ -101,10 +102,24 @@ def serve(port: int, host: str = "127.0.0.1") -> tuple["uvicorn.Server", threadi
         app, host=host, port=port, log_level="warning", access_log=False
     )
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True, name="pgs-server")
+
+    # Anything raised during startup dies inside this thread, where nobody sees
+    # it: the caller only learns that /api/health never answered, which reads
+    # as "the app is broken" for what is usually an unmounted --data-dir or a
+    # port that is already taken. Keep the exception and report it instead.
+    def run() -> None:
+        try:
+            server.run()
+        except BaseException as exc:  # noqa: BLE001 — re-raised by the caller
+            startup_error.append(exc)
+            raise
+
+    startup_error: list[BaseException] = []
+    thread = threading.Thread(target=run, daemon=True, name="pgs-server")
     thread.start()
     # The thread is returned, not discarded, because the process must not begin
     # interpreter shutdown while it is still running. See shutdown().
+    server.startup_error = startup_error  # type: ignore[attr-defined]
     return server, thread
 
 
@@ -218,7 +233,28 @@ def main() -> int:
 
     if not wait_until_up(port):
         shutdown(server, thread)
-        print(f"server did not come up on {port}", file=sys.stderr)
+        failure = getattr(server, "startup_error", [])
+        if failure and isinstance(failure[0], SystemExit):
+            # uvicorn logs the real reason (a taken port, usually) and then
+            # exits, so the cause is already on stderr just above this.
+            print(
+                f"server exited during startup — see the error above. "
+                f"If the port is taken, drop `--port {port}` and let it pick "
+                f"a free one.",
+                file=sys.stderr,
+            )
+        elif failure:
+            exc = failure[0]
+            print(
+                f"server failed to start: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"server did not come up on {port} within 30s, and did not "
+                "report an error. Try `./run.sh` to see the full log.",
+                file=sys.stderr,
+            )
         return 1
 
     if args.headless:

@@ -615,3 +615,34 @@ def test_a_diy_tool_can_still_record_what_it_cost(data_dir):
     made = tools.add("guitar", {"name": "Cable", "price_kind": "diy", "price": "~$12 in parts"})
     assert made["price_kind"] == "diy"
     assert made["price"] == "~$12 in parts"
+
+
+def test_a_disk_that_cannot_be_written_says_so(write_domain, monkeypatch):
+    """A full disk, an unmounted --data-dir or a directory that lost its
+    permissions are not bugs, and they used to surface as a bare 500 — which
+    tells the user the app is broken when the app is fine and the disk is not.
+    """
+    from fastapi.testclient import TestClient
+
+    from backend.app import eventlog
+    from backend.app.main import app
+    from backend.app.store import store
+
+    write_domain(
+        "d",
+        'id = "d"\ntitle = "D"\npriority = 1\n\n'
+        '[[node]]\nid = "n"\ntitle = "N"\ntier = 1\nestimate = 2\n',
+    )
+
+    def no_room(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        store.reload_domains()
+        monkeypatch.setattr(eventlog, "append", no_room)
+        r = client.post("/api/domains/d/nodes/n/session")
+
+    assert r.status_code == 507, r.text
+    detail = r.json()["detail"]
+    assert "No space left on device" in detail
+    assert "Nothing was saved" in detail

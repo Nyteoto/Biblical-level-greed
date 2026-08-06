@@ -24,11 +24,41 @@ CREATE INDEX IF NOT EXISTS events_by_day  ON events (day);
 """
 
 
-def connect(path: Path | None = None) -> sqlite3.Connection:
-    ensure_dirs()
+def _open(target: Path) -> sqlite3.Connection | None:
+    """Connect and prove the file is actually a database.
+
+    `sqlite3.connect` opens anything — it does not read the file until the
+    first statement, so a corrupt index surfaces later as an error from
+    whatever query happened to run first. Probe it here instead.
+    """
     # Handlers run in FastAPI's threadpool; Store serialises access with a lock.
-    conn = sqlite3.connect(path or INDEX_PATH, check_same_thread=False)
+    conn = sqlite3.connect(target, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    except sqlite3.DatabaseError:
+        conn.close()
+        return None
+    return conn
+
+
+def connect(path: Path | None = None) -> sqlite3.Connection:
+    """Open the index, discarding it if it is unreadable.
+
+    Deleting is always the right answer here and never costs anything: this
+    file holds nothing that is not derived from the log, and `rebuild()`
+    reproduces it exactly. Refusing to start because a disposable cache went
+    bad would strand the user outside an app whose data is fine — and outside
+    the very UI that would let them fix it.
+    """
+    ensure_dirs()
+    target = Path(path or INDEX_PATH)
+    conn = _open(target)
+    if conn is None:
+        target.unlink(missing_ok=True)
+        conn = _open(target)
+        if conn is None:  # a fresh file that still will not open: not our bug
+            raise sqlite3.DatabaseError(f"cannot create an index at {target}")
     return conn
 
 

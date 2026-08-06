@@ -152,3 +152,26 @@ def test_journal_events_survive_in_the_log_but_surface_nowhere(write_domain, vie
     _write_lines([_event("10:00:00", eventlog.JOURNAL, text="tried the new fingering")])
     node = view("d")["nodes"][0]
     assert "journal" not in node
+
+
+def test_a_corrupt_index_is_discarded_rather_than_fatal(data_dir):
+    """The index is disposable by design — SYNC.md tells the user to delete it
+    whenever anything looks wrong. A corrupt one used to make that impossible:
+    the app died on the first query with `file is not a database`, before the
+    UI that would have let them fix it ever came up.
+
+    A truncated write, a half-finished copy or a sync collision all produce
+    this file, and none of them touch the log, so the data is fine. Discard and
+    replay.
+    """
+    from backend.app import config, index
+
+    config.INDEX_PATH.write_bytes(b"not a database, not even a little")
+
+    conn = index.connect()
+    try:
+        indexed, _ = index.rebuild(conn)
+        assert indexed == 0  # empty log in this fixture, but it opened at all
+        assert config.INDEX_PATH.stat().st_size > 0
+    finally:
+        conn.close()

@@ -6,10 +6,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import edits, eventlog, media, notes, storage, todos, tools, watcher, xp
+from . import config, edits, eventlog, media, notes, storage, todos, tools, watcher, xp
 from .config import ROOT
 from .media import MediaError
 from .models import DomainError
@@ -43,6 +43,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(OSError)
+async def _disk_trouble(request: Request, exc: OSError) -> JSONResponse:
+    """Every write in this app ends at a file, so every write can fail for
+    reasons that are not bugs: a full disk, a `--data-dir` on a volume that is
+    not mounted, a directory that lost its permissions.
+
+    Handled centrally rather than at each call site because the answer is the
+    same everywhere and the alternative is a bare 500 — which tells the user
+    the app is broken when in fact their disk is. The UI prints `detail`, so
+    this is what they will read.
+    """
+    return JSONResponse(
+        status_code=507,
+        content={
+            "detail": (
+                f"cannot write to {config.DATA_DIR}: {exc.strerror or exc}. "
+                "Nothing was saved. Check the disk is mounted, has space, and "
+                "is writable."
+            )
+        },
+    )
 
 
 class Toggle(BaseModel):

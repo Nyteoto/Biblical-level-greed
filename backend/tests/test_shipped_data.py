@@ -19,7 +19,21 @@ import pytest
 from backend.app import config
 
 REPO_DOMAINS = Path(__file__).resolve().parents[2] / "data" / "domains"
-FILES = sorted(REPO_DOMAINS.glob("*.toml"))
+
+# Named, not globbed. `data/domains/` is a live directory: it is where a domain
+# the user creates in the app lands, so globbing it made the suite fail for the
+# ordinary act of using the app — an empty new tree has no nodes, no gates and
+# no entry material, and tripped four assertions at once. These tests are about
+# the six researched trees, which are a fixed list.
+SHIPPED = (
+    "chinese",
+    "drumming",
+    "electrical-engineering",
+    "filmmaking",
+    "guitar",
+    "software-dev",
+)
+FILES = [REPO_DOMAINS / f"{name}.toml" for name in SHIPPED]
 
 # Loaded directly off disk rather than through the fixtures, which point at a
 # throwaway data directory.
@@ -34,7 +48,8 @@ def _load(path: Path):
 
 
 def test_the_shipped_trees_exist():
-    assert len(FILES) == 6, [f.name for f in FILES]
+    missing = [p.name for p in FILES if not p.is_file()]
+    assert not missing, f"shipped tree(s) gone from data/domains/: {missing}"
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
