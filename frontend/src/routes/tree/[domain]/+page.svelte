@@ -6,6 +6,7 @@
 	import DomainRail from '$lib/components/DomainRail.svelte';
 	import NodeForm from '$lib/components/NodeForm.svelte';
 	import NodePanel from '$lib/components/NodePanel.svelte';
+	import NodeSearch from '$lib/components/NodeSearch.svelte';
 	import NotesFolder from '$lib/components/NotesFolder.svelte';
 	import ToolShelf from '$lib/components/ToolShelf.svelte';
 	import {
@@ -112,6 +113,21 @@
 		await run(async () => {
 			const res = await unlockNode(domainId, node.id);
 			setXp(res.xp);
+		});
+	}
+
+	/** Open a node the search found, and bring its card into view.
+	 *
+	 * Selecting alone is not enough: the match is usually the reason you cannot
+	 * find the node by eye, so it is often scrolled off the canvas. Deferred a
+	 * frame because a node in a collapsed or freshly rendered tier may not have
+	 * its element in `cards` until after this update paints. */
+	function revealNode(id: string) {
+		linking = null;
+		selected = id;
+		openNote = false;
+		requestAnimationFrame(() => {
+			cards[id]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
 		});
 	}
 
@@ -310,6 +326,15 @@
 					</span>
 				{/if}
 			</p>
+
+			{#if view}
+				<NodeSearch
+					nodes={view.nodes}
+					tone={a.text}
+					accent={a.border}
+					onpick={revealNode}
+				/>
+			{/if}
 
 			{#if linking}
 				<p
