@@ -24,3 +24,7 @@
 {"ts": "2026-07-20T20:11:09+07:00", "day": "2026-07-20", "domain": "electrical-engineering", "node": "calculus-single", "kind": "undo"}
 {"ts": "2026-07-20T23:51:19+07:00", "day": "2026-07-20", "domain": "chinese", "node": "pinyin-tones", "kind": "complete"}
 {"ts": "2026-07-20T23:51:20+07:00", "day": "2026-07-20", "domain": "chinese", "node": "pinyin-tones", "kind": "reopen"}
+{"ts": "2026-07-25T13:28:07+07:00", "day": "2026-07-25", "domain": "mementomori", "node": "movement", "kind": "session"}
+{"ts": "2026-07-25T13:28:08+07:00", "day": "2026-07-25", "domain": "mementomori", "node": "movement", "kind": "undo"}
+{"ts": "2026-07-25T13:28:11+07:00", "day": "2026-07-25", "domain": "mementomori", "node": "movement", "kind": "session"}
+{"ts": "2026-07-25T13:28:12+07:00", "day": "2026-07-25", "domain": "mementomori", "node": "movement", "kind": "undo"}
