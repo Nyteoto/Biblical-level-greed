@@ -34,6 +34,25 @@ def data_dir() -> Path:
 
 
 @pytest.fixture
+def capture_store():
+    """A clean capture app: its own log and index, thrown away between tests.
+
+    Separate from `data_dir` because capture is a separate app — it shares the
+    data root and nothing else, and a test of one must not have to know what
+    the other keeps on disk.
+    """
+    from backend.capture import config as capture_config
+    from backend.capture.store import Store
+
+    shutil.rmtree(capture_config.CAPTURE_DIR, ignore_errors=True)
+    capture_config.ensure_dirs()
+    store = Store()
+    store.start()
+    yield store
+    store.close()
+
+
+@pytest.fixture
 def write_domain(data_dir: Path):
     def _write(name: str, body: str) -> None:
         (config.DOMAINS_DIR / f"{name}.toml").write_text(body, encoding="utf-8")

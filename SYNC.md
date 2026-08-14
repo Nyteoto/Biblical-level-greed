@@ -14,6 +14,8 @@ except one read-only directory of reference trees:
 | `notes/*/*.md` | your writing · **not tracked** |
 | `media/` | your photographs · **not tracked** |
 | `index.sqlite` | a rebuildable cache · **not tracked**, delete it any time |
+| `capture/log/YYYY-MM.jsonl` | every line Trophic captured, append-only · **not tracked** |
+| `capture/index.sqlite` | ditto, rebuildable · **not tracked** |
 
 So `git add -A && git commit && git push` now pushes code and nothing else. You
 never need to commit in order to practise, and a season switch is not a diff.
@@ -35,7 +37,9 @@ cat /mnt/data/pgs-backup/.last-backup
 `pgs-backup.timer` runs `backup.sh` once a day, `Persistent=true` so a machine
 that was asleep when it was due catches up on the next boot rather than silently
 skipping. It copies everything except `index.sqlite`, which replays from the log
-and is the only thing you may lose without consequence.
+and is the only thing you may lose without consequence. The exclude has no
+leading slash, so it covers `capture/index.sqlite` too — both apps' caches are
+skipped and both apps' logs are copied.
 
 Two refusals are built in, because a backup that quietly does nothing is worse
 than no backup at all:
@@ -63,7 +67,8 @@ Worth knowing what each loss actually costs:
 | `domains/` | your trees. Re-seedable from `data/seed/`, but any edit you made since is gone. |
 | `notes/`, `media/` | your writing and your photographs. **Unrecoverable.** |
 | `todos.jsonl` | the checklist and its history. |
-| `index.sqlite` | nothing. It rebuilds on next start. |
+| `capture/log/` | every thought you ever captured in Trophic. The tags, times and patterns are derived from those lines, so they go too. **Unrecoverable.** |
+| `index.sqlite`, `capture/index.sqlite` | nothing. They rebuild on next start. |
 
 ## Moving to a new machine
 

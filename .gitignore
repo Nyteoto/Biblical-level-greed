@@ -26,3 +26,18 @@ data/*
 # copies into data/domains/ once, and that `test_shipped_data.py` checks has
 # not silently lost its estimates, gates or entry material.
 !data/seed/
+
+# The Trophic porting bundle: a copy of another repo's source, its schema, its
+# UI notes and 2058 golden fixtures. Read once, ported from, and not part of
+# this program — so it stays a local working copy rather than 17k lines of
+# someone else's TypeScript in this history.
+#
+# The cost is real and worth knowing: `golden/verify_golden.py` lives inside
+# it, so the port's oracle — and the parser adapter already wired into it —
+# exist only on this disk. TROPHIC.md records where to fetch the bundle again
+# and what to re-wire if it is ever re-copied.
+#
+# Leading slash, and it matters: an unanchored `trophic/` matches a directory
+# of that name at *any* depth, which silently excluded the entire ported UI in
+# frontend/src/lib/trophic/ and frontend/src/routes/trophic/.
+/trophic/

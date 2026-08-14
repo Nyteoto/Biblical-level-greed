@@ -1,0 +1,110 @@
+/* Trophic's animation vocabulary, ported from the source's globals.css.
+ *
+ * CAPTURE-BAR.md is explicit that these are tuned numbers rather than
+ * defaults, and that normalising them onto duration tokens is exactly the
+ * cleanup that would destroy the feel. They are copied here unchanged; only
+ * the colours moved (see colors.ts).
+ *
+ * Scoped by hand with a .trophic prefix where a rule could leak — the tech
+ * tree shares this document, and neither app should be able to restyle the
+ * other. The @keyframes are global by nature and named distinctly enough.
+ */
+
+@keyframes caret-blink {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+}
+
+/* Note the asymmetry with caret-blink: a caret is binary and goes to 0, a
+   hint breathes and only dips to 0.3. */
+@keyframes onboard-blink {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.3;
+	}
+}
+
+/* A damped lateral oscillation, not a symmetric wobble. The decay is the
+   point: a uniform shake reads as a glitch, a damped one as a refusal. */
+@keyframes indicator-shake {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	15% {
+		transform: translateX(-4px);
+	}
+	30% {
+		transform: translateX(4px);
+	}
+	45% {
+		transform: translateX(-3px);
+	}
+	60% {
+		transform: translateX(3px);
+	}
+	75% {
+		transform: translateX(-1px);
+	}
+	90% {
+		transform: translateX(1px);
+	}
+}
+
+/* Entries arrive from the left. They do not just appear. */
+@keyframes entry-fade-in {
+	from {
+		opacity: 0;
+		transform: translateX(-12px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+/* Idle dim. Copied byte-for-byte from the source, and note which way round it
+   actually runs: a CSS transition is read off the state being entered, so
+   adding .dimmed animates to opacity 0 over THIRTY SECONDS, and removing it
+   comes back in 0.4s. The chrome bleeds away so slowly you never see it go,
+   and returns the instant you move.
+
+   CAPTURE-BAR.md's table describes this the other way round (0.4s out, 30s
+   back) — the prose is wrong about the direction, the CSS is not, and the CSS
+   is what shipped. Verified by rendering: 3s after the class lands, computed
+   opacity is still 0.99. */
+.ui-dim {
+	opacity: 1;
+	transition: opacity 0.4s ease-out;
+}
+.ui-dim.dimmed {
+	opacity: 0;
+	transition: opacity 30s ease-in;
+}
+
+.trophic-scrollbar-hide::-webkit-scrollbar {
+	display: none;
+}
+.trophic-scrollbar-hide {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.trophic *,
+	.trophic *::before,
+	.trophic *::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

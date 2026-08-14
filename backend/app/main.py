@@ -9,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from backend.capture.api import router as capture_router
+from backend.capture.store import store as capture_store
+
 from . import config, edits, eventlog, media, notes, storage, todos, tools, watcher, xp
 from .config import ROOT
 from .media import MediaError
@@ -24,6 +27,9 @@ BUILD_DIR = ROOT / "frontend" / "build"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     store.start()
+    # capture is a sibling app sharing this process: its own log, its own
+    # index, no shared state with the tree beyond the data root.
+    capture_store.start()
     observer = watcher.start(store)
     try:
         yield
@@ -31,6 +37,7 @@ async def lifespan(app: FastAPI):
         observer.stop()
         observer.join(timeout=2)
         store.close()
+        capture_store.close()
 
 
 app = FastAPI(title="Personal Growth System", version="0.1.0", lifespan=lifespan)
@@ -628,6 +635,10 @@ def reindex() -> dict:
 def reload_domains() -> dict:
     store.reload_domains()
     return {"domains": len(store.domains), "errors": store.errors}
+
+
+# Mounted before the SPA catch-all, like every other /api route.
+app.include_router(capture_router)
 
 
 # Serve the built frontend last so it never shadows /api. The catch-all returns

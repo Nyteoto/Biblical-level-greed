@@ -236,7 +236,20 @@ def test_every_endpoint_notes_and_media_need_is_registered():
     it actually has."""
     from backend.app.main import app
 
-    paths = {r.path for r in app.routes}
+    # `include_router` (capture's routes) contributes an entry that holds
+    # routes rather than being one, so this has to descend rather than assume
+    # every child of `app.routes` has a path of its own.
+    def paths_of(routes) -> set[str]:
+        found: set[str] = set()
+        for route in routes:
+            if hasattr(route, "path"):
+                found.add(route.path)
+            included = getattr(route, "original_router", None)
+            found |= paths_of(getattr(included, "routes", ()))
+            found |= paths_of(getattr(route, "routes", ()))
+        return found
+
+    paths = paths_of(app.routes)
     for required in (
         "/api/media",
         "/media/{relative:path}",

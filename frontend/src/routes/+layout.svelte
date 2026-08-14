@@ -8,9 +8,13 @@
 
 	// The Manual lives under Settings now. It is read closely once and skimmed
 	// rarely after that, which does not earn a permanent tab.
+	// Trophic is a second app living in this shell: its own log, its own index,
+	// its own layout and interaction rules under /trophic. It gets a tab and
+	// nothing else — the two share a data root and a process, not a model.
 	const tabs = [
 		{ href: '/', label: 'Today' },
 		{ href: '/tree', label: 'Tech Tree' },
+		{ href: '/trophic', label: 'Trophic' },
 		{ href: '/settings', label: 'Settings' }
 	];
 

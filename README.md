@@ -6,6 +6,10 @@ right now, and for how long?**
 Linux only. The in-app **Manual** tab explains the model and why it is shaped
 this way; this file is reference.
 
+The **Trophic** tab is a second app sharing this one's shell and disk — a
+syntax-driven capture bar and a log of what it caught. It is documented in
+[TROPHIC.md](TROPHIC.md) and summarised under [Trophic](#trophic) below.
+
 ## Install
 
 ```bash
@@ -180,6 +184,9 @@ data/
   notes/*/*.md       mutable, private
   media/             images, private
   index.sqlite       rebuildable cache — delete it any time
+  capture/           Trophic's, and only Trophic's:
+    log/YYYY-MM.jsonl  append-only: every captured line, every tick
+    index.sqlite       rebuildable cache — delete it any time
 ```
 
 **Only `data/seed/` is version-controlled.** The repo is the app; everything
@@ -197,9 +204,40 @@ Every event carries a `day` precomputed in GMT+7. Events sort by timestamp,
 stably, so duplicated or out-of-order lines resolve identically however they
 arrived.
 
+## Trophic
+
+A second app under its own tab, being ported from a Next.js/Postgres original.
+Type a line; three triggers and two directives are parsed out of it:
+
+| | | |
+|---|---|---|
+| `<pointer>` | folder / project tag | `<career>`, `<the backup-system>` |
+| `{time-link}` | a temporal marker | `{q3}`, `{31/12/26}` |
+| `\pattern` | counted sentiment | `\win`, `\burnout` |
+| `--folder` | file it there; stripped from the text | `--work-log` |
+| `--todo` | that line becomes a checkbox | |
+
+Plain words are ignored by design, and the raw line is stored verbatim. Enter
+sends, Shift+Enter is a newline, Tab takes the autocomplete, and `--folders`
+opens the log.
+
+Same architecture as the tree: `data/capture/log/*.jsonl` is append-only truth,
+`data/capture/index.sqlite` is a projection you can delete. Everything the
+parser finds — folders, times, patterns, the cleaned text, the todo lines — is
+derived on replay and is *not* in the log, so improving the parser improves
+every entry you have ever written. Ticking a checkbox appends a `check`; it
+edits nothing.
+
+| | |
+|---|---|
+| GET | `/api/capture/entries?date=` `?from=&to=` `&limit=`, `/dates`, `/vocab`, `/cumulative?up_to=`, `/health` |
+| POST | `/api/capture/entries` |
+| PATCH | `/api/capture/entries/{id}` — `{"toggle_line": n}` |
+
 ## Deliberately absent
 
 Timers, minute tracking, notifications, multi-user, auth, editing the log, and
-anything adaptive. Metric readings are stored and drawn, never interpreted.
+anything adaptive. Metric readings are stored and drawn, never interpreted —
+which now covers Trophic's tag bars and sentiment chart too.
 
 Per-node cadence is the next obvious gap.

@@ -1,7 +1,15 @@
 # Working on this repo
 
-A local, single-user tech tree for deliberate practice. FastAPI + SvelteKit,
+A local, single-user tech tree for deliberate practice, plus **Trophic**, a
+syntax-driven capture app being ported in beside it. FastAPI + SvelteKit,
 Linux only, no auth and no multi-user — do not add either.
+
+The two are **sibling apps in one process**, not one app: `backend/app/` and
+`backend/capture/`, `/api/…` and `/api/capture/…`, `data/log/` and
+`data/capture/log/`. They share a data root, a venv, a test suite and a tab
+bar. They share no models, no events and no fold. Read `TROPHIC.md` before
+touching anything under `capture/` or `frontend/src/lib/trophic/` — the port
+has an oracle, and guessing at behaviour it already pins is wasted work.
 
 `README.md` documents *what the app does*. This file documents *what you must
 not break*. Read it before changing anything; it exists because the repo has
