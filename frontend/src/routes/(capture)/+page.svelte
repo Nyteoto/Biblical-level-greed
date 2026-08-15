@@ -35,7 +35,8 @@
 	} from '$lib/trophic/api';
 	import { UI_COLORS } from '$lib/trophic/colors';
 	import { deviceType, virtualKeyboard } from '$lib/trophic/device.svelte';
-	import { attach, release, uploadAll, type Attachment } from '$lib/trophic/media';
+	import { attach, release, type Attachment } from '$lib/trophic/media';
+	import { startUploads } from '$lib/trophic/uploads.svelte';
 	import { browserEnv, enqueue, initRetryQueue, pendingCount } from '$lib/trophic/retry-queue';
 	import { validate } from '$lib/trophic/validation';
 
@@ -73,9 +74,9 @@
 	// change of mind costs nothing and a five-minute video is not uploaded
 	// twice because the line was edited.
 	let attachments = $state<Attachment[]>([]);
-	// Files still going up, for entries that have already been written. Shown
-	// as a progress line rather than a spinner over the bar: the bar is free.
-	let inFlight = $state<Attachment[]>([]);
+	// Files still going up live in `uploads.svelte.ts`, not here: a clip takes
+	// minutes and you will navigate away while it runs, so its progress bar
+	// belongs to the shell.
 
 	function addFiles(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
@@ -243,7 +244,7 @@
 			const { entry } = await capture(text);
 			// The vocabulary just grew by whatever was in that line.
 			vocab = await getVocab();
-			if (sent.length > 0) sendFiles(entry.id, sent);
+			if (sent.length > 0) startUploads(entry.id, sent);
 		} catch (e) {
 			// The two failures are not the same thing. A dead connection is not
 			// the user's problem: the line goes into the retry queue and is
@@ -271,21 +272,6 @@
 		}
 	}
 
-	/**
-	 * Upload in the background and hang each file on the entry as it lands.
-	 * Deliberately not awaited by `submit`: the whole point is that the line
-	 * is already gone and you can start typing the next one.
-	 */
-	async function sendFiles(entryId: string, items: Attachment[]) {
-		inFlight = [...inFlight, ...items];
-		await uploadAll(items, entryId, attachMedia, () => (inFlight = [...inFlight]));
-		const failed = items.filter((i) => i.error);
-		if (failed.length > 0) {
-			error = `${failed.length} file${failed.length === 1 ? '' : 's'} did not upload: ${failed[0].error}`;
-		}
-		items.forEach(release);
-		inFlight = inFlight.filter((i) => !items.includes(i));
-	}
 
 	function handlePaste(e: ClipboardEvent) {
 		const text = e.clipboardData?.getData('text/plain') ?? '';
@@ -539,24 +525,6 @@
 
 		{#if nope}
 			<p class="text-center text-[11px] text-stone-500">Nope</p>
-		{/if}
-
-		<!-- Files still going up for lines that are already sent. Visible so a
-		     slow clip is obviously in progress rather than silently lost, and
-		     unobtrusive because the bar is free again and you can keep typing. -->
-		{#if inFlight.length > 0}
-			{@const done = inFlight.filter((i) => i.ref).length}
-			{@const pct = Math.round(
-				(inFlight.reduce((sum, i) => sum + i.progress, 0) / inFlight.length) * 100
-			)}
-			<p class="flex items-center gap-2 text-[11px] text-stone-500">
-				<span>
-					uploading {done + 1} of {inFlight.length} — {pct}%
-				</span>
-				<span class="h-0.5 max-w-24 flex-1 bg-stone-800">
-					<span class="block h-full bg-amber-400 transition-all" style="width:{pct}%"></span>
-				</span>
-			</p>
 		{/if}
 
 		{#if queued > 0}

@@ -45,6 +45,7 @@ import io
 import os
 import shutil
 import tempfile
+import time
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -169,6 +170,15 @@ async def write_stream(
     except OSError as exc:
         Path(temp_path).unlink(missing_ok=True)
         raise MediaError(f"could not write the upload: {exc}") from exc
+    except BaseException:
+        # Everything else, and the one that matters is `ClientDisconnect`: the
+        # phone went out of range or the tab was closed halfway through two
+        # gigabytes. Neither an OSError nor ours, so it used to escape both
+        # handlers above and leave the part file on disk forever — invisible
+        # to the app, counted by the storage page, and growing one dead clip
+        # at a time. `BaseException` because a cancelled task is one too.
+        Path(temp_path).unlink(missing_ok=True)
+        raise
 
     return f"{day[:7]}/{name}", written
 
@@ -259,6 +269,29 @@ def save_poster(relative: str, data: bytes) -> str | None:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
     return view_ref(relative)
+
+
+def sweep_parts(older_than_seconds: int = 3600) -> int:
+    """Delete abandoned part files. Returns how many went.
+
+    Called at startup. A part file is a live upload's temporary name, so the
+    age check is what separates one of those from the wreckage of a connection
+    that dropped — at boot there is nothing in flight, but a second process
+    sharing the data directory (a scratch server, say) might have one.
+    """
+    root = media_dir()
+    if not root.exists():
+        return 0
+    cutoff = time.time() - older_than_seconds
+    gone = 0
+    for stale in root.rglob("*.part"):
+        try:
+            if stale.stat().st_mtime < cutoff:
+                stale.unlink()
+                gone += 1
+        except OSError:  # pragma: no cover - raced with something else
+            continue
+    return gone
 
 
 def path_for(relative: str) -> Path | None:

@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { page } from '$app/state';
 	import XpMeter from '$lib/components/XpMeter.svelte';
+	import UploadBar from '$lib/trophic/UploadBar.svelte';
 	import { xpState } from '$lib/xpstore.svelte';
 
 	let { children } = $props();
@@ -61,6 +62,10 @@
 			</div>
 		{/if}
 	</header>
+
+	<!-- Above the page, below the tabs: an upload outlives the screen that
+	     started it, so its progress belongs to the shell. -->
+	<UploadBar />
 
 	<main class="flex-1">
 		{@render children()}

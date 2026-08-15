@@ -25,10 +25,16 @@ BUILD_DIR = ROOT / "frontend" / "build"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Before anything opens a file: if the data lives on a disk that is not
+    # mounted, say so and stop rather than quietly starting a second history.
+    config.check_data_dir()
     store.start()
     # capture is a sibling app sharing this process: its own log, its own
     # index, no shared state with the tree beyond the data root.
     capture_store.start()
+    # Wreckage from uploads that died with their connection. Nothing is in
+    # flight at startup, so anything old enough is certainly abandoned.
+    media.sweep_parts()
     observer = watcher.start(store)
     try:
         yield

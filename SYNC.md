@@ -51,7 +51,34 @@ than no backup at all:
   backup. The destination only grows, which for a few hundred kilobytes a year
   is a trade worth making.
 
-The backup disk is `sda2` (ext4, label `data`), mounted at `/mnt/data` — a
+**Where things actually live now.** The data moved off the system disk onto the
+external SSD, so both of this machine's operating systems can reach one copy of
+it:
+
+| | |
+|---|---|
+| data | `/run/media/pekka/Extreme SSD/pgs-data` — exFAT, readable from either OS |
+| backup | `/run/media/pekka/data/pgs-backup` — `sda2`, ext4, a different physical disk |
+
+Both are desktop auto-mounts under `/run/media`, which only exist while a
+session is logged in. That is fine for the app and imperfect for the timer; a
+real `fstab` entry for each is the more reliable arrangement, and then these
+paths become the fstab ones. `pgs.service` and `pgs-backup.service` both carry
+`PGS_DATA_DIR`, so anything started by hand needs it too:
+
+```bash
+PGS_DATA_DIR="/run/media/pekka/Extreme SSD/pgs-data" ./run.sh
+```
+
+**The app refuses to start on an unmounted disk.** When a removable drive is
+absent its mount point is an ordinary empty directory, and without the check
+the app would build a fresh tree inside it and start writing a second, parallel
+history — the same trap `backup.sh` refuses for the copy, and worse for the
+original. `config.check_data_dir` requires a configured data directory to exist
+and to already hold a log, some trees or a capture directory. Nothing is
+created. `test_data_dir.py` pins it.
+
+The backup disk was originally `sda2` (ext4, label `data`) at `/mnt/data` — a
 physically separate device from the NVMe that carries `/home`. That protects
 against the system disk failing. It does **not** protect against theft, fire or
 the machine being destroyed; for that, copy `/mnt/data/pgs-backup` somewhere
