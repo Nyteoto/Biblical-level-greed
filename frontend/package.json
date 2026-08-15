@@ -10,7 +10,7 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "verify:ui": "LC_ALL=en_US.UTF-8 node --experimental-strip-types --import ./scripts/register-hooks.mjs scripts/verify-ui.ts"
+    "verify:ui": "LC_ALL=en_US.UTF-8 TZ=Asia/Bangkok node --experimental-strip-types --import ./scripts/register-hooks.mjs scripts/verify-ui.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^7.0.1",
@@ -23,10 +23,5 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.16"
-  },
-  "dependencies": {
-    "@milkdown/crepe": "^7.21.3",
-    "@milkdown/kit": "^7.21.3",
-    "@milkdown/theme-nord": "^7.21.3"
   }
 }

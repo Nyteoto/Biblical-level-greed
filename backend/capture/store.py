@@ -5,6 +5,11 @@ apps share a data root and nothing else. `version` increments on every change
 so the frontend can poll cheaply and know whether anything moved — the same
 contract the tech tree's store offers, because the frontend already knows how
 to consume it.
+
+It imports `app.media` for the same reason `eventlog` imports `app.timeutil`:
+the blob store is a property of the *disk*, not of either app, and two of them
+would mean two directories of the user's photographs. That is the second and
+last deliberate coupling between the siblings.
 """
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ import threading
 from collections.abc import Iterable
 from datetime import timezone
 
+from backend.app import media as blobs
 from backend.app.timeutil import day_key, now
 
 from . import colors, eventlog, index, parser
@@ -107,17 +113,30 @@ class Store:
 
     # -- writes ------------------------------------------------------------
 
-    def capture(self, raw_text: str) -> dict:
+    def capture(self, raw_text: str, media: Iterable[str] = ()) -> dict:
         """Append one captured line. Log first, then mirror into the index —
-        if the process dies between the two, a reindex recovers the truth."""
+        if the process dies between the two, a reindex recovers the truth.
+
+        `media` is a list of paths already uploaded to the blob store. They are
+        checked here rather than trusted, because a reference that resolves to
+        nothing would be written into an append-only log and stay wrong. An
+        entry may carry media and no text — a clip is a capture on its own —
+        but it may not be empty of both.
+        """
         text = raw_text.strip()
-        if not text:
+        attached = [ref for ref in media if ref]
+        if not text and not attached:
             raise CaptureError("nothing to capture")
         if len(text) > MAX_RAW_LEN:
             raise CaptureError(f"too long (max {MAX_RAW_LEN} characters)")
+        for ref in attached:
+            if blobs.path_for(ref) is None:
+                raise CaptureError(f"no such media: {ref}")
 
         with self._lock:
-            event = eventlog.append(eventlog.CAPTURE, eventlog.new_id(), text=text)
+            event = eventlog.append(
+                eventlog.CAPTURE, eventlog.new_id(), text=text, media=attached
+            )
             index.add_capture(self.conn, event)
             self.version += 1
             return index.get(self.conn, event["id"])  # type: ignore[return-value]
@@ -185,6 +204,39 @@ class Store:
         # Outside the loop and outside nothing else: reindex takes the lock.
         self.reindex()
         return {"imported": written, "skipped": skipped, "header": parsed.has_header}
+
+    def attach_media(self, entry_id: str, media: Iterable[str]) -> dict:
+        """Hang files on an entry that is already written.
+
+        This is what keeps the capture bar honest about its own promise. A
+        thought is sent the moment you press enter; a two-gigabyte clip takes
+        minutes, and making the line wait for it would turn the fastest screen
+        in the app into the slowest. So the entry goes in with whatever has
+        finished, and each upload that lands afterwards appends one of these.
+
+        Appending rather than replacing, and de-duplicated on the way in: a
+        retried attach must not double the list.
+        """
+        refs = [ref for ref in media if ref]
+        if not refs:
+            raise CaptureError("nothing to attach")
+
+        with self._lock:
+            entry = index.get(self.conn, entry_id)
+            if entry is None:
+                raise CaptureError(f"no such entry: {entry_id}")
+            for ref in refs:
+                if blobs.path_for(ref) is None:
+                    raise CaptureError(f"no such media: {ref}")
+
+            fresh = [ref for ref in refs if ref not in entry["media"]]
+            if not fresh:
+                return entry
+
+            eventlog.append(eventlog.ATTACH_MEDIA, entry_id, media=fresh)
+            index.set_media(self.conn, entry_id, entry["media"] + fresh)
+            self.version += 1
+            return index.get(self.conn, entry_id)  # type: ignore[return-value]
 
     def dismiss_reminder(self, entry_id: str, line: int) -> None:
         """Stop showing one reminder. Appends; the line it came from stays."""

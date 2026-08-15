@@ -19,6 +19,7 @@
 	import FolderAssignMenu from '$lib/trophic/FolderAssignMenu.svelte';
 	import TimelineNav from '$lib/trophic/TimelineNav.svelte';
 	import { deviceType, handMode } from '$lib/trophic/device.svelte';
+	import { todayKey } from '$lib/trophic/day';
 	import { longpress } from '$lib/trophic/longpress';
 	import type { ViewSpan } from '$lib/trophic/timeline-draw';
 	import {
@@ -46,7 +47,7 @@
 	let viewSpan = $state<ViewSpan>('day');
 	let menu = $state<{ x: number; y: number; entry: Entry } | null>(null);
 
-	const todayKey = new Date().toISOString().slice(0, 10);
+	const today = todayKey();
 
 	// The ruler follows the thumb on a phone, as it does on the log.
 	const hand = handMode();
@@ -106,7 +107,7 @@
 	});
 
 	function formatDateLabel(key: string): string {
-		if (key === todayKey) return 'today';
+		if (key === today) return 'today';
 		const [y, m, d] = key.split('-').map(Number);
 		return new Date(y, m - 1, d).toLocaleDateString(undefined, {
 			weekday: 'short',
@@ -144,14 +145,14 @@
 <header
 	class="sticky top-0 z-40 flex items-center justify-between bg-[#14100c] px-6 py-5 text-[11px] tracking-wide text-stone-500"
 >
-	<a href="/trophic/log" class="transition-colors hover:text-stone-300">← folders</a>
+	<a href="/log" class="transition-colors hover:text-stone-300">← folders</a>
 	<span class="flex items-center gap-2 text-stone-300">
 		{#if detail}
 			<span class="h-2 w-2 shrink-0 rounded-full" style="background:{detail.folder.color}"></span>
 			{detail.folder.name}
 		{/if}
 	</span>
-	<a href="/trophic" class="transition-colors hover:text-stone-300">capture →</a>
+	<a href="/" class="transition-colors hover:text-stone-300">capture →</a>
 </header>
 
 <main class="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 pb-20">

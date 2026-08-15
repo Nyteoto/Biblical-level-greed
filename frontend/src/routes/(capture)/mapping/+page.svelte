@@ -110,9 +110,9 @@
 <header
 	class="sticky top-0 z-40 flex items-center justify-between bg-[#14100c] px-6 py-5 text-[11px] tracking-wide text-stone-500"
 >
-	<a href="/trophic" class="transition-colors hover:text-stone-300">← capture</a>
+	<a href="/" class="transition-colors hover:text-stone-300">← capture</a>
 	<span class="text-stone-300">mapping</span>
-	<a href="/trophic/log" class="transition-colors hover:text-stone-300">folders →</a>
+	<a href="/log" class="transition-colors hover:text-stone-300">folders →</a>
 </header>
 
 <main class="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 pb-20">
@@ -195,7 +195,7 @@
 				<div class="flex flex-col gap-1.5">
 					<div class="flex items-center gap-2 text-xs text-stone-300">
 						<span class="h-2 w-2 shrink-0 rounded-full" style="background:{f.color}"></span>
-						<a href="/trophic/folders/{f.id}" class="hover:text-stone-100">{f.name}</a>
+						<a href="/folders/{f.id}" class="hover:text-stone-100">{f.name}</a>
 					</div>
 					<div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
 						{#each f.tags as tag (tag)}

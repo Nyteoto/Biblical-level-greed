@@ -65,7 +65,10 @@ CREATE TABLE IF NOT EXISTS entries (
     times      TEXT NOT NULL DEFAULT '[]',
     patterns   TEXT NOT NULL DEFAULT '[]',
     todo_lines TEXT NOT NULL DEFAULT '[]',
-    todo_done  TEXT NOT NULL DEFAULT '[]'
+    todo_done  TEXT NOT NULL DEFAULT '[]',
+    -- Paths under data/media, as a JSON array. Stored rather than derived:
+    -- an attachment is a fact about the entry, like the raw line.
+    media      TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS entries_by_day ON entries (day, ts);
 
@@ -117,7 +120,7 @@ CREATE INDEX IF NOT EXISTS entry_folders_by_folder ON entry_folders (folder_id);
 
 COLUMNS = (
     "id, ts, day, raw_text, clean_text, folders, times, patterns, "
-    "todo_lines, todo_done"
+    "todo_lines, todo_done, media"
 )
 
 # Reads carry the manual filing along with the entry: it is one more thing the
@@ -211,8 +214,13 @@ def derive_reminders(event: dict) -> list[tuple]:
     ]
 
 
-def _row(event: dict, done: list[int]) -> tuple[tuple, list[str]]:
-    """The `entries` row for a capture event, and the tags to file beside it."""
+def _row(event: dict, done: list[int], media: list[str] | None = None) -> tuple[tuple, list[str]]:
+    """The `entries` row for a capture event, and the tags to file beside it.
+
+    `media` is passed in rather than read off the event: files that finished
+    uploading after the line was written arrive as their own `attach-media`
+    events, and the fold is what knows about both.
+    """
     d = derive(event.get("text", ""))
     row = (
         event["id"],
@@ -225,6 +233,7 @@ def _row(event: dict, done: list[int]) -> tuple[tuple, list[str]]:
         json.dumps(d["patterns"], ensure_ascii=False),
         json.dumps(d["todo_lines"]),
         json.dumps(sorted(done)),
+        json.dumps(list(event.get("media", []) if media is None else media), ensure_ascii=False),
     )
     return row, d["folders"]
 
@@ -240,6 +249,7 @@ def fold(events: list[dict]) -> dict:
     """
     captures: dict[str, dict] = {}
     done: dict[str, set[int]] = {}
+    media: dict[str, list[str]] = {}
     dismissed: dict[str, set[int]] = {}
     folders: dict[str, dict] = {}
     tag_to_folder: dict[str, str] = {}
@@ -250,6 +260,9 @@ def fold(events: list[dict]) -> dict:
         subject = event["id"]
 
         if kind == eventlog.CAPTURE:
+            # Last-wins on the capture's own list; attachments accumulate on
+            # top of it, in the order they landed.
+            media[subject] = list(event.get("media", []))
             # Last-wins on a duplicated id, which only happens if a log file
             # was restored twice. Re-applying the same line is then a no-op.
             captures[subject] = event
@@ -258,6 +271,11 @@ def fold(events: list[dict]) -> dict:
             done.setdefault(subject, set()).add(int(event.get("line", 0)))
         elif kind == eventlog.UNCHECK:
             done.setdefault(subject, set()).discard(int(event.get("line", 0)))
+        elif kind == eventlog.ATTACH_MEDIA:
+            attached = media.setdefault(subject, [])
+            for ref in event.get("media", []):
+                if ref not in attached:  # a replayed line must not duplicate
+                    attached.append(ref)
         elif kind == eventlog.DISMISS:
             dismissed.setdefault(subject, set()).add(int(event.get("line", 0)))
 
@@ -306,6 +324,7 @@ def fold(events: list[dict]) -> dict:
     return {
         "captures": captures,
         "done": done,
+        "media": media,
         "dismissed": dismissed,
         "folders": folders,
         "tag_to_folder": tag_to_folder,
@@ -322,7 +341,11 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
     tag_rows: list[tuple[str, str]] = []
     reminder_rows: list[tuple] = []
     for entry_id, event in state["captures"].items():
-        row, tags = _row(event, sorted(state["done"].get(entry_id, set())))
+        row, tags = _row(
+            event,
+            sorted(state["done"].get(entry_id, set())),
+            state["media"].get(entry_id, []),
+        )
         rows.append(row)
         tag_rows += [(entry_id, tag) for tag in tags]
         gone = state["dismissed"].get(entry_id, set())
@@ -336,7 +359,7 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.executescript(SCHEMA)
         conn.executemany(
-            f"INSERT INTO entries ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO entries ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         conn.executemany(
@@ -379,7 +402,7 @@ def add_capture(conn: sqlite3.Connection, event: dict) -> None:
     with conn:
         conn.execute(
             f"INSERT OR REPLACE INTO entries ({COLUMNS}) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             row,
         )
         conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", (event["id"],))
@@ -401,6 +424,15 @@ def set_done(conn: sqlite3.Connection, entry_id: str, done: list[int]) -> None:
         conn.execute(
             "UPDATE entries SET todo_done = ? WHERE id = ?",
             (json.dumps(sorted(set(done))), entry_id),
+        )
+
+
+def set_media(conn: sqlite3.Connection, entry_id: str, refs: list[str]) -> None:
+    """Mirror an attach. The list is the folded result, not a delta."""
+    with conn:
+        conn.execute(
+            "UPDATE entries SET media = ? WHERE id = ?",
+            (json.dumps(refs, ensure_ascii=False), entry_id),
         )
 
 
@@ -506,6 +538,7 @@ def _as_entry(row: sqlite3.Row) -> dict:
         "patterns": json.loads(row["patterns"]),
         "todo_lines": json.loads(row["todo_lines"]),
         "todo_done": json.loads(row["todo_done"]),
+        "media": json.loads(row["media"]),
         "manual_folders": sorted(manual.split(",")) if manual else [],
     }
 

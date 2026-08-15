@@ -21,6 +21,7 @@
 	import FolderAssignMenu from '$lib/trophic/FolderAssignMenu.svelte';
 	import TimelineNav from '$lib/trophic/TimelineNav.svelte';
 	import { deviceType, handMode } from '$lib/trophic/device.svelte';
+	import { todayKey } from '$lib/trophic/day';
 	import { longpress } from '$lib/trophic/longpress';
 	import type { ViewSpan } from '$lib/trophic/timeline-draw';
 	import {
@@ -63,7 +64,7 @@
 	let activeSentiment = $state<string | null>(null);
 	let pickerOpen = $state(false);
 
-	const todayKey = new Date().toISOString().slice(0, 10);
+	const today = todayKey();
 
 	// On a phone the ruler moves to the thumb's side. `handMode` defaults to
 	// right and is persisted; the source reads it the same way and has no UI
@@ -122,7 +123,7 @@
 	});
 
 	function formatDateLabel(key: string): string {
-		if (key === todayKey) return 'today';
+		if (key === today) return 'today';
 		const [y, m, d] = key.split('-').map(Number);
 		return new Date(y, m - 1, d).toLocaleDateString(undefined, {
 			weekday: 'short',
@@ -245,8 +246,11 @@
 <header
 	class="sticky top-0 z-40 flex items-center justify-between bg-[#14100c] px-6 py-5 text-[11px] tracking-wide text-stone-500"
 >
-	<a href="/trophic" class="transition-colors hover:text-stone-300">← capture</a>
-	<span class="text-stone-300">log</span>
+	<!-- No back link and no title. The tab bar above says both where you are
+	     and how to leave, and repeating it a centimetre lower is furniture.
+	     `+ new` stays because it does something the tab bar cannot. -->
+	<span></span>
+	<span></span>
 	<button
 		type="button"
 		class="transition-colors hover:text-stone-300"
@@ -456,7 +460,7 @@
 	<section class="flex flex-col gap-3">
 		<div class="flex items-baseline justify-between">
 			<div class="text-[10px] tracking-[0.15em] text-stone-500 uppercase">folders</div>
-			<a href="/trophic/mapping" class="text-[10px] text-stone-500 hover:text-stone-300">
+			<a href="/mapping" class="text-[10px] text-stone-500 hover:text-stone-300">
 				mapping →
 			</a>
 		</div>
@@ -483,7 +487,7 @@
 		{#if folders.length === 0 && !creating}
 			<p class="text-[11px] leading-relaxed text-stone-500">
 				no folders yet. create one, then point tags at it from
-				<a href="/trophic/mapping" class="text-stone-400 hover:text-stone-200">mapping</a>.
+				<a href="/mapping" class="text-stone-400 hover:text-stone-200">mapping</a>.
 			</p>
 		{/if}
 
@@ -515,7 +519,7 @@
 						</form>
 					{:else}
 						<a
-							href="/trophic/folders/{f.id}"
+							href="/folders/{f.id}"
 							class="flex min-w-0 flex-1 items-center gap-2.5 text-sm text-stone-100"
 						>
 							<span class="h-2 w-2 shrink-0 rounded-full" style="background:{f.color}"></span>
@@ -572,11 +576,20 @@
 			{/each}
 
 			{#if !creating}
-				<div
-					class="flex items-center justify-center rounded border border-dashed border-stone-800 px-5 py-4 text-[11px] text-stone-600 select-none"
+				<!-- Tappable, not just a caption. The source's gesture is a
+				     double-click on empty canvas, which on a touch screen is
+				     unreliable and here was doubly so: the daily section covers
+				     most of the page and the handler ignores clicks inside it,
+				     so there was hardly anywhere left to double-tap. The card
+				     that advertises the gesture is now also a button, which is
+				     the affordance a thumb was looking for anyway. -->
+				<button
+					type="button"
+					class="flex items-center justify-center rounded border border-dashed border-stone-800 px-5 py-4 text-[11px] text-stone-600 transition-colors select-none hover:border-stone-700 hover:text-stone-400"
+					onclick={() => (creating = true)}
 				>
-					{isMobile ? 'double-tap' : 'double-click'} anywhere to create a folder
-				</div>
+					{isMobile ? 'tap to create a folder' : 'click here, or double-click anywhere'}
+				</button>
 			{/if}
 		</div>
 	</section>

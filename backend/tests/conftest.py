@@ -27,7 +27,7 @@ def data_dir() -> Path:
     # cleared explicitly, or state leaks between tests: ticked todos leaked XP
     # once, and a note written by one test was appended to by the next.
     (config.DATA_DIR / "todos.jsonl").unlink(missing_ok=True)
-    for tree in ("notes", "media", "tools"):
+    for tree in ("media", "tools"):
         shutil.rmtree(config.DATA_DIR / tree, ignore_errors=True)
     config.ensure_dirs()
     return _TMP

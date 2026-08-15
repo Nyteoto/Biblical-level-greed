@@ -10,9 +10,8 @@ except one read-only directory of reference trees:
 | `seed/*.toml` | the six researched curricula, as shipped · **tracked** |
 | `domains/*.toml` | your trees, as you have edited them · **not tracked** |
 | `log/YYYY-MM.jsonl` | every check-off, append-only · **not tracked** |
-| `todos.jsonl` | the checklist, append-only · **not tracked** |
-| `notes/*/*.md` | your writing · **not tracked** |
-| `media/` | your photographs · **not tracked** |
+| `todos.jsonl` | the old checklist, append-only, no longer written · **not tracked** |
+| `media/` | your photographs and video, kept at full quality · **not tracked** |
 | `index.sqlite` | a rebuildable cache · **not tracked**, delete it any time |
 | `capture/log/YYYY-MM.jsonl` | every line Trophic captured, append-only · **not tracked** |
 | `capture/index.sqlite` | ditto, rebuildable · **not tracked** |
@@ -22,7 +21,7 @@ never need to commit in order to practise, and a season switch is not a diff.
 
 ## The repo is not a backup
 
-It never was a complete one — notes and media were always out — but it used to
+It never was a complete one — media was always out — but it used to
 carry your trees and your history, and now it does not. **Everything in the
 table above marked "not tracked" exists in exactly one copy on this disk.**
 
@@ -65,8 +64,8 @@ Worth knowing what each loss actually costs:
 |---|---|
 | `log/` | every session, completion and paid unlock. XP, level and streak are a fold over this file and are stored nowhere else. **Unrecoverable.** |
 | `domains/` | your trees. Re-seedable from `data/seed/`, but any edit you made since is gone. |
-| `notes/`, `media/` | your writing and your photographs. **Unrecoverable.** |
-| `todos.jsonl` | the checklist and its history. |
+| `media/` | your photographs and video. **Unrecoverable**, and now the largest thing on the disk by far. |
+| `todos.jsonl` | the old checklist's history. Still folded into XP, so losing it lowers your lifetime total. |
 | `capture/log/` | every thought you ever captured in Trophic. The tags, times and patterns are derived from those lines, so they go too. **Unrecoverable.** |
 | `index.sqlite`, `capture/index.sqlite` | nothing. They rebuild on next start. |
 

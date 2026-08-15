@@ -16,7 +16,15 @@ export interface Entry {
 	todo_done: number[];
 	/** Folders this entry was filed into by hand. At most one, like the source. */
 	manual_folders: string[];
+	/** Files attached at capture time, as paths under data/media. */
+	media: string[];
 }
+
+/** The two URLs a stored file has: the original, and what to draw. The display
+ *  copy may not exist — for video it arrives only once a poster is captured —
+ *  so anything using the second should fall back to the first on error. */
+export const mediaUrl = (ref: string) => `/media/${ref}`;
+export const mediaViewUrl = (ref: string) => `/media/${ref.replace(/\.[^.]+$/, '.view.jpg')}`;
 
 export interface Vocab {
 	folders: { id: string; name: string; color: string }[];
@@ -91,10 +99,14 @@ export const getEntries = (params: { date?: string; from?: string; to?: string; 
 /** Where a queued capture is replayed to. The retry queue stores a URL and a
  *  body rather than a call, so it has to know the absolute path. */
 export const CAPTURE_URL = '/api/capture/entries';
-export const captureBody = (raw_text: string) => JSON.stringify({ raw_text });
+export const captureBody = (raw_text: string, media: string[] = []) =>
+	JSON.stringify({ raw_text, media });
 
-export const capture = (raw_text: string) =>
-	call<{ entry: Entry }>('/entries', { method: 'POST', body: JSON.stringify({ raw_text }) });
+export const capture = (raw_text: string, media: string[] = []) =>
+	call<{ entry: Entry }>('/entries', {
+		method: 'POST',
+		body: captureBody(raw_text, media)
+	});
 
 export const toggleLine = (id: string, line: number) =>
 	call<{ entry: Entry }>(`/entries/${id}`, {
@@ -149,6 +161,14 @@ export const deleteFolder = (id: string) => call<{ ok: boolean }>(`/folders/${id
 
 export const getUnassignedTags = () =>
 	call<{ tags: UnassignedTag[]; total: number }>('/tags/unassigned');
+
+/** Hang files on an entry that is already written — the upload finished after
+ *  the line went in, which is the normal case for anything large. */
+export const attachMedia = (id: string, media: string[]) =>
+	call<{ entry: Entry }>(`/entries/${id}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ attach_media: media })
+	});
 
 /** File an entry into a folder by hand, or pass null to unfile it. */
 export const assignEntry = (id: string, folder: string | null) =>

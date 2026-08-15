@@ -38,6 +38,7 @@ import { drawTimeline, type ViewSpan } from '../src/lib/trophic/timeline-draw.ts
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
 import { enqueue, flush, pendingCount, STORAGE_KEY } from '../src/lib/trophic/retry-queue.ts';
+import { todayKey } from '../src/lib/trophic/day.ts';
 import type { Vocab } from '../src/lib/trophic/api.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -474,6 +475,35 @@ function jsonish(v: unknown): unknown {
 	return v === undefined ? undefined : JSON.parse(JSON.stringify(v));
 }
 
+// ── Checks with no corpus behind them ─────────────────────────────────────
+//
+// The corpus covers what the source did. This covers what this port got wrong
+// on its own. Kept here rather than in a test file of its own because the
+// frontend has exactly one runner and a second one would not get run.
+
+function localChecks(): string[] {
+	const failures: string[] = [];
+
+	// Midnight east of Greenwich. The backend files an entry under the user's
+	// local day; a browser computing "today" from `toISOString()` disagrees
+	// with it from local midnight until the UTC offset catches up, and the
+	// entry you just captured is not on the day the log is showing. Cost a
+	// real "where did my photo go" before it was found.
+	const midnightPlus7 = new Date('2026-08-15T17:00:36.000Z');
+	const spelled = `${midnightPlus7.getFullYear()}-${String(
+		midnightPlus7.getMonth() + 1
+	).padStart(2, '0')}-${String(midnightPlus7.getDate()).padStart(2, '0')}`;
+	if (process.env.TZ === 'Asia/Bangkok' && spelled !== '2026-08-16') {
+		failures.push(`  local day at 00:00:36 +07 was ${spelled}, expected 2026-08-16`);
+	}
+	// The helper the app actually calls has to agree with that spelling.
+	if (typeof todayKey() !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(todayKey())) {
+		failures.push(`  todayKey() returned ${todayKey()}`);
+	}
+
+	return failures;
+}
+
 // ── One corpus file that cannot be satisfied ──────────────────────────────
 //
 // `retry_queue.json` does not describe the module it was generated from, and
@@ -600,8 +630,13 @@ async function main(argv: string[]): Promise<number> {
 		fail += r.failed;
 		total += r.total;
 	}
-	console.log(`\n${pass} passed, ${fail} failed (${total} cases)`);
-	return fail ? 1 : 0;
+	const local = localChecks();
+	for (const line of local) console.log(line);
+	if (local.length) console.log(`  ${'local checks'.padEnd(20)} FAIL  ${local.length} problem(s)`);
+	else console.log(`  ${'local checks'.padEnd(20)} PASS  (no corpus, this port's own mistakes)`);
+
+	console.log(`\n${pass} passed, ${fail + local.length} failed (${total} cases)`);
+	return fail || local.length ? 1 : 0;
 }
 
 process.exit(await main(process.argv.slice(2)));

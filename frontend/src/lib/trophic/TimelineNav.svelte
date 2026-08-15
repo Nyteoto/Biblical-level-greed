@@ -63,9 +63,23 @@
 	let spanCooldown = false;
 	let initialised = false;
 
+	/**
+	 * Midnight of *your* today, as a UTC instant.
+	 *
+	 * The local calendar date, deliberately — this read `getUTCFullYear()` and
+	 * friends, which is a different day for most of the world for part of every
+	 * day. East of Greenwich the ruler was a day behind from local midnight
+	 * until the offset caught up: capture something at 00:01 and the backend
+	 * files it under your day while the ruler is still drawing yesterday, so
+	 * the entry you just wrote is one screen above the one you are looking at.
+	 *
+	 * The anchor stays a UTC *instant* because everything downstream reads it
+	 * with `getUTC*` — see timeline-draw.ts, whose 22 corpus cases pin that.
+	 * Only which calendar day it points at changes.
+	 */
 	const todayMs = (() => {
 		const n = new Date();
-		return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+		return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate());
 	})();
 
 	/** How far back the ruler can go: a year, or past the oldest entry. */

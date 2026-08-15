@@ -12,11 +12,10 @@ from pydantic import BaseModel
 from backend.capture.api import router as capture_router
 from backend.capture.store import store as capture_store
 
-from . import config, edits, eventlog, media, notes, storage, todos, tools, watcher, xp
+from . import config, edits, eventlog, media, storage, tools, watcher, xp
 from .config import ROOT
 from .media import MediaError
 from .models import DomainError
-from .notes import NoteError
 from .tools import ToolError
 from .store import store
 from .timeutil import day_key
@@ -104,10 +103,6 @@ class DomainPatch(BaseModel):
     color: str | None = None
     shape: str | None = None
     strands: list[str] | None = None
-
-
-class TodoIn(BaseModel):
-    text: str
 
 
 class SeasonIn(BaseModel):
@@ -205,94 +200,7 @@ def storage_report() -> dict:
 
 @app.get("/api/dashboard")
 def dashboard() -> dict:
-    payload = store.dashboard()
-    # Rides along on the board it belongs to, so the Today screen stays one
-    # request. The checklist is not derived from domains and does not touch
-    # the index — it is only served next to them.
-    payload["todos"] = todos.live()
-    return payload
-
-
-@app.post("/api/todos")
-def add_todo(body: TodoIn) -> dict:
-    try:
-        todos.add(body.text)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"todos": todos.live()}
-
-
-@app.delete("/api/todos/{item_id}")
-def complete_todo(item_id: str) -> dict:
-    """Ticking an item removes it from the list and nothing from the file.
-
-    DELETE because that is what it does from the caller's side; on disk it
-    appends a `done` op, like every other completion in this app.
-    """
-    todos.complete(item_id)
-    return {"todos": todos.live()}
-
-
-# -- notes: titled markdown documents, one folder per domain ----------------
-# Node-level notes and the separate journal both collapsed into this. What you
-# write while working is knowledge and record at once, and being made to choose
-# was friction with nothing on the other side.
-
-
-class NoteIn(BaseModel):
-    text: str
-
-
-class NoteNew(BaseModel):
-    title: str
-
-
-@app.get("/api/domains/{domain_id}/notes")
-def list_notes(domain_id: str) -> dict:
-    _domain_view(domain_id)
-    try:
-        return {"notes": notes.listing(domain_id)}
-    except NoteError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-
-@app.post("/api/domains/{domain_id}/notes", status_code=201)
-def create_note(domain_id: str, body: NoteNew) -> dict:
-    _domain_view(domain_id)
-    try:
-        slug = notes.create(domain_id, body.title)
-    except NoteError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"slug": slug, "notes": notes.listing(domain_id)}
-
-
-@app.get("/api/domains/{domain_id}/notes/{slug}")
-def get_note(domain_id: str, slug: str) -> dict:
-    _domain_view(domain_id)
-    try:
-        return {"slug": slug, "text": notes.read(domain_id, slug)}
-    except NoteError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-
-@app.put("/api/domains/{domain_id}/notes/{slug}")
-def put_note(domain_id: str, slug: str, body: NoteIn) -> dict:
-    _domain_view(domain_id)
-    try:
-        notes.write(domain_id, slug, body.text)
-    except NoteError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"ok": True, "text": notes.read(domain_id, slug)}
-
-
-@app.delete("/api/domains/{domain_id}/notes/{slug}")
-def drop_note(domain_id: str, slug: str) -> dict:
-    _domain_view(domain_id)
-    try:
-        notes.delete(domain_id, slug)
-    except NoteError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"notes": notes.listing(domain_id)}
+    return store.dashboard()
 
 
 # -- tools: the instruments a domain is practised with ----------------------
@@ -361,36 +269,47 @@ def drop_tool(domain_id: str, tool_id: str) -> dict:
 @app.post("/api/media")
 async def upload_media(
     request: Request,
-    domain: str | None = None,
-    node: str | None = None,
-    caption: str = "",
+    name: str = "",
+    poster_for: str | None = None,
 ) -> dict:
-    """Accept an image and, if a node is named, append it to that node's note."""
-    data = await request.body()
+    """Store one upload, byte for byte, and derive a display copy.
 
-    # Resolve where it is going before writing a byte. Saving first meant a
-    # mistyped node stored the image and then 404'd, leaving a file nothing
-    # references and no way to tell it apart from a real one later.
-    if domain and node:
-        _node_view(domain, node)
+    The body is the file itself rather than a multipart form: the browser
+    streams a `File` straight into `fetch`, and this streams it straight to
+    disk, so nothing here scales with the size of the thing being uploaded.
+    `name` carries the original filename because the extension decides how the
+    file will later be served — see media.py.
 
+    `poster_for` is the second half of video: the browser grabs a frame,
+    posts it here, and it lands in the display-copy slot of the clip it names.
+    """
+    if poster_for is not None:
+        data = await request.body()  # a poster is a small JPEG, never a video
+        ref = media.save_poster(poster_for, data)
+        if ref is None:
+            raise HTTPException(404, "no such media to attach a poster to")
+        return {"ok": True, "view_url": f"/media/{ref}"}
+
+    length = request.headers.get("content-length")
     try:
-        relative = media.save(data, day_key())
+        relative, written = await media.write_stream(
+            request.stream(),
+            day_key(),
+            name,
+            expected=int(length) if length and length.isdigit() else None,
+        )
     except MediaError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    url = f"/media/{relative}"
-    attached = False
-
-    if domain and node:
-        alt = caption.strip() or "photo"
-        try:
-            notes.append(domain, node, f"![{alt}]({url})")
-            attached = True
-        except NoteError as exc:
-            raise HTTPException(400, str(exc)) from exc
-
-    return {"ok": True, "url": url, "path": relative, "attached_to_note": attached}
+    view = media.derive_view(relative)
+    return {
+        "ok": True,
+        "url": f"/media/{relative}",
+        "path": relative,
+        "view_url": f"/media/{view}" if view else f"/media/{relative}",
+        "kind": media.kind_of(relative),
+        "bytes": written,
+    }
 
 
 @app.get("/media/{relative:path}")

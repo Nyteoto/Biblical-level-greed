@@ -7,7 +7,6 @@
 	import NodeForm from '$lib/components/NodeForm.svelte';
 	import NodePanel from '$lib/components/NodePanel.svelte';
 	import NodeSearch from '$lib/components/NodeSearch.svelte';
-	import NotesFolder from '$lib/components/NotesFolder.svelte';
 	import ToolShelf from '$lib/components/ToolShelf.svelte';
 	import {
 		accent,
@@ -66,22 +65,9 @@
 		}
 	}
 
-	// `?note=<id>` opens straight into that node's note. A link you can bookmark
-	// or send to yourself, rather than clicking down through the tree.
-	//
-	// Read once, not reactively: this must not re-run the effect below. And the
-	// param is deliberately left in the URL — stripping it here called
-	// `replaceState` before SvelteKit's router was initialised, which threw,
-	// aborted this effect, and left the page with no domains loaded at all.
-	const pendingNote: string | null = new URLSearchParams(page.url.search).get('note');
-	let openNote = $state(false);
-	// The domain's folder of written documents — notes and journal, merged.
-	let readingNotes = $state(false);
-
 	$effect(() => {
 		domainId;
-		selected = pendingNote;
-		openNote = !!pendingNote;
+		selected = null;
 		linking = null;
 		addingTier = null;
 		editingDomain = false;
@@ -125,7 +111,6 @@
 	function revealNode(id: string) {
 		linking = null;
 		selected = id;
-		openNote = false;
 		requestAnimationFrame(() => {
 			cards[id]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
 		});
@@ -140,9 +125,6 @@
 		}
 		linking = null;
 		selected = selected === node.id ? null : node.id;
-		// Only the arriving `?note=` opens the note; picking a node by hand
-		// opens the panel, as it always did.
-		openNote = false;
 	}
 
 	/** Titled at creation: the id is slugged from it and then never changes,
@@ -535,28 +517,9 @@
 	</section>
 
 	{#if view}
-		<!-- Top-right of the canvas, clear of the tree itself. A domain's writing
-		     is a destination, not a footnote in the header. -->
-		<button
-			onclick={() => (readingNotes = true)}
-			title="{view.title} journal"
-			class="absolute top-3 right-4 z-20 flex h-11 w-11 items-center justify-center rounded-full border {a.border} bg-[#171310] {a.text} shadow-lg transition hover:scale-105 hover:bg-white/5 {a.glow}"
-			aria-label="Open journal"
-		>
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5">
-				<path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H18a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5v-14Z" />
-				<path d="M8 3v17" stroke-linecap="round" />
-				<path d="M11.5 8.5h4M11.5 12h4" stroke-linecap="round" />
-			</svg>
-		</button>
-
 		<!-- Docked over the empty bottom half of the canvas. Collapsed on arrival:
 		     landing on a tree is about the work, not the kit. -->
 		<ToolShelf {domainId} tone={a.text} accent={a.border} glow={a.glow} />
-	{/if}
-
-	{#if readingNotes && view}
-		<NotesFolder {domainId} domainTitle={view.title} onclose={() => (readingNotes = false)} />
 	{/if}
 
 	{#if detail && view}
@@ -566,7 +529,6 @@
 			nodes={view.nodes}
 			strands={view.strands}
 			today={todayKey}
-			{openNote}
 			onchange={load}
 			onclose={() => (selected = null)}
 		/>

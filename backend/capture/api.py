@@ -24,7 +24,10 @@ DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class CaptureIn(BaseModel):
-    raw_text: str
+    raw_text: str = ""
+    # Paths under data/media, uploaded before this call. A capture may be
+    # nothing but a clip, so the text is allowed to be empty when these are not.
+    media: list[str] = []
 
 
 class EntryPatch(BaseModel):
@@ -36,6 +39,8 @@ class EntryPatch(BaseModel):
 
     toggle_line: int | None = None
     assign_folder: str | None = None
+    # Files that finished uploading after the entry was written.
+    attach_media: list[str] = []
 
 
 class ImportIn(BaseModel):
@@ -100,7 +105,10 @@ def list_entries(
 @router.post("/entries", status_code=201)
 def create_entry(body: CaptureIn) -> dict:
     try:
-        return {"entry": store.capture(body.raw_text), "version": store.version}
+        return {
+            "entry": store.capture(body.raw_text, body.media),
+            "version": store.version,
+        }
     except CaptureError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -112,6 +120,8 @@ def patch_entry(entry_id: str, body: EntryPatch) -> dict:
     try:
         if body.toggle_line is not None:
             entry = store.toggle_line(entry_id, body.toggle_line)
+        elif body.attach_media:
+            entry = store.attach_media(entry_id, body.attach_media)
         elif "assign_folder" in body.model_fields_set:
             entry = store.assign_entry(entry_id, body.assign_folder)
         else:

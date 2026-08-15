@@ -18,7 +18,11 @@ export default defineConfig({
 	server: {
 		// In dev the backend runs separately; in production both are same-origin.
 		proxy: {
-			'/api': 'http://localhost:8787'
+			'/api': 'http://localhost:8787',
+			// Media is served off the root, not under /api, so it needs its own
+			// entry or every photo and clip 404s under `npm run dev`. Vite's
+			// proxy passes Range through, so seeking still works here.
+			'/media': 'http://localhost:8787'
 		}
 	}
 });

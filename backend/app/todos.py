@@ -1,9 +1,20 @@
 """A plain checklist, appended to its own log.
 
-This is the one part of the app that is *not* a tech tree. Trees answer "what
-should I be working on"; this answers "buy strings, email the studio, book the
-HSK slot" — specific things with no tier, no gate and no accrual, which would
-be nonsense as nodes.
+**Read-only history now.** The checklist's screen and its write routes are
+gone: Trophic's capture bar owns text, and `--todo` on any captured line makes
+that line a checkbox, so a second place to type an errand was a second place
+to look for one. Nothing calls `add` or `complete` any more.
+
+The module stays, and this is the reason: `xp.py` folds every `done` op in
+this file into the XP score, and XP is a fold with no stored total. Deleting
+the reader would not archive the past, it would *retroactively unearn* it —
+lifetime XP would drop and the level could drop with it. So the file is still
+read, still counted, and simply never appended to again.
+
+It was the one part of the app that is *not* a tech tree. Trees answer "what
+should I be working on"; this answered "buy strings, email the studio, book
+the HSK slot" — specific things with no tier, no gate and no accrual, which
+would be nonsense as nodes.
 
 It is a separate stream from `log/*.jsonl` because those events are keyed by
 (domain, node) and a todo has neither.

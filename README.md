@@ -117,14 +117,18 @@ declaring none, an undeclared strand, `season.state = "off"` where nodes decay.
 
 Each domain reports its estimating bias as a ratio of totals over settled nodes.
 
-## Notes, checklist
+## Writing things down
 
-- **notes** — `data/notes/<domain>/<slug>.md`. A domain owns a folder of freely
-  titled markdown documents, mutable and hand-editable. Photos append here.
-  There is no separate journal: a thing you write while working is both the
-  knowledge and the record, and having to choose was friction. Old per-node
-  files carry over as notes titled after their filename.
-- **checklist** — errands. No tier, no gate. Ticking removes; never resets.
+There is one place: **the capture bar at `/`**. A line of text, files attached
+to it, or both. `<tags>` file it, `\patterns` mark it, `{times}` set a
+reminder and `--todo` turns a line into a checkbox. Trophic's log *is* the
+journal.
+
+The markdown notes system and the tech tree's separate checklist were removed
+when that became true — two more places to type the same thing, each with its
+own screen to go and look at. `data/notes/` and `data/todos.jsonl` are left on
+disk untouched; nothing reads the first any more, and the second is still
+folded into XP so past errands keep the points they earned.
 
 ## Levels and XP
 
@@ -162,11 +166,9 @@ properly, so nothing else is paid like it.
 |---|---|
 | GET | `/api/health`, `/api/storage`, `/api/dashboard`, `/api/domains`, `/api/domains/{id}` |
 | POST | `.../nodes/{n}/session` `/complete` `/phase` `/unlock` |
-| notes | GET/POST `/api/domains/{id}/notes` · GET/PUT/DELETE `.../notes/{slug}` |
 | tools | GET/POST `/api/domains/{id}/tools` · PATCH/DELETE `.../tools/{tool_id}` |
-| media | POST `/api/media?domain=&node=&caption=` · GET `/media/{path}` |
+| media | POST `/api/media?name=` · GET `/media/{path}` (Range/206, so video seeks) |
 | POST | `/api/domains/{id}/season` |
-| POST/DELETE | `/api/todos`, `/api/todos/{id}` |
 | POST | `/api/admin/reindex`, `/api/admin/reload` |
 | CRUD | `/api/domains`, `.../nodes`, `.../edges`, `.../reorder` (POST/PATCH/DELETE) |
 
@@ -180,9 +182,9 @@ data/
   seed/*.toml        the six researched trees, as shipped — the ONLY thing in git
   domains/*.toml     your trees, hand-authored and rewritten by the UI
   log/YYYY-MM.jsonl  append-only: every session, completion, phase and unlock
-  todos.jsonl        append-only
-  notes/*/*.md       mutable, private
-  media/             images, private
+  todos.jsonl        append-only, no longer written; still counted by XP
+  media/             photos and video at full quality, private
+                     <hex>.<ext> is the original; <hex>.view.jpg is a display copy
   index.sqlite       rebuildable cache — delete it any time
   capture/           Trophic's, and only Trophic's:
     log/YYYY-MM.jsonl  append-only: every captured line, every tick

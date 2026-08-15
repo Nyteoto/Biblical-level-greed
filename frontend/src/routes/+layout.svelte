@@ -6,20 +6,27 @@
 
 	let { children } = $props();
 
-	// The Manual lives under Settings now. It is read closely once and skimmed
-	// rarely after that, which does not earn a permanent tab.
-	// Trophic is a second app living in this shell: its own log, its own index,
-	// its own layout and interaction rules under /trophic. It gets a tab and
-	// nothing else — the two share a data root and a process, not a model.
+	// Capture is the app now, so it holds the root and leads the bar. The tech
+	// tree is support: it still has its own screens, its own log and its own
+	// index, and the two share a data root and a process rather than a model.
+	// The Manual lives under Settings — read closely once and skimmed rarely
+	// after that, which does not earn a permanent tab.
 	const tabs = [
-		{ href: '/', label: 'Today' },
-		{ href: '/tree', label: 'Tech Tree' },
-		{ href: '/trophic', label: 'Trophic' },
+		{ href: '/', label: 'Capture' },
+		{ href: '/log', label: 'Log' },
+		{ href: '/today', label: 'Today' },
+		{ href: '/tree', label: 'Trees' },
 		{ href: '/settings', label: 'Settings' }
 	];
 
+	// `/log` and `/folders/x` are both the log's territory, so the Log tab
+	// stays lit while reading a folder.
 	const isActive = (href: string) =>
-		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
+		href === '/'
+			? page.url.pathname === '/'
+			: href === '/log'
+				? ['/log', '/folders', '/mapping'].some((p) => page.url.pathname.startsWith(p))
+				: page.url.pathname.startsWith(href);
 </script>
 
 <svelte:head>

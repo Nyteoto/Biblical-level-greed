@@ -18,17 +18,18 @@ same kind: a rule that was load-bearing but only discoverable by reading code.
 
 ## Never
 
-- **Never read or commit `data/notes/**` or `data/media/**`.** Private user
-  content — their writing and their photographs. Listing filenames is fine;
-  opening them is not. Both are gitignored. If you need a sample, make a scratch
-  file.
+- **Never read or commit `data/media/**`.** Private user content — their
+  photographs and video. Listing filenames is fine; opening them is not. It is
+  gitignored. If you need a sample, make a scratch file. (`data/notes/**` was
+  the same and the notes system is gone; any files still there are the user's
+  and are equally off limits.)
 - **Never `git restore` / `git checkout` anything under `data/`.** It is live
   application state, not source. A whole-file revert destroys real practice
   history. Fix data forward, by hand, one line at a time.
 - **Never put live data back in the repo.** `data/*` is gitignored with exactly
   one exception, `data/seed/` — the six researched trees, as shipped, read-only
-  reference. The user's own trees, log, checklist, notes and photos are theirs
-  and stay on their disk. Copying a live tree into `data/seed/` pushes it to the
+  reference. The user's own trees, logs and media are theirs and stay on
+  their disk. Copying a live tree into `data/seed/` pushes it to the
   remote, which is the thing this arrangement exists to prevent; a test asserts
   that directory holds those six files and nothing else.
 - **Never edit or delete lines in `data/log/*.jsonl` or `data/todos.jsonl`.**
@@ -82,7 +83,9 @@ system.
 | `store.py` | holds loaded domains + index connection, serialises access, bumps `version`. |
 | `foundation.py` | the `mementomori` domain, compiled in rather than loaded. |
 | `watcher.py` | re-reads the TOML when it changes on disk, so hand-edits land without a restart. |
-| `notes.py` `media.py` `tools.py` `todos.py` `storage.py` | per-feature, self-describing docstrings. |
+| `media.py` | the blob store, shared with capture. Originals byte for byte, plus a derived display copy. |
+| `tools.py` `storage.py` | per-feature, self-describing docstrings. |
+| `todos.py` | read-only history. Nothing writes it; `xp.py` still folds it, so deleting it would unearn past XP. |
 | `main.py` | thin FastAPI layer: parse, call the store, return derived state. |
 
 `desktop.py` sits at the repo root, outside the table: it is the packaged
@@ -123,8 +126,10 @@ editing frontend source leaves the app serving stale UI until you run
   used to exist for `merge=union` in `.gitattributes`, which is gone now that
   the streams are untracked; keep the read-side tolerance anyway, because a
   restored backup or an interrupted write produces the same shapes.
-- **The checklist does not reset daily**, and ticking deletes from the list but
-  nothing from the file.
+- **Capture is the app.** `/` is Trophic's capture bar; the tech tree is
+  support at `/today` and `/tree`. Text and media enter the system through the
+  capture bar and nowhere else — the markdown notes system and the PGS
+  checklist were removed when that became true.
 
 ## Deliberately absent
 
@@ -136,11 +141,12 @@ the one acknowledged gap.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 319 tests, ~1s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 313 tests, ~1s. Run them.
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend
 cd frontend && npm run check                    # svelte-check
+cd frontend && npm run verify:ui                # the corpus, TypeScript side
 ```
 
 Tests point at a throwaway data dir via `conftest.py` before the app imports —

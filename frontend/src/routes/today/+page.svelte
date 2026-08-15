@@ -1,11 +1,8 @@
 <script lang="ts">
-	import Checklist from '$lib/components/Checklist.svelte';
 	import NodeCard from '$lib/components/NodeCard.svelte';
 	import { setXp } from '$lib/xpstore.svelte';
 	import {
 		accent,
-		addTodo,
-		completeTodo,
 		declaredLoad,
 		formatMinutes,
 		getDashboard,
@@ -88,8 +85,6 @@
 		run(`season-${domain.id}`, () => setSeason(domain.id, { state: 'low' }));
 
 	// Distinct busy keys so adding an item never blocks ticking one off.
-	const newTodo = (text: string) => run('todo-add', () => addTodo(text));
-	const tickTodo = (id: string) => run(`todo-${id}`, () => completeTodo(id));
 
 	const rollover = $derived(
 		data
@@ -175,17 +170,6 @@
 			</div>
 		{/each}
 
-
-		<!-- Not a tree. Specific one-off things with no tier, no gate and no
-		     accrual, which would be nonsense as nodes. Sits above the board
-		     because the list never resets: buried items are forgotten items. -->
-		<Checklist
-			items={data.todos}
-			today={data.today}
-			busy={busy === 'todo-add'}
-			onadd={newTodo}
-			oncomplete={tickTodo}
-		/>
 
 		{#if !data.domains.length}
 			<div class="rounded-sm border border-dashed border-stone-800 px-6 py-16 text-center">

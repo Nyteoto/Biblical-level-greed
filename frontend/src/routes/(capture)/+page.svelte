@@ -21,6 +21,7 @@
 	import SmoothTextarea from '$lib/trophic/SmoothTextarea.svelte';
 	import SyntaxBar from '$lib/trophic/SyntaxBar.svelte';
 	import {
+		attachMedia,
 		capture,
 		captureBody,
 		createFolder,
@@ -34,6 +35,7 @@
 	} from '$lib/trophic/api';
 	import { UI_COLORS } from '$lib/trophic/colors';
 	import { deviceType, virtualKeyboard } from '$lib/trophic/device.svelte';
+	import { attach, release, uploadAll, type Attachment } from '$lib/trophic/media';
 	import { browserEnv, enqueue, initRetryQueue, pendingCount } from '$lib/trophic/retry-queue';
 	import { validate } from '$lib/trophic/validation';
 
@@ -66,6 +68,30 @@
 	// is held and not lost, or they will retype it.
 	let queued = $state(0);
 	const keyboard = virtualKeyboard();
+
+	// Files chosen but not yet sent. They upload on send, not on pick, so a
+	// change of mind costs nothing and a five-minute video is not uploaded
+	// twice because the line was edited.
+	let attachments = $state<Attachment[]>([]);
+	// Files still going up, for entries that have already been written. Shown
+	// as a progress line rather than a spinner over the bar: the bar is free.
+	let inFlight = $state<Attachment[]>([]);
+
+	function addFiles(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		for (const file of Array.from(input.files ?? [])) {
+			const item = attach(file);
+			if (item) attachments = [...attachments, item];
+			else error = `${file.name} is not a kind of file this keeps`;
+		}
+		input.value = ''; // so the same file can be picked again after removing it
+	}
+
+	function drop(key: string) {
+		const going = attachments.find((a) => a.key === key);
+		if (going) release(going);
+		attachments = attachments.filter((a) => a.key !== key);
+	}
 
 	// Restore the draft the way the source does: sessionStorage, so a reload
 	// mid-thought does not eat it, but it does not outlive the session either.
@@ -178,7 +204,8 @@
 
 	async function submit() {
 		const text = draft.trim();
-		if (!text || sliding) return;
+		// A clip is a capture on its own, so media alone is enough to send.
+		if ((!text && attachments.length === 0) || sliding) return;
 
 		// A locked draft shakes instead of sending. The message is already on
 		// screen and the offending tokens are already blinking, so saying
@@ -189,13 +216,20 @@
 		}
 
 		error = null;
+
 		const snapshot = draft;
+		// The files go up *after* the entry, in the background. The line is the
+		// thought and it is sent the moment you press enter; a clip can take
+		// minutes and must never hold that up. Each upload appends itself to
+		// the entry as it lands, and the log picks them up when it reads.
+		const sent = attachments;
 
 		flashSent();
 		sliding = true;
 		setTimeout(() => {
 			draft = '';
 			lastDraft = '';
+			attachments = [];
 			try {
 				sessionStorage.setItem('capture-draft', '');
 			} catch {
@@ -206,9 +240,10 @@
 		}, 220);
 
 		try {
-			await capture(text);
+			const { entry } = await capture(text);
 			// The vocabulary just grew by whatever was in that line.
 			vocab = await getVocab();
+			if (sent.length > 0) sendFiles(entry.id, sent);
 		} catch (e) {
 			// The two failures are not the same thing. A dead connection is not
 			// the user's problem: the line goes into the retry queue and is
@@ -219,12 +254,37 @@
 			if (e instanceof NetworkError) {
 				enqueue(browserEnv(), CAPTURE_URL, captureBody(text));
 				queued = pendingCount(browserEnv());
+				// The files have nowhere to go: there is no entry id yet, and
+				// the queue replays a body, not an upload. Give them back.
+				if (sent.length > 0) {
+					sent.forEach(release);
+					error = `offline — the line is queued, but ${sent.length} file${
+						sent.length === 1 ? '' : 's'
+					} could not be sent. Attach again when you are back.`;
+				}
 			} else {
 				if (!draft) draft = snapshot;
+				sent.forEach(release);
 				error = `${e instanceof Error ? e.message : 'failed to save'} — restored your text`;
 				triggerShake();
 			}
 		}
+	}
+
+	/**
+	 * Upload in the background and hang each file on the entry as it lands.
+	 * Deliberately not awaited by `submit`: the whole point is that the line
+	 * is already gone and you can start typing the next one.
+	 */
+	async function sendFiles(entryId: string, items: Attachment[]) {
+		inFlight = [...inFlight, ...items];
+		await uploadAll(items, entryId, attachMedia, () => (inFlight = [...inFlight]));
+		const failed = items.filter((i) => i.error);
+		if (failed.length > 0) {
+			error = `${failed.length} file${failed.length === 1 ? '' : 's'} did not upload: ${failed[0].error}`;
+		}
+		items.forEach(release);
+		inFlight = inFlight.filter((i) => !items.includes(i));
 	}
 
 	function handlePaste(e: ClipboardEvent) {
@@ -256,14 +316,14 @@
 		const cmd = draft.trim().toLowerCase();
 		if (cmd === '--folders' || cmd === '--log') {
 			draft = '';
-			goto('/trophic/log');
+			goto('/log');
 			return;
 		}
 		// `--assign` keeps the source's name for the mapping screen; it is one
 		// of the tokenizer's nav commands, so it never reads as a directive.
 		if (cmd === '--assign') {
 			draft = '';
-			goto('/trophic/mapping');
+			goto('/mapping');
 			return;
 		}
 		if (cmd === '--settings') {
@@ -310,26 +370,22 @@
 		? 'dimmed'
 		: ''}"
 >
-	<span class="text-stone-300">trophic</span>
-	<nav class="flex items-center gap-4">
-		<a
-			href="/trophic/log"
-			class="rounded bg-stone-800 px-2.5 py-1 text-[10px] tracking-wide text-stone-400 transition-colors hover:bg-stone-700 hover:text-stone-200"
-		>
-			log
-		</a>
-	</nav>
+	<!-- Empty on purpose. The wordmark went when capture took the root: the tab
+	     bar already says where you are, and this screen is at its best with
+	     nothing on it but the line you are writing. The header stays for the
+	     idle-dim behaviour and the safe-area inset. -->
+	<span></span>
+	<span></span>
 </header>
 
-<!-- Centred, until the on-screen keyboard takes half the screen: then the box
-     goes to the top, because centring inside what is left puts it under the
-     keyboard. `useVirtualKeyboard`'s 150px absolute test is what distinguishes
-     that from Chrome merely hiding its address bar on scroll. -->
-<main
-	class="flex flex-1 flex-col items-center px-6 {keyboard.open
-		? 'justify-start pt-6 pb-4'
-		: 'justify-center pb-24'}"
->
+<!-- Centred, and it stays centred when the keyboard opens.
+     This once switched to `justify-start` on `keyboard.open`, which snapped
+     the bar to the top of the screen the instant you tapped it. The source
+     does not reflow here and neither should this: Safari scrolls a focused
+     input into view on its own, and a layout that jumps under your thumb is
+     worse than one that sits a little high. `keyboard.open` earns its keep
+     one place only — the syntax keys below. -->
+<main class="flex flex-1 flex-col items-center justify-center px-6 pb-24">
 	<div class="flex w-full max-w-xl flex-col gap-3">
 		<!-- The reminder strip. Above the box, because it is context for what
 		     you are about to write, not a task list to work through. -->
@@ -356,6 +412,35 @@
 				</button>
 			</div>
 		{/each}
+
+		<!-- What is about to go with the line. Nothing is uploaded until send,
+		     so removing a chip costs nothing and a long clip is not sent twice
+		     because the text was edited after picking it. -->
+		{#if attachments.length > 0}
+			<div class="flex flex-wrap gap-2">
+				{#each attachments as item (item.key)}
+					<div
+						class="relative h-16 w-16 overflow-hidden rounded border border-stone-800 bg-stone-900"
+					>
+						{#if item.kind === 'image'}
+							<img src={item.preview} alt="" class="h-full w-full object-cover" />
+						{:else}
+							<!-- svelte-ignore a11y_media_has_caption -->
+							<video src={item.preview} muted playsinline class="h-full w-full object-cover"
+							></video>
+							<span class="absolute bottom-0.5 left-1 text-[9px] text-stone-300">clip</span>
+						{/if}
+
+						<button
+							type="button"
+							class="absolute top-0 right-0 bg-black/60 px-1 text-[10px] text-stone-300 hover:text-red-400"
+							aria-label="remove"
+							onclick={() => drop(item.key)}>×</button
+						>
+					</div>
+				{/each}
+			</div>
+		{/if}
 
 		<div
 			data-capture-box
@@ -391,6 +476,27 @@
 				</div>
 			</div>
 
+			<!-- The attach button, in the 40px of right padding `.smooth-layout`
+			     already reserves. A sibling of the slide-out wrapper, not a
+			     child: inside it, it would slide away with the draft on send. -->
+			<label
+				class="absolute top-2 right-0 cursor-pointer p-2 text-stone-600 transition-colors hover:text-stone-300"
+				title="attach a photo or a clip"
+			>
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+					stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.67 3.67 0 1 1 5.18 5.18l-9.2 9.2a1.83 1.83 0 1 1-2.59-2.6l8.49-8.48" />
+				</svg>
+				<span class="sr-only">attach a photo or a clip</span>
+				<input
+					type="file"
+					accept="image/*,video/*"
+					multiple
+					class="hidden"
+					onchange={addFiles}
+				/>
+			</label>
+
 			<!-- The indicator line. Its colour is the only feedback the bar
 			     gives: grey resting, amber while you type, green for 900ms on
 			     send, red plus a damped shake on a refusal. -->
@@ -421,12 +527,36 @@
 			</svg>
 		</div>
 
+		<!-- OR'd, as the source has it: visualViewport detection misses iPad
+		     split and floating keyboards, and focus alone misses the case where
+		     the keyboard is up but focus has moved to a suggestion. -->
 		{#if isMobile}
-			<SyntaxBar visible={inputFocused} oninsert={(t) => input?.insertText(t)} />
+			<SyntaxBar
+				visible={keyboard.open || inputFocused}
+				oninsert={(t) => input?.insertText(t)}
+			/>
 		{/if}
 
 		{#if nope}
 			<p class="text-center text-[11px] text-stone-500">Nope</p>
+		{/if}
+
+		<!-- Files still going up for lines that are already sent. Visible so a
+		     slow clip is obviously in progress rather than silently lost, and
+		     unobtrusive because the bar is free again and you can keep typing. -->
+		{#if inFlight.length > 0}
+			{@const done = inFlight.filter((i) => i.ref).length}
+			{@const pct = Math.round(
+				(inFlight.reduce((sum, i) => sum + i.progress, 0) / inFlight.length) * 100
+			)}
+			<p class="flex items-center gap-2 text-[11px] text-stone-500">
+				<span>
+					uploading {done + 1} of {inFlight.length} — {pct}%
+				</span>
+				<span class="h-0.5 max-w-24 flex-1 bg-stone-800">
+					<span class="block h-full bg-amber-400 transition-all" style="width:{pct}%"></span>
+				</span>
+			</p>
 		{/if}
 
 		{#if queued > 0}

@@ -23,9 +23,6 @@
 		today: string;
 		onchange: () => Promise<void> | void;
 		onclose: () => void;
-		/** Open straight into the note. Set when a `?note=` link brought us here
-		 * rather than a click through the tree. */
-		openNote?: boolean;
 	}
 
 	let {
@@ -35,8 +32,7 @@
 		strands = [],
 		today,
 		onchange,
-		onclose,
-		openNote = false
+		onclose
 	}: Props = $props();
 
 	// A reminder is a sentence, not a task. No params to edit, no sessions to

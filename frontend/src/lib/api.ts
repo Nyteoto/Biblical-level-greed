@@ -146,20 +146,14 @@ export interface DomainView {
 	version: number;
 }
 
-/** A plain checklist item. Not a node: no tier, no gate, no accrual. */
-export interface Todo {
-	id: string;
-	text: string;
-	/** The day it was added. The list never resets, so items can be old. */
-	added: string;
-}
-
 /** The arithmetic behind today's XP, spelled out so the number stays
  * predictable rather than becoming a black box. */
 export interface XpBreakdown {
 	sessions: number;
 	/** Of those, how many were maintenance rather than acquisition. */
 	upkeep_sessions: number;
+	/** Checklist items ticked. Historical: nothing writes new ones, but the
+	 *  XP they earned is a fold over the log and stays counted. */
 	todos: number;
 	session_xp: number;
 	todo_xp: number;
@@ -208,7 +202,6 @@ export interface Dashboard {
 	errors: string[];
 	due_count: number;
 	done_count: number;
-	todos: Todo[];
 	xp: Xp;
 	version: number;
 }
@@ -281,48 +274,6 @@ export const toggleComplete = (domain: string, node: string, on?: boolean) =>
 		{ method: 'POST', body: JSON.stringify({ on: on ?? null }) }
 	);
 
-export const addTodo = (text: string) =>
-	call<{ todos: Todo[] }>('/todos', { method: 'POST', body: JSON.stringify({ text }) });
-
-/** Ticking removes the item from the list. On disk it appends a `done` op —
- * the checklist forgets it, the log does not. */
-export const completeTodo = (id: string) =>
-	call<{ todos: Todo[] }>(`/todos/${id}`, { method: 'DELETE' });
-
-// -- notes: titled markdown documents, one folder per domain ----------------
-// Node notes and the journal merged into this. What you write while working is
-// knowledge and record at once; being made to choose which was friction.
-
-export interface NoteSummary {
-	slug: string;
-	/** The document's own `# heading` when it has one, else its filename. */
-	title: string;
-	bytes: number;
-	updated: number;
-	preview: string;
-}
-
-export const listNotes = (domain: string) =>
-	call<{ notes: NoteSummary[] }>(`/domains/${domain}/notes`);
-
-export const createNote = (domain: string, title: string) =>
-	call<{ slug: string; notes: NoteSummary[] }>(`/domains/${domain}/notes`, {
-		method: 'POST',
-		body: JSON.stringify({ title })
-	});
-
-export const getNote = (domain: string, slug: string) =>
-	call<{ slug: string; text: string }>(`/domains/${domain}/notes/${slug}`);
-
-export const saveNote = (domain: string, slug: string, text: string) =>
-	call<{ ok: boolean; text: string }>(`/domains/${domain}/notes/${slug}`, {
-		method: 'PUT',
-		body: JSON.stringify({ text })
-	});
-
-export const deleteNote = (domain: string, slug: string) =>
-	call<{ notes: NoteSummary[] }>(`/domains/${domain}/notes/${slug}`, { method: 'DELETE' });
-
 // -- tools: the instruments a domain is practised with ----------------------
 // Retirement is a date, never a delete: what a domain used to be practised on
 // is the interesting half of the shelf.
@@ -363,25 +314,28 @@ export const deleteTool = (domain: string, id: string) =>
 
 export interface MediaUpload {
 	ok: boolean;
+	/** The original, byte for byte. What you open. */
 	url: string;
+	/** Its path under data/media — this is what gets stored on an entry. */
 	path: string;
-	attached_to_note: boolean;
+	/** The display copy, or the original again when there is no copy. */
+	view_url: string;
+	kind: 'image' | 'video' | '';
+	bytes: number;
 }
 
-/** Send one image and attach it to a node's note. Raw body and no content-type
- * of ours: the server sniffs the bytes, and `call` would force JSON on it. */
-export async function uploadMedia(
-	file: Blob,
-	domain = '',
-	node = '',
-	caption = ''
-): Promise<MediaUpload> {
-	const query = new URLSearchParams();
-	// Omitted when the editor is open: it inserts the image itself, and having
-	// the server append it too would put the photo in the note twice.
-	if (domain && node) query.set('domain', domain), query.set('node', node);
-	if (caption) query.set('caption', caption);
-	const res = await fetch(`/api/media?${query}`, { method: 'POST', body: file });
+/**
+ * Send one file. The body is the `File` itself, with no content-type of ours:
+ * the browser streams it and the server streams it to disk, so this does not
+ * grow with the size of what is being uploaded. `name` carries the filename
+ * because the extension decides how the file is served later.
+ */
+export async function uploadMedia(file: File | Blob, filename?: string): Promise<MediaUpload> {
+	const name = filename ?? (file instanceof File ? file.name : '');
+	const res = await fetch(`/api/media?name=${encodeURIComponent(name)}`, {
+		method: 'POST',
+		body: file
+	});
 	if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
 	return res.json() as Promise<MediaUpload>;
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { todayKey } from '$lib/trophic/day';
 	import { addTool, deleteTool, listTools, patchTool, uploadMedia, type Tool } from '$lib/api';
 
 	interface Props {
@@ -96,8 +97,10 @@
 		if (!tool) return;
 		busy = true;
 		try {
+			// The display copy, not the original: a tool profile is a 64px
+			// thumbnail, and the original is now whatever the camera shot.
 			const shot = await uploadMedia(file);
-			tools = (await patchTool(domainId, id, { image: shot.url })).tools;
+			tools = (await patchTool(domainId, id, { image: shot.view_url })).tools;
 			editing = tools.find((t) => t.id === id) ?? null;
 		} catch (e) {
 			fail(e);
@@ -106,7 +109,8 @@
 		}
 	}
 
-	const today = () => new Date().toISOString().slice(0, 10);
+	// The local day, not UTC — see lib/trophic/day.ts.
+	const today = () => todayKey();
 	const live = $derived(tools.filter((t) => !t.retired));
 	const retired = $derived(tools.filter((t) => t.retired));
 </script>

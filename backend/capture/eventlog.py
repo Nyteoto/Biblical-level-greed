@@ -42,7 +42,8 @@ from backend.app.timeutil import day_key, month_key, now
 from .config import LOG_DIR, ensure_dirs
 
 # ── Entry events. `id` is the entry's. ────────────────────────────────────
-# A new entry. `text` is the raw line as typed.
+# A new entry. `text` is the raw line as typed; `media`, when present, is the
+# list of files attached to it, as paths under data/media.
 CAPTURE = "capture"
 # One `--todo` line ticked / unticked. `line` is its index into the entry.
 CHECK = "check"
@@ -52,6 +53,10 @@ UNCHECK = "uncheck"
 # `assignFolderId` overwrites the whole `manualFolderIds` array.
 ASSIGN = "assign"
 UNASSIGN = "unassign"
+# Files that finished uploading after the entry was already written. Sending a
+# thought must never wait on a 2 GB video, so the entry goes in immediately and
+# its media catches up — one of these per upload that lands.
+ATTACH_MEDIA = "attach-media"
 # A reminder has been seen and does not need showing again. `line` is the
 # line that carried the `{time}`. There is no `undismiss`: the source has no
 # way back either, and the line itself is still in the log to be re-read.
@@ -80,6 +85,7 @@ KINDS = {
     UNCHECK,
     ASSIGN,
     UNASSIGN,
+    ATTACH_MEDIA,
     DISMISS,
     CREATE_FOLDER,
     RENAME_FOLDER,
@@ -111,6 +117,7 @@ def append(
     color: str | None = None,
     folder: str | None = None,
     ts: str | None = None,
+    media: list[str] | None = None,
 ) -> dict:
     """Write one event. Never rewrites or deletes an existing line.
 
@@ -144,6 +151,11 @@ def append(
         event["color"] = color
     if folder is not None:
         event["folder"] = folder
+    if media:
+        # Paths under data/media, not the files. A reference is a fact about
+        # the entry in the same way the raw line is — it cannot be derived
+        # from anything, so it lives on the event rather than in the index.
+        event["media"] = list(media)
 
     path = log_path_for(event["day"])
     with path.open("a", encoding="utf-8") as handle:

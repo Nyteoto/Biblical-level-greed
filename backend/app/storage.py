@@ -37,16 +37,9 @@ def report() -> dict:
     for key, label, hint, (size, files), recoverable in (
         (
             "media",
-            "Photos",
+            "Photos and video",
             "Not in git. This is the only copy unless something else backs it up.",
             _walk(DATA_DIR / "media"),
-            False,
-        ),
-        (
-            "notes",
-            "Notes",
-            "One markdown file per node.",
-            _walk(DATA_DIR / "notes"),
             False,
         ),
         (

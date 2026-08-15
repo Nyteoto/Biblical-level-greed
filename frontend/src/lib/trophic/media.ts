@@ -1,0 +1,195 @@
+// Attaching files to a capture: uploading them, and finding a poster frame.
+//
+// Kept out of the component for the reason `capture-bar.ts` is: the component
+// owns the DOM and the timers, the module owns the decisions. This one is not
+// pinned by a corpus — the source never had video — but the seam is the same
+// and it is where the awkward parts live.
+//
+// **Posters are made in the browser, not on the server.** A server-side frame
+// grab means ffmpeg, and ffmpeg would have to be installed on both halves of a
+// dual-boot machine for the app to behave the same under either. The browser
+// has already decoded enough of the file to show a preview, so it can draw one
+// frame to a canvas and post that instead. Every step of it is allowed to
+// fail: a codec the browser will not decode just means the clip has no poster,
+// and the log falls back to `preload="metadata"`.
+
+export type Attachment = {
+	/** Local id, so a chip can be removed before anything is uploaded. */
+	key: string;
+	file: File;
+	kind: 'image' | 'video';
+	/** Object URL for the pending-chip preview. Revoked when the chip goes. */
+	preview: string;
+	/** Set once uploaded — the path the entry will carry. */
+	ref?: string;
+	/** 0..1 while uploading. */
+	progress: number;
+	error?: string;
+};
+
+export type Uploaded = {
+	ok: boolean;
+	url: string;
+	path: string;
+	view_url: string;
+	kind: 'image' | 'video' | '';
+	bytes: number;
+};
+
+const IMAGE_EXT = /\.(jpe?g|png|gif|webp|heic|heif|avif)$/i;
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm)$/i;
+
+export function kindOf(file: File): 'image' | 'video' | '' {
+	if (file.type.startsWith('image/') || IMAGE_EXT.test(file.name)) return 'image';
+	if (file.type.startsWith('video/') || VIDEO_EXT.test(file.name)) return 'video';
+	// An iPhone sometimes reports an empty type for HEIC; the extension is the
+	// fallback, and the server refuses anything neither test recognises.
+	return '';
+}
+
+export function attach(file: File): Attachment | null {
+	const kind = kindOf(file);
+	if (!kind) return null;
+	return {
+		key: `${file.name}:${file.size}:${file.lastModified}:${Math.random()}`,
+		file,
+		kind,
+		preview: URL.createObjectURL(file),
+		progress: 0
+	};
+}
+
+export function release(a: Attachment) {
+	URL.revokeObjectURL(a.preview);
+}
+
+/**
+ * Upload one file. `XMLHttpRequest` rather than `fetch` for one reason:
+ * `fetch` cannot report upload progress, and a two-minute video with no
+ * feedback looks like a hang.
+ */
+export function upload(file: File, onprogress?: (fraction: number) => void): Promise<Uploaded> {
+	return new Promise((resolve, reject) => {
+		const request = new XMLHttpRequest();
+		request.open('POST', `/api/media?name=${encodeURIComponent(file.name)}`);
+		request.upload.onprogress = (e) => {
+			if (e.lengthComputable) onprogress?.(e.loaded / e.total);
+		};
+		request.onload = () => {
+			if (request.status >= 200 && request.status < 300) {
+				try {
+					resolve(JSON.parse(request.responseText) as Uploaded);
+				} catch {
+					reject(new Error('the server sent something that was not JSON'));
+				}
+			} else {
+				reject(new Error(request.responseText || `upload failed (${request.status})`));
+			}
+		};
+		request.onerror = () => reject(new Error('the connection dropped mid-upload'));
+		request.send(file);
+	});
+}
+
+/** Draw one frame of a video to a JPEG. Null whenever the browser will not. */
+export async function posterFor(file: File, edge = 640): Promise<Blob | null> {
+	const url = URL.createObjectURL(file);
+	const video = document.createElement('video');
+	video.muted = true;
+	// Both are required or iOS refuses to decode without a user gesture.
+	video.playsInline = true;
+	video.preload = 'metadata';
+	video.src = url;
+
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const fail = () => reject(new Error('cannot decode'));
+			video.onloadedmetadata = () => resolve();
+			video.onerror = fail;
+			setTimeout(fail, 5000);
+		});
+
+		// A frame from the very start is often black. One second in, or the
+		// midpoint of anything shorter.
+		await new Promise<void>((resolve, reject) => {
+			const fail = () => reject(new Error('cannot seek'));
+			video.onseeked = () => resolve();
+			video.onerror = fail;
+			setTimeout(fail, 5000);
+			video.currentTime = Math.min(1, (video.duration || 2) / 2);
+		});
+
+		const scale = Math.min(1, edge / Math.max(video.videoWidth, video.videoHeight));
+		const canvas = document.createElement('canvas');
+		canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+		canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return null;
+		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+		return await new Promise<Blob | null>((resolve) =>
+			canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8)
+		);
+	} catch {
+		return null;
+	} finally {
+		video.src = '';
+		URL.revokeObjectURL(url);
+	}
+}
+
+/** Post a captured frame into the clip's display-copy slot. Best effort. */
+export async function sendPoster(ref: string, poster: Blob): Promise<void> {
+	try {
+		await fetch(`/api/media?poster_for=${encodeURIComponent(ref)}`, {
+			method: 'POST',
+			body: poster
+		});
+	} catch {
+		/* a clip without a poster is still a clip */
+	}
+}
+
+/**
+ * Upload everything, in order, attaching each file to `entryId` as it lands.
+ *
+ * **The entry is already written when this starts.** Making a line wait on a
+ * two-gigabyte clip would turn the fastest screen in the app into the slowest,
+ * so the text goes in immediately and its media catches up — each completed
+ * upload appends one `attach-media` event, and the file appears in the log the
+ * next time it reads.
+ *
+ * One failure does not stop the rest: the others are independent files and
+ * there is no reason a bad one should take them with it. Failures are recorded
+ * on the item so the caller can say which.
+ */
+export async function uploadAll(
+	items: Attachment[],
+	entryId: string,
+	attach: (entryId: string, refs: string[]) => Promise<unknown>,
+	onchange: () => void
+): Promise<void> {
+	for (const item of items) {
+		try {
+			const done = await upload(item.file, (fraction) => {
+				item.progress = fraction;
+				onchange();
+			});
+			item.ref = done.path;
+			item.progress = 1;
+			onchange();
+
+			// Attach before the poster: the file is safe on the entry either
+			// way, and a poster that fails must not lose the clip.
+			await attach(entryId, [done.path]);
+
+			if (item.kind === 'video') {
+				const poster = await posterFor(item.file);
+				if (poster) await sendPoster(done.path, poster);
+			}
+		} catch (e) {
+			item.error = e instanceof Error ? e.message : 'upload failed';
+			onchange();
+		}
+	}
+}

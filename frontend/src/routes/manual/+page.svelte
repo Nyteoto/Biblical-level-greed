@@ -70,13 +70,6 @@
 				</dd>
 			</div>
 			<div>
-				<dt class="text-stone-300">Checklist</dt>
-				<dd>
-					Errands, not practice. No tier, no gate, no accrual. Ticking removes the item;
-					the list never resets, and shows an item's age once it is over a day old.
-				</dd>
-			</div>
-			<div>
 				<dt class="text-stone-300">Out of season</dt>
 				<dd>
 					Domains you are holding rather than advancing. Empty is the normal state and

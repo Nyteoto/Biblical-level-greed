@@ -1,7 +1,7 @@
 {
-  "name": "Personal Growth System",
-  "short_name": "Growth",
-  "description": "A local tech tree for deliberate practice.",
+  "name": "Trophic",
+  "short_name": "Trophic",
+  "description": "A capture-first journal: write, photograph, film, and file it by tag.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
