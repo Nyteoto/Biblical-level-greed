@@ -303,7 +303,46 @@ checkable — a tag no folder has claimed is not a mistake, it is how tags start
 
 ## Picking this up
 
-State as of the last session: parser, reminder, the folder palette and CSV
+**Where this stands, 16 Aug 2026.** The port is no longer the work. Capture is
+the app, the log was rebuilt around it (see the ruler deviation above), and
+what is left of the source bundle is mostly things this app has decided it does
+not want. Read this before opening `trophic/` and porting something because it
+is next in the list.
+
+Shipped in the last session, all four gates green:
+
+- **A folder has a life** — `set-state`, three states, the empty one default.
+  Backend end to end with tests; the control is on the folder's own page.
+- **The log is a feed of days** — `DayBlock` + `MediaTile` + `Lightbox`, a
+  contact sheet per day over its text lines, filter chips with counts across
+  the top. `TimelineNav.svelte` and `timeline-draw.ts` are deleted.
+- **The pin** — `pinned.ts` (pure) + `pinned.svelte.ts` (localStorage). Pin a
+  folder and every capture appends that folder's tag to the raw line. Read
+  `pinned.ts`'s header before changing it: writing the tag into the text rather
+  than sending a folder id alongside is the whole design, not a shortcut.
+- **The folder page is a project page** — cover, `2 days · 28 Jul → 16 Aug`,
+  the state control, a contact-sheet toggle, rename and delete. The log no
+  longer carries the folder list; that moved here.
+
+Deliberately left for next time, in the order they were argued for:
+
+1. **Chains** — a `follows` relation between folders, so a project that grew
+   out of another one says so, and the candidate list that goes with it. This
+   wants projects to exist first, which they now do.
+2. **Per-node cadence** on the tech tree — still the one acknowledged gap.
+3. **Deleting the tech tree.** Still on the table and still cheap: the log says
+   45 events across 3 days and 13 of 14 sessions undone immediately. Decide
+   with evidence, not a prediction, and not in the same session as anything
+   else.
+4. **Pagination beyond a widening window.** The log fetches 200 and offers
+   `load more`. That is months of this journal; revisit when it is not.
+
+The thinking pond is dropped outright — it was the habit-tracking side under
+another name. The codex is not urgent. Both change what "what is left" means
+below: `insights/` feeds screens this app may never build, so port it because
+something wants it, not to finish the list.
+
+State of the port itself: parser, reminder, the folder palette and CSV
 import are ported and green, the backend is
 `capture/{config,eventlog,index,store,api,parser,reminder,colors,import_csv}.py`
 mounted at `/api/capture/`, and the four screens above are built and rendered

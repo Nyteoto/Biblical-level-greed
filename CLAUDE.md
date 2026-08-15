@@ -130,6 +130,16 @@ editing frontend source leaves the app serving stale UI until you run
   support at `/today` and `/tree`. Text and media enter the system through the
   capture bar and nowhere else — the markdown notes system and the PGS
   checklist were removed when that became true.
+- **`/log` is the journal, and it is a feed of days.** Not a date ruler — the
+  source's one is deleted, deliberately, and TROPHIC.md records what that cost
+  the corpus. A day is a sticky header, a contact sheet of its media, then its
+  lines. Anything that reintroduces one-day-at-a-time navigation is going
+  backwards.
+- **Membership is resolved, never stored, and the pin does not break that.**
+  Pinning a folder appends its tag to the *raw line*, so a pinned capture is
+  byte-identical to one you tagged yourself and survives a rebuild. Never add a
+  folder id to the capture payload — that would be a second kind of membership
+  the fold cannot reproduce.
 
 ## Deliberately absent
 
