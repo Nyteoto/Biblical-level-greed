@@ -26,6 +26,16 @@ INDEX_PATH = Path(
 # your head — anything longer is a note, and notes have their own home.
 MAX_RAW_LEN = 2000
 
+# The source's folder-name cap, kept for the same reason it exists there: a
+# folder name is read at a glance in a list, and one that wraps is not.
+MAX_NAME_LEN = 60
+
+# Which way round `{03/04/26}` reads: "us" is March 4th, "row" is April 3rd.
+# There is no settings UI for this and there should not be — it is a property
+# of the person, not of a session, and it is wanted before the first reminder
+# is ever typed. A env var, defaulting to the reading most of the world uses.
+DATE_LOCALE = os.environ.get("PGS_CAPTURE_DATE_LOCALE", "row")
+
 
 def ensure_dirs() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)

@@ -30,7 +30,7 @@ JavaScript's quirks are the specification, not accidents to clean up:
    `/--todo\\b/` in JS and would not here, so the boundary is checked by hand.
  - **Whitespace is JavaScript's.** `trim()` and `\\s` cover `\\uFEFF` (which
    Python does not consider whitespace) and exclude `\\x1c`–`\\x1f` (which
-   Python strips). `_js_trim` spells the set out.
+   Python strips). `js_trim` spells the set out.
  - **A whitespace-only quoted directive yields `""`, not `None`.** The source
    assigns the empty name, breaks, and then re-tests it for falsiness — so the
    unquoted scan still runs, and if it finds nothing the returned directive is
@@ -77,7 +77,7 @@ _JS_WS = frozenset(
 _ASCII_WORD = frozenset(string.ascii_letters + string.digits + "_")
 
 
-def _js_trim(s: str) -> str:
+def js_trim(s: str) -> str:
     return s.strip("".join(_JS_WS))
 
 
@@ -110,10 +110,20 @@ def _dedupe(names: list[str]) -> list[str]:
     """Trim, lowercase, drop the empties, keep first appearance order."""
     out: dict[str, None] = {}
     for name in names:
-        captured = _js_trim(name).lower()
+        captured = js_trim(name).lower()
         if captured:
             out[captured] = None
     return list(out)
+
+
+def normalize_tag(raw: str) -> str:
+    """Trim and lowercase a tag the way a captured `<tag>` is.
+
+    Exported because tags arrive from two directions — typed inside a capture,
+    and typed into the mapping screen — and a tag that normalises differently
+    depending on which door it came through is two tags that look like one.
+    """
+    return js_trim(raw).lower()
 
 
 def _collect(raw: str, pattern: re.Pattern[str]) -> list[str]:
@@ -240,7 +250,7 @@ def parse_entry(raw: str) -> ParsedEntry:
     # quoted form has to match on `raw`: masking blanked its contents out.
     directive: str | None = None
     for m in _DIRECTIVE_QUOTED_RE.finditer(raw):
-        name = _js_trim(m.group(1)).lower()
+        name = js_trim(m.group(1)).lower()
         if name in _RESERVED:
             continue
         directive = name
@@ -260,13 +270,13 @@ def parse_entry(raw: str) -> ParsedEntry:
     for i, line in enumerate(lines):
         if _has_todo(line):
             todo_lines.append(i)
-            line = _js_trim(_strip(line, "--todo", eat_leading_ws=True))
+            line = js_trim(_strip(line, "--todo", eat_leading_ws=True))
         if directive:
-            line = _js_trim(_strip(line, f'--"{directive}"', boundary=False))
-            line = _js_trim(_strip(line, f"--{directive}"))
+            line = js_trim(_strip(line, f'--"{directive}"', boundary=False))
+            line = js_trim(_strip(line, f"--{directive}"))
         clean_lines.append(line)
 
-    clean_text = _js_trim(re.sub(r"\n{3,}", "\n\n", "\n".join(clean_lines)))
+    clean_text = js_trim(re.sub(r"\n{3,}", "\n\n", "\n".join(clean_lines)))
 
     return ParsedEntry(
         folders=folders,

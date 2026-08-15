@@ -28,7 +28,35 @@ class CaptureIn(BaseModel):
 
 
 class EntryPatch(BaseModel):
-    toggle_line: int
+    """The two things that can happen to an entry after it is written. Both
+    are events; neither edits the line. `assign_folder` is tri-state on
+    purpose — absent means "leave the filing alone", `null` means "unfile it",
+    which is the distinction the source draws with `"assignFolderId" in body`.
+    """
+
+    toggle_line: int | None = None
+    assign_folder: str | None = None
+
+
+class ImportIn(BaseModel):
+    csv: str
+
+
+class FolderIn(BaseModel):
+    name: str
+    tags: list[str] = []
+
+
+class FolderPatch(BaseModel):
+    name: str | None = None
+    add_tags: list[str] = []
+    remove_tags: list[str] = []
+
+
+def _status(exc: CaptureError) -> int:
+    """A refusal that names something missing is a 404; everything else the
+    store refuses is a bad request."""
+    return 404 if str(exc).startswith("no such ") else 400
 
 
 def _day(value: str | None, field: str) -> str | None:
@@ -79,15 +107,125 @@ def create_entry(body: CaptureIn) -> dict:
 
 @router.patch("/entries/{entry_id}")
 def patch_entry(entry_id: str, body: EntryPatch) -> dict:
-    """The only mutation an entry has. It is not an edit: it appends a
-    `check` or an `uncheck` and returns the re-folded entry."""
+    """Tick a box, or file the entry into a folder by hand. Neither is an
+    edit: each appends an event and returns the re-folded entry."""
+    try:
+        if body.toggle_line is not None:
+            entry = store.toggle_line(entry_id, body.toggle_line)
+        elif "assign_folder" in body.model_fields_set:
+            entry = store.assign_entry(entry_id, body.assign_folder)
+        else:
+            raise HTTPException(400, "nothing to change")
+        return {"entry": entry, "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+# ── Reminders ─────────────────────────────────────────────────────────────
+
+
+class DismissIn(BaseModel):
+    entry_id: str
+    line: int
+
+
+@router.get("/reminders")
+def list_reminders() -> dict:
+    """What has come due and not been dismissed, soonest first.
+
+    Derived, not stored: a reminder is a `{time}` on a line plus the moment
+    that line was written. Nothing was written when the reminder was made,
+    because the reminder was never made — it was always implied by the entry.
+    """
+    return {"reminders": store.due_reminders(), "version": store.version}
+
+
+@router.post("/reminders/dismiss")
+def dismiss_reminder(body: DismissIn) -> dict:
+    try:
+        store.dismiss_reminder(body.entry_id, body.line)
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+    return {"reminders": store.due_reminders(), "version": store.version}
+
+
+# ── Folders ───────────────────────────────────────────────────────────────
+
+
+@router.get("/folders")
+def list_folders() -> dict:
+    return {"folders": store.folders(), "version": store.version}
+
+
+@router.post("/folders", status_code=201)
+def create_folder(body: FolderIn) -> dict:
     try:
         return {
-            "entry": store.toggle_line(entry_id, body.toggle_line),
+            "folder": store.create_folder(body.name, body.tags),
             "version": store.version,
         }
     except CaptureError as exc:
-        raise HTTPException(404 if "no such entry" in str(exc) else 400, str(exc)) from exc
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+@router.get("/folders/{folder_id}")
+def folder_detail(folder_id: str) -> dict:
+    """The folder, everything in it, and its sentiment counts.
+
+    Membership is resolved here rather than stored, so this is also the answer
+    to "what would happen if I mapped that tag" — map it and the entries are
+    already inside.
+    """
+    try:
+        return {**store.folder_detail(folder_id), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+@router.patch("/folders/{folder_id}")
+def patch_folder(folder_id: str, body: FolderPatch) -> dict:
+    """Rename it, and add or drop tag mappings. One request can do all three,
+    which is what the mapping screen's drag needs when it also creates."""
+    try:
+        folder = None
+        if body.name is not None:
+            folder = store.rename_folder(folder_id, body.name)
+        for tag in body.add_tags:
+            folder = store.map_tag(folder_id, tag)
+        for tag in body.remove_tags:
+            folder = store.unmap_tag(folder_id, tag)
+        if folder is None:
+            raise HTTPException(400, "nothing to change")
+        return {"folder": folder, "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+@router.delete("/folders/{folder_id}")
+def delete_folder(folder_id: str) -> dict:
+    """Deletes the folder, not what was written into it. The entries stay and
+    their tags return to the unassigned pool."""
+    try:
+        store.delete_folder(folder_id)
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+    return {"ok": True, "version": store.version}
+
+
+@router.post("/import")
+def import_csv(body: ImportIn) -> dict:
+    """Read a CSV into the log. Parsed here rather than in the browser: the
+    source parses client-side because it may have to encrypt before the server
+    sees anything, and that reason does not exist on one machine."""
+    return {**store.import_csv(body.csv), "version": store.version}
+
+
+@router.get("/tags/unassigned")
+def unassigned_tags() -> dict:
+    """Every tag written that no folder has claimed. The mapping screen is
+    this list and nothing else."""
+    tags = store.unassigned_tags()
+    return {"tags": tags, "total": len(tags), "version": store.version}
 
 
 @router.get("/dates")
@@ -109,11 +247,10 @@ def cumulative(up_to: str) -> dict:
 
 @router.get("/vocab")
 def get_vocab() -> dict:
-    """Autocomplete's raw material. `folders` is always empty for now: folders
-    are entities in the source (name, colour, tag mappings) and that screen is
-    not ported yet. The key is present so the client's shape does not change
-    when it arrives."""
-    return {"folders": [], "tag_to_folder": {}, **store.vocab()}
+    """Autocomplete's raw material, plus the folder registry the live
+    validation checks a draft against. One request because the capture bar
+    needs all of it before the first keystroke."""
+    return {**store.vocab(), "version": store.version}
 
 
 @router.get("/health")

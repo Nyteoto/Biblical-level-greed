@@ -19,6 +19,10 @@ export const SYNTAX_COLORS = {
 
 export const UI_COLORS = {
 	ink: '#e7e5e4', // stone-200 — text and the caret
+	// The caret's halo. The source is `rgba(24,24,27,0.2)` — ink at 20% — and
+	// this is the same alpha on the inverted ink, so the caret glows against
+	// the dark ground the way it shadows against the light one.
+	inkGlow: 'rgba(231,229,228,0.2)',
 	muted: '#57534e', // stone-600 — the resting indicator, checkbox borders
 	dim: '#a8a29e', // stone-400 — timestamps, labels
 	success: '#34d399', // emerald-400 — sent

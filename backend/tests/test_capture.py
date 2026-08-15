@@ -157,6 +157,8 @@ def test_dates_and_vocab_come_off_the_index(capture_store):
     day = capture_store.entries(limit=1)[0]["day"]
     assert capture_store.dates() == {day: 2}
     assert capture_store.vocab() == {
+        "folders": [],
+        "tag_to_folder": {},
         "tags": ["home", "job"],
         "times": ["tmr"],
         "patterns": ["win"],

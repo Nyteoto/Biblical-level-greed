@@ -1,16 +1,16 @@
 <script lang="ts">
 	/** Read-only rendering of a captured line. Ported from ColorizedText.tsx.
 	 *
-	 * Written as one unbroken expression on purpose: the text renders inside a
-	 * `white-space: pre-wrap` container, so any newline or indentation between
-	 * the spans would show up as literal whitespace in the entry. */
-	import { tokenize } from './tokenize';
-	import { TOKEN_COLORS } from './colors';
+	 * The behaviour is in `colorize.ts`, where the corpus can reach it; this is
+	 * only the loop. Written as one unbroken expression on purpose: the text
+	 * renders inside a `white-space: pre-wrap` container, so any newline or
+	 * indentation between the spans would show up as literal whitespace in the
+	 * entry. */
+	import { colorizeSegments } from './colorize';
 
 	let { text }: { text: string } = $props();
-	const tokens = $derived(tokenize(text));
+	const segments = $derived(colorizeSegments(text));
 </script>
 
-{#each tokens as t, i (i)}{#if TOKEN_COLORS[t.kind]}<span style="color:{TOKEN_COLORS[t.kind]}"
-		>{t.raw}</span
-	>{:else}{t.raw}{/if}{/each}
+{#each segments as s, i (i)}<span style={s.color ? `color:${s.color}` : undefined}>{s.text}</span
+	>{/each}

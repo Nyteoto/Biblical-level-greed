@@ -71,6 +71,33 @@
 	}
 }
 
+/* A menu appearing under the pointer. Short enough not to be waited on. */
+@keyframes landing-fade-in {
+	0% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+
+/* A folder card slides out to meet the pointer rather than lighting up. The
+   same 12px is reused as the tap feedback on touch, where there is no hover
+   to slide on — see the folder list. */
+.trophic .folder-card {
+	transition:
+		transform 200ms ease,
+		box-shadow 300ms ease;
+	box-shadow: 0 0 0 transparent;
+}
+
+@media (hover: hover) {
+	.trophic .folder-card:hover {
+		transform: translateX(12px);
+		box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.3);
+	}
+}
+
 /* Idle dim. Copied byte-for-byte from the source, and note which way round it
    actually runs: a CSS transition is read off the state being entered, so
    adding .dimmed animates to opacity 0 over THIRTY SECONDS, and removing it

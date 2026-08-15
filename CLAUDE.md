@@ -136,7 +136,7 @@ the one acknowledged gap.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 263 tests, ~1s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 319 tests, ~1s. Run them.
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend
