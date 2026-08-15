@@ -54,6 +54,10 @@ class FolderIn(BaseModel):
 
 class FolderPatch(BaseModel):
     name: str | None = None
+    # "", "active" or "shipped". Absent leaves it alone; the empty string is a
+    # real value meaning "no lifecycle", so this cannot collapse into a falsy
+    # check the way the others can.
+    state: str | None = None
     add_tags: list[str] = []
     remove_tags: list[str] = []
 
@@ -194,12 +198,15 @@ def folder_detail(folder_id: str) -> dict:
 
 @router.patch("/folders/{folder_id}")
 def patch_folder(folder_id: str, body: FolderPatch) -> dict:
-    """Rename it, and add or drop tag mappings. One request can do all three,
-    which is what the mapping screen's drag needs when it also creates."""
+    """Rename it, move it along its life, and add or drop tag mappings. One
+    request can do all of them, which is what the mapping screen's drag needs
+    when it also creates."""
     try:
         folder = None
         if body.name is not None:
             folder = store.rename_folder(folder_id, body.name)
+        if body.state is not None:
+            folder = store.set_folder_state(folder_id, body.state)
         for tag in body.add_tags:
             folder = store.map_tag(folder_id, tag)
         for tag in body.remove_tags:

@@ -34,11 +34,11 @@ import { buildTrie, prefixSearch, scoredSearch } from '../src/lib/trophic/trie.t
 import { validate } from '../src/lib/trophic/validation.ts';
 import { view, handleKey, caretStyle } from '../src/lib/trophic/capture-bar.ts';
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
-import { drawTimeline, type ViewSpan } from '../src/lib/trophic/timeline-draw.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
 import { enqueue, flush, pendingCount, STORAGE_KEY } from '../src/lib/trophic/retry-queue.ts';
 import { todayKey } from '../src/lib/trophic/day.ts';
+import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
 import type { Vocab } from '../src/lib/trophic/api.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -70,44 +70,6 @@ function asVocab(v: CorpusVocab | undefined): Vocab | undefined {
 		times: v.times,
 		patterns: v.patterns
 	};
-}
-
-// ── A canvas that records instead of painting ─────────────────────────────
-
-type Op = { op: string; args?: unknown[]; prop?: string; value?: unknown };
-
-function recordingContext(): { ops: Op[]; ctx: CanvasRenderingContext2D } {
-	const ops: Op[] = [];
-	const target = {
-		measureText: (t: string) => ({ width: t.length * 6 })
-	} as unknown as CanvasRenderingContext2D;
-
-	const ctx = new Proxy(target, {
-		get(_, prop: string) {
-			if (prop === 'measureText') {
-				return (t: string) => {
-					ops.push({ op: 'measureText', args: [t] });
-					return { width: t.length * 6 };
-				};
-			}
-			if (prop === 'canvas') return { width: 0, height: 0 };
-			return (...args: unknown[]) => {
-				ops.push({ op: prop, args: args.map(round6) });
-			};
-		},
-		set(_, prop: string, value: unknown) {
-			ops.push({ op: 'set', prop, value });
-			return true;
-		}
-	}) as CanvasRenderingContext2D;
-
-	return { ops, ctx };
-}
-
-function round6(v: unknown): unknown {
-	return typeof v === 'number' && Number.isFinite(v)
-		? Math.round(v * 1e6) / 1e6
-		: v;
 }
 
 // ── Adapters ──────────────────────────────────────────────────────────────
@@ -338,23 +300,6 @@ ADAPTERS.colorize = (i: { text: string }) => {
 	return { segments, html: segmentsToHtml(segments) };
 };
 
-ADAPTERS.timeline_draw = (i: {
-	W: number;
-	h: number;
-	ppd: number;
-	scroll: number;
-	labelAlpha: number;
-	dates: Record<string, number>;
-	selected: string | null;
-	viewSpan: ViewSpan;
-	todayMs: number;
-	dense: boolean;
-}) => {
-	const { ops, ctx } = recordingContext();
-	drawTimeline({ ...i, ctx });
-	return { opCount: ops.length, ops };
-};
-
 // ── The one declared deviation: colour ────────────────────────────────────
 //
 // The source was painted against white and this app is `#14100c`, so every
@@ -376,19 +321,12 @@ const THEME: Record<string, string[]> = {
 	'#fb7185': ['#e11d48'], // pattern
 	'#f59e0b': ['#d97706'], // directive
 	'#a78bfa': ['#8b5cf6'], // todo
-	// timeline-draw.ts — the ruler.
-	'#403830': ['#e4e4e7'], // the track
-	'#4a4038': ['#e4e4e7', '#d4d4d8'], // day ticks: see above
-	'#5d5045': ['#d4d4d8'], // unit ticks
-	'#57534e': ['#a1a1aa'], // the tick under a dense label
-	'#e7e5e4': ['#18181b'], // the selection, ink inverted
-	'rgba(231,229,228,0.07)': ['rgba(24,24,27,0.06)'] // the selected band
+	// The caret and its halo, ink inverted against the dark ground.
+	'#e7e5e4': ['#18181b']
 };
 
 /** `rgba(r,g,b,a)` translations, alpha carried through unchanged. */
 const THEME_RGB: Record<string, string> = {
-	'168,162,158': '161,161,170', // timeline labels
-	'124,116,108': '113,113,122', // timeline day numbers
 	'231,229,228': '24,24,27' // ink — the caret and its halo
 };
 
@@ -501,6 +439,53 @@ function localChecks(): string[] {
 		failures.push(`  todayKey() returned ${todayKey()}`);
 	}
 
+	// The pin writes its folder's tag into the raw line. Everything the log
+	// shows is a fold over that text, so a mistake here is not a display bug —
+	// it is a capture filed in the wrong place, permanently, in an append-only
+	// log. No corpus covers it: the source has no pin.
+	const pinCases: [string, string, string][] = [
+		['cut the legs', 'kitchen-table', 'cut the legs <kitchen-table>'],
+		// Already reaching that folder, by tag or by directive: leave it alone.
+		['cut the legs <kitchen-table>', 'kitchen-table', 'cut the legs <kitchen-table>'],
+		['--kitchen-table cut the legs', 'kitchen-table', '--kitchen-table cut the legs'],
+		// Tags are matched lowercased, the way the parser reads them.
+		['cut the legs <Kitchen-Table>', 'kitchen-table', 'cut the legs <Kitchen-Table>'],
+		// A different folder's tag is not this folder's.
+		['sanded it <workshop>', 'kitchen-table', 'sanded it <workshop> <kitchen-table>'],
+		// Media with no words: the tag becomes the whole line.
+		['', 'kitchen-table', '<kitchen-table>'],
+		['   ', 'kitchen-table', '<kitchen-table>'],
+		// A folder name with a space keeps it — `normalize_tag` only trims and
+		// lowercases, and `<a b>` is one folder token to the tokenizer.
+		['glued up', 'kitchen table', 'glued up <kitchen table>'],
+		// No pin, no change.
+		['cut the legs', '', 'cut the legs']
+	];
+	for (const [text, tag, want] of pinCases) {
+		const got = withPinnedTag(text, tag);
+		if (got !== want) {
+			failures.push(`  withPinnedTag(${JSON.stringify(text)}, ${JSON.stringify(tag)}) = ` +
+				`${JSON.stringify(got)}, expected ${JSON.stringify(want)}`);
+		}
+	}
+
+	// Which tag a pin writes: the folder's own name when it holds it, whatever
+	// does point here when something else claimed the name first, and nothing
+	// at all when no tag reaches it.
+	const pinTagCases: [{ name: string; tags: string[] }, string | null][] = [
+		[{ name: 'Kitchen table', tags: ['kitchen table'] }, 'kitchen table'],
+		[{ name: 'Kitchen table', tags: ['bench', 'kitchen table'] }, 'kitchen table'],
+		[{ name: 'Garden', tags: ['allotment'] }, 'allotment'],
+		[{ name: 'Garden', tags: [] }, null]
+	];
+	for (const [folder, want] of pinTagCases) {
+		const got = tagForPin(folder);
+		if (got !== want) {
+			failures.push(`  tagForPin(${JSON.stringify(folder)}) = ${JSON.stringify(got)}, ` +
+				`expected ${JSON.stringify(want)}`);
+		}
+	}
+
 	return failures;
 }
 
@@ -594,19 +579,6 @@ async function main(argv: string[]): Promise<number> {
 		console.error(`corpus directory not found: ${CORPUS}`);
 		console.error('the trophic/ bundle is gitignored — see TROPHIC.md');
 		return 2;
-	}
-
-	// The ruler's month names come from `toLocaleDateString(undefined, …)`, so
-	// they follow the ambient locale by design. The corpus was generated under
-	// en-US; under anything else the labels differ legitimately and every
-	// timeline case fails for a reason that is not a bug. Say so rather than
-	// let someone debug "10 Aug" against "Aug 10" for an hour.
-	const locale = new Intl.DateTimeFormat().resolvedOptions().locale;
-	if (!locale.startsWith('en-US')) {
-		console.error(
-			`locale is ${locale}, corpus was generated under en-US — ` +
-				'run with LC_ALL=en_US.UTF-8 (npm run verify:ui does)\n'
-		);
 	}
 
 	let stems = readdirSync(CORPUS)

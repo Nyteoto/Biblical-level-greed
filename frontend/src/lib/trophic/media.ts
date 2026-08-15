@@ -13,6 +13,13 @@
 // fail: a codec the browser will not decode just means the clip has no poster,
 // and the log falls back to `preload="metadata"`.
 
+import type { Entry } from './api';
+
+/** One attachment, plus the line it was written beside. The pair the grid and
+ *  the lightbox both deal in: a tile has to know what to open, and the viewer
+ *  has to know what to caption it with. */
+export type Shot = { ref: string; entry: Entry };
+
 export type Attachment = {
 	/** Local id, so a chip can be removed before anything is uploaded. */
 	key: string;
@@ -45,6 +52,13 @@ export function kindOf(file: File): 'image' | 'video' | '' {
 	// An iPhone sometimes reports an empty type for HEIC; the extension is the
 	// fallback, and the server refuses anything neither test recognises.
 	return '';
+}
+
+/** Is this stored path a clip? Extension only — a `media/…` reference carries
+ *  no MIME type, and the writer picked the extension from the kind, so it is
+ *  as reliable here as `kindOf` is on the way in. */
+export function isVideo(ref: string): boolean {
+	return VIDEO_EXT.test(ref);
 }
 
 export function attach(file: File): Attachment | null {

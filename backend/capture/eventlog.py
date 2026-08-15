@@ -78,6 +78,12 @@ DELETE_FOLDER = "delete-folder"
 # `@@unique([userId, tagName])`.
 MAP_TAG = "map-tag"
 UNMAP_TAG = "unmap-tag"
+# Where a folder is in its life, in `text`: "active" while you are working on
+# it, "shipped" when it is done, and empty — the default — for one that has no
+# life to speak of, which is what an ongoing interest looks like. Three states
+# and no taxonomy: nothing has to be classified before it can be captured into,
+# and a hobby that turns into a project is one event rather than a migration.
+SET_STATE = "set-state"
 
 KINDS = {
     CAPTURE,
@@ -92,6 +98,7 @@ KINDS = {
     DELETE_FOLDER,
     MAP_TAG,
     UNMAP_TAG,
+    SET_STATE,
 }
 
 

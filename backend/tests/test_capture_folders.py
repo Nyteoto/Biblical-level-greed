@@ -145,6 +145,106 @@ def test_deleting_a_folder_keeps_every_word_that_was_in_it(capture_store):
     assert capture_store.entry(entry["id"])["manual_folders"] == []
 
 
+def test_a_folder_counts_what_the_union_says_is_in_it(capture_store):
+    """The chip's number. Tagged in and filed in by hand, counted once."""
+    folder = capture_store.create_folder("Work")
+    capture_store.capture("standup <work>")
+    capture_store.capture("also standup <work>")
+    filed = capture_store.capture("no tag on this one")
+    capture_store.assign_entry(filed["id"], folder["id"])
+    # Both routes into the same folder must not double-count.
+    both = capture_store.capture("belt and braces <work>")
+    capture_store.assign_entry(both["id"], folder["id"])
+
+    assert capture_store.folders()[0]["entry_count"] == 4
+    assert_index_is_disposable(capture_store)
+
+
+# ── A folder's life ───────────────────────────────────────────────────────
+#
+# What makes a folder a project rather than a standing interest. Three states
+# on one list rather than two kinds of thing, so nothing has to be classified
+# before it can be captured into and a hobby that becomes a project is one
+# event rather than a migration.
+
+
+def test_a_folder_starts_with_no_lifecycle(capture_store):
+    """The default, and the commonest: an interest you keep, not a project."""
+    assert capture_store.create_folder("Filmmaking")["state"] == ""
+
+
+def test_a_folder_can_be_taken_up_and_finished(capture_store):
+    folder = capture_store.create_folder("Kitchen table")
+
+    assert capture_store.set_folder_state(folder["id"], "active")["state"] == "active"
+    assert capture_store.set_folder_state(folder["id"], "shipped")["state"] == "shipped"
+    # ...and put back down again. Nothing here is one-way.
+    assert capture_store.set_folder_state(folder["id"], "")["state"] == ""
+
+
+def test_an_unknown_state_is_refused(capture_store):
+    folder = capture_store.create_folder("Kitchen table")
+
+    with pytest.raises(CaptureError):
+        capture_store.set_folder_state(folder["id"], "nearly")
+    assert capture_store.folders()[0]["state"] == ""
+
+
+def test_setting_the_state_it_already_has_writes_nothing(capture_store):
+    """An idempotent write should not add a line to an append-only log."""
+    folder = capture_store.create_folder("Kitchen table")
+    capture_store.set_folder_state(folder["id"], "active")
+    before = len(log_kinds())
+
+    capture_store.set_folder_state(folder["id"], "active")
+
+    assert len(log_kinds()) == before
+
+
+def test_the_state_is_last_wins_like_every_other_fold(capture_store):
+    folder = capture_store.create_folder("Kitchen table")
+    for state in ("active", "shipped", "active"):
+        capture_store.set_folder_state(folder["id"], state)
+
+    assert capture_store.folders()[0]["state"] == "active"
+    assert log_kinds().count("set-state") == 3  # nothing was rewritten
+
+
+def test_a_state_survives_the_index_being_deleted(capture_store):
+    folder = capture_store.create_folder("Kitchen table")
+    capture_store.set_folder_state(folder["id"], "shipped")
+
+    assert_index_is_disposable(capture_store)
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.folders()[0]["state"] == "shipped"
+    finally:
+        fresh.close()
+
+
+def test_a_state_for_a_deleted_folder_is_dropped_not_resurrected(capture_store):
+    folder = capture_store.create_folder("Kitchen table")
+    capture_store.delete_folder(folder["id"])
+
+    path = eventlog.log_path_for("2099-01-01")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "ts": "2099-01-01T00:00:00+00:00",
+                    "day": "2099-01-01",
+                    "kind": "set-state",
+                    "id": folder["id"],
+                    "text": "active",
+                }
+            )
+            + "\n"
+        )
+
+    capture_store.reindex()
+    assert capture_store.folders() == []
+
+
 # ── Filing by hand ────────────────────────────────────────────────────────
 
 
@@ -381,6 +481,28 @@ def test_every_folder_route_is_reachable(client):
         == 200
     )
     assert client.delete(f"/api/capture/folders/{folder_id}").status_code == 200
+
+
+def test_the_state_travels_over_the_wire(client):
+    folder_id = client.post("/api/capture/folders", json={"name": "Work"}).json()[
+        "folder"
+    ]["id"]
+
+    taken_up = client.patch(
+        f"/api/capture/folders/{folder_id}", json={"state": "active"}
+    )
+    assert taken_up.json()["folder"]["state"] == "active"
+
+    # The empty string is a value, not an omission: it has to reach the store
+    # and clear the state rather than read as "nothing to change".
+    cleared = client.patch(f"/api/capture/folders/{folder_id}", json={"state": ""})
+    assert cleared.status_code == 200
+    assert cleared.json()["folder"]["state"] == ""
+
+    refused = client.patch(
+        f"/api/capture/folders/{folder_id}", json={"state": "nearly"}
+    )
+    assert refused.status_code == 400
 
 
 def test_a_missing_folder_is_a_404_and_a_bad_name_is_a_400(client):

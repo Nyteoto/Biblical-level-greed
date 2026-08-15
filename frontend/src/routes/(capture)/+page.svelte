@@ -26,16 +26,20 @@
 		captureBody,
 		createFolder,
 		dismissReminder,
+		getFolders,
 		getReminders,
 		getVocab,
 		CAPTURE_URL,
 		NetworkError,
+		type Folder,
 		type Reminder,
 		type Vocab
 	} from '$lib/trophic/api';
 	import { UI_COLORS } from '$lib/trophic/colors';
 	import { deviceType, virtualKeyboard } from '$lib/trophic/device.svelte';
 	import { attach, release, type Attachment } from '$lib/trophic/media';
+	import { tagForPin, withPinnedTag } from '$lib/trophic/pinned';
+	import { pinned } from '$lib/trophic/pinned.svelte';
 	import { startUploads } from '$lib/trophic/uploads.svelte';
 	import { browserEnv, enqueue, initRetryQueue, pendingCount } from '$lib/trophic/retry-queue';
 	import { validate } from '$lib/trophic/validation';
@@ -74,6 +78,17 @@
 	// change of mind costs nothing and a five-minute video is not uploaded
 	// twice because the line was edited.
 	let attachments = $state<Attachment[]>([]);
+
+	// The pin. A folder held here claims every capture until it is let go, so
+	// the common case — a run of entries about one thing — costs one tap
+	// instead of a tag per line. What it actually does is append the folder's
+	// tag to the text on the way out; see pinned.ts for why that, and not a
+	// folder id sent alongside.
+	let folders = $state<Folder[]>([]);
+	let pinMenu = $state(false);
+	const pin = pinned();
+	const pinnedFolder = $derived(folders.find((f) => f.id === pin.id) ?? null);
+	const pinTag = $derived(pinnedFolder ? tagForPin(pinnedFolder) : null);
 	// Files still going up live in `uploads.svelte.ts`, not here: a clip takes
 	// minutes and you will navigate away while it runs, so its progress bar
 	// belongs to the shell.
@@ -104,6 +119,11 @@
 		}
 		isMobile = deviceType().isMobile;
 		getVocab().then((v) => (vocab = v));
+		getFolders()
+			.then((f) => (folders = f.folders))
+			.catch(() => {
+				/* the pin is a convenience; the bar works without it */
+			});
 		// Replay anything the connection ate, now and whenever it comes back.
 		queued = pendingCount(browserEnv());
 		const stopRetry = initRetryQueue(() => {
@@ -240,8 +260,12 @@
 			input?.focus();
 		}, 220);
 
+		// The pin's tag goes in here, at the last moment, so what is stored is a
+		// line that reads exactly as if it had been typed with the tag on it.
+		const line = pinTag ? withPinnedTag(text, pinTag) : text;
+
 		try {
-			const { entry } = await capture(text);
+			const { entry } = await capture(line);
 			// The vocabulary just grew by whatever was in that line.
 			vocab = await getVocab();
 			if (sent.length > 0) startUploads(entry.id, sent);
@@ -253,7 +277,7 @@
 			// is the user's problem, and it gives the text back — losing a
 			// captured thought is the one thing this app cannot do.
 			if (e instanceof NetworkError) {
-				enqueue(browserEnv(), CAPTURE_URL, captureBody(text));
+				enqueue(browserEnv(), CAPTURE_URL, captureBody(line));
 				queued = pendingCount(browserEnv());
 				// The files have nowhere to go: there is no entry id yet, and
 				// the queue replays a body, not an upload. Give them back.
@@ -351,16 +375,77 @@
 		'M0,0 L600,0 L600,2 L345,2 C342,2 340,13 335,13 L265,13 C260,13 258,2 255,2 L0,2 Z';
 </script>
 
+<svelte:window onclick={() => (pinMenu = false)} />
+
 <header
 	class="ui-dim sticky top-0 z-40 flex items-center justify-between bg-[#14100c] px-6 py-5 text-[11px] tracking-wide text-stone-500 {uiDimmed
 		? 'dimmed'
 		: ''}"
 >
-	<!-- Empty on purpose. The wordmark went when capture took the root: the tab
-	     bar already says where you are, and this screen is at its best with
-	     nothing on it but the line you are writing. The header stays for the
-	     idle-dim behaviour and the safe-area inset. -->
-	<span></span>
+	<!-- Almost empty on purpose. The wordmark went when capture took the root:
+	     the tab bar already says where you are, and this screen is at its best
+	     with nothing on it but the line you are writing.
+	     The pin sits here rather than beside the attach button, which is the
+	     other place it could go: that button lives in the 40px of right padding
+	     the text area reserves, and a folder name does not fit in 40px. Up here
+	     it also inherits the idle dim, so it fades out while you write and is
+	     back the moment you move. -->
+	<div class="relative">
+		<button
+			type="button"
+			class="flex items-center gap-1.5 transition-colors hover:text-stone-300"
+			onclick={(e) => {
+				e.stopPropagation();
+				pinMenu = !pinMenu;
+			}}
+		>
+			{#if pinnedFolder}
+				<span class="h-1.5 w-1.5 rounded-full" style="background:{pinnedFolder.color}"></span>
+				<span style="color:{pinnedFolder.color}">{pinnedFolder.name}</span>
+			{:else}
+				<span class="text-stone-600">pin a folder</span>
+			{/if}
+		</button>
+
+		{#if pinMenu}
+			<div
+				class="absolute top-full left-0 z-50 mt-2 flex max-h-[60vh] min-w-[170px] flex-col overflow-y-auto rounded border border-stone-700 bg-[#1b1613] py-1.5 shadow-xl"
+			>
+				{#if pin.id}
+					<button
+						type="button"
+						class="px-4 py-2 text-left text-[12px] text-stone-400 transition-colors hover:bg-stone-800 hover:text-stone-200"
+						onclick={() => {
+							pin.set(null);
+							pinMenu = false;
+						}}
+					>
+						unpin
+					</button>
+				{/if}
+				{#each folders as f (f.id)}
+					{@const tag = tagForPin(f)}
+					<button
+						type="button"
+						class="flex items-center gap-2 px-4 py-2 text-left text-[12px] transition-colors hover:bg-stone-800 disabled:opacity-30"
+						disabled={!tag}
+						title={tag ? `captures land as <${tag}>` : 'no tag points at this folder'}
+						onclick={() => {
+							pin.set(f.id);
+							pinMenu = false;
+						}}
+					>
+						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:{f.color}"></span>
+						<span class="truncate" style="color:{f.id === pin.id ? f.color : '#d6d3d1'}">
+							{f.name}
+						</span>
+					</button>
+				{:else}
+					<span class="px-4 py-2 text-[12px] text-stone-500">no folders yet</span>
+				{/each}
+			</div>
+		{/if}
+	</div>
 	<span></span>
 </header>
 

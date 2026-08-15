@@ -30,6 +30,12 @@ MAX_RAW_LEN = 2000
 # folder name is read at a glance in a list, and one that wraps is not.
 MAX_NAME_LEN = 60
 
+# Where a folder is in its life. The empty one is the default and means "no
+# lifecycle" — an interest you keep rather than a project you finish. Kept
+# small on purpose: a longer list is a taxonomy, and a taxonomy is something
+# you have to maintain before you are allowed to write anything down.
+FOLDER_STATES = ("", "active", "shipped")
+
 # Which way round `{03/04/26}` reads: "us" is March 4th, "row" is April 3rd.
 # There is no settings UI for this and there should not be — it is a property
 # of the person, not of a session, and it is wanted before the first reminder

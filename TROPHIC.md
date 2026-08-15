@@ -114,7 +114,7 @@ covered" count is the honest progress bar.
 | `import-csv` | **ported** to `backend/capture/import_csv.py` — 48/48 across two corpus files |
 | `tokenize`, `trie` | **copied verbatim** into `frontend/src/lib/trophic/`, and now **verified there** — 633/633 via `npm run verify:ui` |
 | `insights/`, `typo_suggestion` | not started — 77 cases |
-| the 11 UI-behaviour files | **176/210**, also via `npm run verify:ui` — see the UI section |
+| the 11 UI-behaviour files | **138/188**, also via `npm run verify:ui` — see the UI section |
 
 `tokenize.ts` and `trie.ts` are TypeScript in the frontend rather than Python in
 the backend because only the browser needs them: the live syntax colouring and
@@ -141,14 +141,14 @@ React through a fake DOM, so they record behaviour rather than markup:
 
 | file | pins | state |
 |---|---|---|
-| `timeline_draw` | every canvas call, in order, across all four zoom tiers | 22/22 |
+| `timeline_draw` | every canvas call, in order, across all four zoom tiers | **dropped — the ruler is gone, see below** |
 | `capture_overlay` | the overlay, ghost text, the suggestion panel, the sliding caret | 26/26 |
 | `capture_keys` | the (inverted) arrow keys, accept, quoting, IME passthrough | 18/18 |
 | `capture_validation` | the locking rules the bar implements | 32/32 |
 | `colorize` | the read-only rendering of a saved line | 25/25 |
 | `long_press` | 500ms, 10px radial, one swallowed click | 14/14 |
 | `viewport` | device type, the on-screen keyboard, hand mode | 23/23 |
-| `timeline_interaction` | wheel easing, drag, pinch, double-tap, clamping, persistence | not wired |
+| `timeline_interaction` | wheel easing, drag, pinch, double-tap, clamping, persistence | dropped with it |
 | `retry_queue` | the offline queue | see below |
 | `iris_close` | the vault iris | not built |
 | `design_tokens` | colours, keyframes and every tuned duration, read out of source | snapshot |
@@ -168,17 +168,16 @@ ships and replays the corpus against them. It runs on Node's type stripping,
 needs no build, and takes the same arguments as the Python one:
 
 ```bash
-cd frontend && npm run verify:ui              # 793 passing
+cd frontend && npm run verify:ui              # 771 passing
 npm run verify:ui capture_overlay -v          # one file, every diff
 ```
 
 Three things about it are worth knowing before changing it:
 
-- **It must run under `en_US.UTF-8`.** The ruler's month names come from
-  `toLocaleDateString(undefined, …)` and follow the ambient locale by design;
-  the corpus was generated under en-US, so anything else fails every timeline
-  case with "10 Aug" against "Aug 10". The npm script sets it and the runner
-  warns if it is wrong.
+- **It still runs under `en_US.UTF-8` and `TZ=Asia/Bangkok`.** The locale
+  mattered for the ruler's month names and no longer does; the timezone still
+  matters, because one local check pins the midnight bug (see below) and it can
+  only fire east of Greenwich. Leave both set.
 - **The colour deviation is a declared table, not a blanket excuse.** `THEME`
   in that file lists every colour this port emits and the source colour it
   stands in for; comparison translates and then demands an exact match, so a
@@ -229,13 +228,7 @@ keeps the DOM, the timers and the measuring.**
 | `longpress.ts` | `long_press` — a `LongPress` class with injected timers, plus the Svelte action around it |
 | `device.ts` | `viewport` — pure predicates; the runes live in `device.svelte.ts`, because a `$state` in a plain `.ts` is an undefined call at runtime and renders a blank page |
 | `retry-queue.ts` | see above |
-| `timeline-draw.ts` | `timeline_draw` — already separate |
-
-`timeline_interaction` (27 cases) is the one trace still unwired: the gesture
-state is inside `TimelineNav.svelte` and would need the same treatment. Read
-against the notes it already matches — mount defaults, the 0.2-per-frame ease,
-the 1.18/0.85 asymmetry, the 3px mouse and 4px touch thresholds, ctrl+wheel
-clamping where double-tap wraps — but none of that is *checked*.
+| `day.ts`, `pinned.ts` | nothing in the corpus — `localChecks()` in the runner, because they are this port's own and its own mistakes still need an oracle |
 
 Two of them are worth reading even if nothing is being ported today.
 `capture_overlay` records that the suggestion panel is rendered upside down (so
@@ -248,8 +241,19 @@ switched off and replaced with a measured one that glides over 80ms.** That is
 what `SmoothTextarea.svelte` is for, and a plain `<textarea>` would make
 everything else cosmetic.
 
-Two documented deviations from the source:
+Three documented deviations from the source:
 
+- **The date ruler is deleted.** `TimelineNav.svelte` and `timeline-draw.ts`
+  are gone, and the log is a scrolling feed of day blocks — a sticky header, a
+  contact sheet of that day's media, then its text lines. The source's ruler
+  was built for a text capture tool with no media in it: a 520px pane showing
+  one day at a time through a canvas of tick marks. Against a folder of
+  photographs and 2 GB clips it answers "what did I write on the 3rd" and
+  cannot answer "how much is in here", which is the question this app is now
+  for. **This costs the corpus 22 cases** — `verify:ui` went from 793 to 771 —
+  and it retires `timeline_interaction` (27, never wired) as a debt. That is a
+  deliberate deviation, not a regression, and it is the reason both numbers
+  moved.
 - **Colour.** Hue assignments are the product and did not move — blue is a
   folder, rose is a sentiment, purple is time. Lightness did: the originals were
   chosen against white and are unreadable on `#14100c`. See
@@ -272,19 +276,22 @@ The codex and thinking-pond screens and the insight engine behind them,
 `--draw`, `--reply`, images, and onboarding. Encryption is refused rather than
 pending — see `trophic/README.md` for why.
 
-Three hooks from the source are ported and wired: the device classification
-(`device.ts`), the on-screen-keyboard test — the capture box moves to the top
-of the screen when the keyboard takes it, rather than centring inside what is
-left — and hand mode, which puts the ruler on the thumb's side on a phone.
-Hand mode has no UI for setting it, which is also true of the source; it
-defaults to right and is read from localStorage. The offline retry queue is
+Three hooks from the source are ported: the device classification
+(`device.ts`), the on-screen-keyboard test — which earns its keep on the syntax
+key bar, not on the layout; the capture box deliberately does *not* reflow when
+the keyboard opens — and hand mode. Hand mode is now read by nothing: it put
+the ruler on the thumb's side, and the ruler is gone. It is kept because it is
+pinned by `viewport` and costs nothing, and because a phone-side control will
+want it again. The offline retry queue is
 ported too: a capture that fails on a dead connection is queued and replayed
 on `online`, and the count of waiting lines is shown under the bar. A capture
 that fails because the *server* refused still gives the text back — the two
 are different and the screen treats them differently.
 
-Four screens exist: the capture bar, the log (which carries the folder list, as
-the source's `/folders` does), one folder, and mapping. `--folders` and `--log`
+Four screens exist: the capture bar, the log, one folder, and mapping. The log
+no longer carries the full folder list the source's `/folders` does — folders
+are a rail of filter chips across its top, and creating, renaming and deleting
+one happens there and on the folder's own page. `--folders` and `--log`
 open the log, `--assign` opens mapping, `--settings` leaves for the tech tree's
 settings page; the source's other nav commands say they have no screen here
 rather than failing silently.
@@ -303,17 +310,19 @@ mounted at `/api/capture/`, and the four screens above are built and rendered
 end-to-end against a scratch data dir. Everything below passes:
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q          # 319, of which 52 are capture's
+.venv/bin/python -m pytest backend/tests -q          # 334, of which 77 are capture's
 python3 trophic/golden/verify_golden.py              # 1348 passed, 920 not yet covered
-cd frontend && npm run verify:ui                     # 793 passed, 0 failed
+cd frontend && npm run verify:ui                     # 771 passed, 0 failed
 cd frontend && npm run check && npm run build        # 0 errors
 ./run.sh                                             # both apps, port 8787
 ```
 
-The two verifiers between them now cover 2141 of the corpus's 2268 cases. What
+The two verifiers between them now cover 2119 of the corpus's 2268 cases. What
 is left is `insights` and `surfacing` (17) with their two formatting helpers
-(40), `typo_suggestion` (20), `timeline_interaction` (27), `retry_queue` (10,
-unsatisfiable), `iris_close` (7) and the `design_tokens` snapshot (6).
+(40), `typo_suggestion` (20), `retry_queue` (10, unsatisfiable), `iris_close`
+(7) and the `design_tokens` snapshot (6) — plus `timeline_draw` (22) and
+`timeline_interaction` (27), which are not debt any more but a deviation: there
+is no ruler left for them to describe.
 
 The frontend build is gitignored, so **rebuild before judging any UI change** —
 reverting or editing source leaves the app serving the old bundle.

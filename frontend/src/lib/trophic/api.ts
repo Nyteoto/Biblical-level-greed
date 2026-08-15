@@ -39,6 +39,12 @@ export interface Folder {
 	name: string;
 	color: string;
 	created_ts: string;
+	/** "active", "shipped", or "" for a folder with no lifecycle — an interest
+	 *  you keep rather than a project you finish. */
+	state: string;
+	/** How many entries resolve into it — tagged in or filed in by hand,
+	 *  counted once. Derived on every read, like membership itself. */
+	entry_count: number;
 	/** The tags that point here. A tag points at one folder at most. */
 	tags: string[];
 }
@@ -151,10 +157,11 @@ export const createFolder = (name: string, tags: string[] = []) =>
 		body: JSON.stringify({ name, tags })
 	});
 
-/** Rename, map tags, unmap tags — any combination, one request. */
+/** Rename, move along its life, map tags, unmap tags — any combination, one
+ *  request. `state: ''` is a value, not an omission: it clears the state. */
 export const patchFolder = (
 	id: string,
-	change: { name?: string; add_tags?: string[]; remove_tags?: string[] }
+	change: { name?: string; state?: string; add_tags?: string[]; remove_tags?: string[] }
 ) => call<{ folder: Folder }>(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify(change) });
 
 export const deleteFolder = (id: string) => call<{ ok: boolean }>(`/folders/${id}`, { method: 'DELETE' });

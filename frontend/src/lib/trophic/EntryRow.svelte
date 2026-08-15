@@ -11,8 +11,17 @@
 	let {
 		entry,
 		index = 0,
+		media = true,
 		ontoggle
-	}: { entry: Entry; index?: number; ontoggle?: (line: number) => void } = $props();
+	}: {
+		entry: Entry;
+		index?: number;
+		/** Off where the media is already drawn elsewhere — the day block puts
+		 *  the whole day's attachments in one grid above its lines, and showing
+		 *  them twice would break the grid's job, which is density. */
+		media?: boolean;
+		ontoggle?: (line: number) => void;
+	} = $props();
 
 	const time = $derived(
 		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -36,6 +45,8 @@
 				<ColorizedText text={entry.clean_text} />
 			</span>
 		{/if}
-		<EntryMedia refs={entry.media ?? []} />
+		{#if media}
+			<EntryMedia refs={entry.media ?? []} />
+		{/if}
 	</div>
 </div>

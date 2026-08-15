@@ -22,7 +22,7 @@ from backend.app import media as blobs
 from backend.app.timeutil import day_key, now
 
 from . import colors, eventlog, index, parser
-from .config import MAX_NAME_LEN, MAX_RAW_LEN
+from .config import FOLDER_STATES, MAX_NAME_LEN, MAX_RAW_LEN
 from .import_csv import compose_line, flex_parse_time, parse_import_csv
 
 
@@ -327,6 +327,30 @@ class Store:
             index.rename_folder(self.conn, folder_id, clean)
             self._map_tag(folder_id, clean, steal=False)
 
+            self.version += 1
+            return index.folder(self.conn, folder_id)  # type: ignore[return-value]
+
+    def set_folder_state(self, folder_id: str, state: str) -> dict:
+        """Move a folder along its life: active, shipped, or neither.
+
+        Neither is the default and the commonest: a folder you never mark is
+        an ongoing interest rather than a project, and that distinction is
+        allowed to emerge instead of being declared. Nothing has to be
+        classified before it can be captured into, which is why this is three
+        states on one list rather than two kinds of thing.
+        """
+        if state not in FOLDER_STATES:
+            allowed = ", ".join(sorted(s or "none" for s in FOLDER_STATES))
+            raise CaptureError(f"unknown state {state!r} — {allowed}")
+
+        with self._lock:
+            folder = index.folder(self.conn, folder_id)
+            if folder is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            if folder["state"] == state:
+                return folder
+            eventlog.append(eventlog.SET_STATE, folder_id, text=state)
+            index.set_folder_state(self.conn, folder_id, state)
             self.version += 1
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 

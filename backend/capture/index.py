@@ -98,7 +98,10 @@ CREATE TABLE IF NOT EXISTS folders (
     id         TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     color      TEXT NOT NULL,
-    created_ts TEXT NOT NULL
+    created_ts TEXT NOT NULL,
+    -- "active", "shipped", or empty for a folder with no lifecycle — which is
+    -- what an ongoing interest is, as opposed to a project.
+    state      TEXT NOT NULL DEFAULT ''
 );
 
 -- `tag` is the primary key, not a pair: one tag belongs to at most one
@@ -284,10 +287,14 @@ def fold(events: list[dict]) -> dict:
                 "name": event.get("text", ""),
                 "color": event.get("color", ""),
                 "created_ts": event["ts"],
+                "state": "",
             }
         elif kind == eventlog.RENAME_FOLDER:
             if subject in folders:
                 folders[subject]["name"] = event.get("text", "")
+        elif kind == eventlog.SET_STATE:
+            if subject in folders:
+                folders[subject]["state"] = event.get("text", "")
         elif kind == eventlog.DELETE_FOLDER:
             folders.pop(subject, None)
             # Cascade, the same one Prisma declares on FolderTag and the same
@@ -371,9 +378,10 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             reminder_rows,
         )
         conn.executemany(
-            "INSERT INTO folders (id, name, color, created_ts) VALUES (?, ?, ?, ?)",
+            "INSERT INTO folders (id, name, color, created_ts, state) "
+            "VALUES (?, ?, ?, ?, ?)",
             [
-                (fid, f["name"], f["color"], f["created_ts"])
+                (fid, f["name"], f["color"], f["created_ts"], f["state"])
                 for fid, f in state["folders"].items()
             ],
         )
@@ -474,8 +482,8 @@ def due_reminders(conn: sqlite3.Connection, as_of: str) -> list[dict]:
 def add_folder(conn: sqlite3.Connection, event: dict) -> None:
     with conn:
         conn.execute(
-            "INSERT OR REPLACE INTO folders (id, name, color, created_ts) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO folders (id, name, color, created_ts, state) "
+            "VALUES (?, ?, ?, ?, '')",
             (event["id"], event.get("text", ""), event.get("color", ""), event["ts"]),
         )
 
@@ -483,6 +491,11 @@ def add_folder(conn: sqlite3.Connection, event: dict) -> None:
 def rename_folder(conn: sqlite3.Connection, folder_id: str, name: str) -> None:
     with conn:
         conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
+
+
+def set_folder_state(conn: sqlite3.Connection, folder_id: str, state: str) -> None:
+    with conn:
+        conn.execute("UPDATE folders SET state = ? WHERE id = ?", (state, folder_id))
 
 
 def drop_folder(conn: sqlite3.Connection, folder_id: str) -> None:
@@ -588,16 +601,34 @@ def folders(conn: sqlite3.Connection) -> list[dict]:
     ).fetchall():
         tags.setdefault(row["folder_id"], []).append(row["tag"])
 
+    # How much is in each folder, by the same union `folder_entries` uses —
+    # tagged into it or filed into it by hand, counted once either way. It is
+    # here rather than on the detail route because the log's filter chips need
+    # every count at once, and a count is the one thing that makes a chip worth
+    # reading before you tap it. Still derived: no row anywhere stores it.
+    counts: dict[str, int] = {
+        row["folder_id"]: row["n"]
+        for row in conn.execute(
+            "SELECT folder_id, count(*) AS n FROM ("
+            "  SELECT folder_id, entry_id FROM folder_tags JOIN entry_tags USING (tag)"
+            "  UNION"
+            "  SELECT folder_id, entry_id FROM entry_folders"
+            ") GROUP BY folder_id"
+        ).fetchall()
+    }
+
     return [
         {
             "id": row["id"],
             "name": row["name"],
             "color": row["color"],
             "created_ts": row["created_ts"],
+            "state": row["state"],
+            "entry_count": counts.get(row["id"], 0),
             "tags": tags.get(row["id"], []),
         }
         for row in conn.execute(
-            "SELECT id, name, color, created_ts FROM folders "
+            "SELECT id, name, color, created_ts, state FROM folders "
             "ORDER BY created_ts, rowid"
         ).fetchall()
     ]
