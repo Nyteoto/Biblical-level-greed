@@ -57,17 +57,21 @@ it:
 
 | | |
 |---|---|
-| data | `/run/media/pekka/Extreme SSD/pgs-data` — exFAT, readable from either OS |
-| backup | `/run/media/pekka/data/pgs-backup` — `sda2`, ext4, a different physical disk |
+| data | `/mnt/ssd/pgs-data` — `sdb1`, exFAT, readable from either operating system |
+| backup | `/mnt/data/pgs-backup` — `sda2`, ext4, a different physical disk |
 
-Both are desktop auto-mounts under `/run/media`, which only exist while a
-session is logged in. That is fine for the app and imperfect for the timer; a
-real `fstab` entry for each is the more reliable arrangement, and then these
-paths become the fstab ones. `pgs.service` and `pgs-backup.service` both carry
-`PGS_DATA_DIR`, so anything started by hand needs it too:
+Both are `fstab` mounts, deliberately, and not the desktop's `/run/media`
+auto-mounts: those only exist while somebody is logged in, and a backup timer
+that depends on a login is a backup timer that does not run. This one did not,
+for over a week — see below. Both entries carry `nofail`, so an absent disk
+cannot stop the machine booting, which matters because one of them is meant to
+be unplugged.
+
+`pgs.service` and `pgs-backup.service` both carry `PGS_DATA_DIR`, so anything
+started by hand needs it too:
 
 ```bash
-PGS_DATA_DIR="/run/media/pekka/Extreme SSD/pgs-data" ./run.sh
+PGS_DATA_DIR=/mnt/ssd/pgs-data ./run.sh
 ```
 
 **The app refuses to start on an unmounted disk.** When a removable drive is
