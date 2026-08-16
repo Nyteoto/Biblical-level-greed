@@ -1,7 +1,8 @@
 // Trophic's palette, re-lit for the paper-light ground.
 //
-// The hue assignments are the product and have never moved: blue is a folder,
-// rose is a sentiment, purple is time. What moves with the shell is lightness.
+// The hue assignments were the product and had never moved until the shell's
+// accent turned blue and the folder tag had to give that hue up: a folder is
+// now pine, rose is still a sentiment, purple is still time. What moves with the shell is lightness.
 // The source chose these against white (`logic/colors.ts`: #3b82f6, #9333ea,
 // #e11d48, #d97706, #8b5cf6) and they are *nearly* right here — but the shell
 // is #f3f2f2 rather than #fff, the type is Archivo rather than a mono, and at
@@ -22,13 +23,18 @@
 // behaviour.
 
 export const SYNTAX_COLORS = {
-	folder: '#1e5fbf', // <pointer>
+	// Pine, not blue. A folder tag was #1e5fbf until the shell's accent became
+	// slate blue and took that colour for chrome — an inline tag and an active
+	// album cannot be the same colour when they sit two centimetres apart in
+	// the sidebar. Same lightness and chroma as the blue it replaces, rotated
+	// to a hue nothing else here uses.
+	folder: '#007552', // <pointer>
 	time: '#6b3fa0', // {time-link}
 	pattern: '#b42342', // \pattern
 	// The directive is the accent itself: it is the one token that acts on the
 	// app rather than describing the thought, and it only ever appears in the
 	// capture bar.
-	directive: '#ae1800', // --directive  (--color-accent-700)
+	directive: '#1f5fa0', // --directive  (--color-accent-700)
 	todo: '#5b3fbe' // --todo
 } as const;
 

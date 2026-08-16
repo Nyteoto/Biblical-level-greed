@@ -23,8 +23,8 @@
 	import ColorizedText from './ColorizedText.svelte';
 	import TodoEntryText from './TodoEntryText.svelte';
 	import { longpress } from './longpress';
-	import { mediaUrl, mediaViewUrl } from './api';
-	import { isVideo, type Shot } from './media';
+	import { mediaViewUrl } from './api';
+	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
 	import type { Day } from './log';
 	import type { Entry } from './api';
@@ -57,11 +57,6 @@
 	const time = (entry: Entry) =>
 		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
-	function onViewMissing(event: Event, ref: string) {
-		const el = event.currentTarget as HTMLImageElement;
-		if (el.src.endsWith('.view.jpg') && !isVideo(ref)) el.src = mediaUrl(ref);
-	}
-
 	const tally = $derived(
 		[
 			`${day.entries.length} ${day.entries.length === 1 ? 'capture' : 'captures'}`,
@@ -75,7 +70,7 @@
 <article data-day={day.key} class="flex flex-col gap-[18px]">
 	<div class="flex items-baseline gap-3.5">
 		{#if today}
-			<span class="text-[10px] font-bold tracking-[0.2em] text-accent-700 uppercase">Today</span>
+			<span class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">Today</span>
 		{/if}
 		<h2 class="text-[34px] leading-none font-extrabold tracking-[-0.03em]">
 			{dayLabel(day.key)}
@@ -94,7 +89,7 @@
 			<img
 				src={mediaViewUrl(hero.ref)}
 				alt=""
-				onerror={(e) => onViewMissing(e, hero.ref)}
+				onerror={(e) => plateFallback(e, hero.ref)}
 				class="h-full w-full object-cover"
 			/>
 			<!-- The file's own name, in the mono. It is the one thing about a
@@ -132,7 +127,7 @@
 						alt=""
 						loading="lazy"
 						decoding="async"
-						onerror={(e) => onViewMissing(e, shot.ref)}
+						onerror={(e) => plateFallback(e, shot.ref)}
 						class="h-full w-full object-cover"
 					/>
 					{#if isVideo(shot.ref)}

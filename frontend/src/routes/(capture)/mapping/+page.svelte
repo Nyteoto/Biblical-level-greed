@@ -165,7 +165,7 @@
 									autofocus
 									bind:value={newName}
 									placeholder="folder name"
-									class="w-40 rounded-lg bg-neutral-200 px-3 py-1.5 text-[13px] focus:outline-none"
+									class="w-40 rounded-lg bg-neutral-200 px-3 py-1.5 text-[13px]"
 									onkeydown={(e) => {
 										if (e.key === 'Escape') naming = null;
 									}}
@@ -175,7 +175,7 @@
 						{:else}
 							<select
 								value=""
-								class="cursor-pointer rounded-lg bg-neutral-200 px-3 py-1.5 text-[13px] font-semibold focus:outline-none"
+								class="cursor-pointer rounded-lg bg-neutral-200 px-3 py-1.5 text-[13px] font-semibold"
 								onchange={(e) => {
 									const value = e.currentTarget.value;
 									e.currentTarget.value = '';

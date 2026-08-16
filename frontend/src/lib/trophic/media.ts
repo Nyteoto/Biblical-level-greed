@@ -13,6 +13,7 @@
 // fail: a codec the browser will not decode just means the clip has no poster,
 // and the log falls back to `preload="metadata"`.
 
+import { mediaUrl } from './api';
 import type { Entry } from './api';
 
 /** One attachment, plus the line it was written beside. The pair the grid and
@@ -59,6 +60,31 @@ export function kindOf(file: File): 'image' | 'video' | '' {
  *  as reliable here as `kindOf` is on the way in. */
 export function isVideo(ref: string): boolean {
 	return VIDEO_EXT.test(ref);
+}
+
+/**
+ * What a plate does when its display copy will not load.
+ *
+ * Every screen that draws media had its own copy of this, and they had drifted
+ * into three different endings: the contact sheet fell back to a clean tinted
+ * plate, the lead photograph and the ribbon left the browser's broken-image
+ * glyph sitting in the frame, and the shelf's mosaic retried the *original* of
+ * a clip — pointing an `<img>` at a two-gigabyte `.mov`, which is a download
+ * rather than a fallback. One rule now, in one place:
+ *
+ *   - a `.view.jpg` that fails on an **image** steps down to the original, once
+ *     (Pillow may not have been able to write a display copy);
+ *   - anything else gives up and leaves the tinted plate, which is honest —
+ *     a clip has no poster until one is captured, and there is nothing to show
+ *     until it is opened.
+ */
+export function plateFallback(event: Event, ref: string): void {
+	const el = event.currentTarget as HTMLImageElement;
+	if (el.src.endsWith('.view.jpg') && !isVideo(ref)) {
+		el.src = mediaUrl(ref);
+		return;
+	}
+	el.style.visibility = 'hidden';
 }
 
 export function attach(file: File): Attachment | null {

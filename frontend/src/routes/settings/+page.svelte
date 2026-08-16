@@ -25,6 +25,7 @@
 	 * safe, and a second copy of that reasoning behind a button is a second
 	 * place for it to rot.
 	 */
+	import Segmented from '$lib/trophic/Segmented.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings, dayBoundary, type OpenOn } from '$lib/trophic/settings.svelte';
 	import {
@@ -212,7 +213,7 @@
 				</button>
 				<button
 					type="button"
-					class="accent-fill lift lift-md rounded-[11px] px-4 py-[11px] text-[13px] font-semibold shadow-md disabled:opacity-60"
+					class="accent-fill lift lift-md rounded-[11px] px-4 py-[11px] text-[13px] font-semibold shadow-md disabled:opacity-50"
 					disabled={busy !== null || backup?.running}
 					onclick={() => act('backup', runBackup)}
 				>
@@ -240,10 +241,17 @@
 				<div class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
 					Folders &amp; tags
 				</div>
-				<div class="mt-2.5 rounded-[16px] bg-surface px-4 py-2 shadow-md">
+				<!-- Rows that go somewhere answer to the touch, the way the album
+				     list in the Log does. They were flat links that did nothing
+				     under a finger, which on a touch screen reads as a list rather
+				     than as a set of doors. -->
+				<div class="mt-2.5 rounded-[16px] bg-surface px-2 py-2 shadow-md">
 					{#each mapped as folder (folder.id)}
 						{@const shipped = folder.state === 'shipped'}
-						<a href="/folders/{folder.id}" class="flex items-center gap-3 py-3">
+						<a
+							href="/folders/{folder.id}"
+							class="flex items-center gap-3 rounded-[10px] px-2 py-3 transition-colors hover:bg-neutral-200"
+						>
 							<span
 								class="h-2 w-2 shrink-0 rounded-full"
 								style="background:{shipped ? 'var(--color-neutral-400)' : folder.color}"
@@ -271,12 +279,15 @@
 							{/if}
 						</a>
 					{:else}
-						<p class="py-3 text-[13px] text-neutral-700">
+						<p class="px-2 py-3 text-[13px] text-neutral-700">
 							no folders yet — a folder is where a tag lands.
 						</p>
 					{/each}
 
-					<a href="/mapping" class="flex items-center gap-3 py-3">
+					<a
+						href="/mapping"
+						class="flex items-center gap-3 rounded-[10px] px-2 py-3 transition-colors hover:bg-neutral-200"
+					>
 						<span class="min-w-0 flex-1 text-[14px] font-semibold text-accent-700">
 							{unmapped}
 							{unmapped === 1 ? 'tag points' : 'tags point'} nowhere
@@ -291,20 +302,12 @@
 				<div class="mt-2.5 rounded-[16px] bg-surface px-4 py-2 shadow-md">
 					<div class="flex items-center gap-3.5 py-[13px]">
 						<span class="flex-1 text-[14px]">Opens on</span>
-						<span class="flex gap-[3px] rounded-[9px] bg-neutral-200 p-[3px]">
-							{#each OPENS_ON as option (option.value)}
-								<button
-									type="button"
-									class="rounded-[7px] px-2.5 py-[5px] text-[12px] transition-colors {logSettings.openOn ===
-									option.value
-										? 'bg-surface font-bold shadow-sm'
-										: 'font-semibold text-neutral-700'}"
-									onclick={() => logSettings.setOpenOn(option.value)}
-								>
-									{option.label}
-								</button>
-							{/each}
-						</span>
+						<Segmented
+							options={OPENS_ON}
+							value={logSettings.openOn}
+							onpick={(v) => logSettings.setOpenOn(v)}
+							label="what the Log opens on"
+						/>
 					</div>
 
 					{#each [{ label: 'Merge quiet stretches', on: logSettings.mergeQuiet, set: (v: boolean) => logSettings.setMergeQuiet(v), hint: 'Days with a line or two and no media collapse into one strip that expands.' }, { label: 'Albums restart each year', on: logSettings.yearAlbums, set: (v: boolean) => logSettings.setYearAlbums(v), hint: 'A folder belongs to a year, so every timeline is capped at twelve months.' }] as row (row.label)}

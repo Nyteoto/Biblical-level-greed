@@ -11,7 +11,8 @@
 	 * deliberately: a text-only project should look like one on the shelf
 	 * rather than borrow a photograph from somewhere to fill the space.
 	 */
-	import { mediaUrl, mediaViewUrl } from './api';
+	import { mediaViewUrl } from './api';
+	import { plateFallback } from './media';
 
 	let {
 		refs,
@@ -20,14 +21,6 @@
 		 *  cannot be scaled into a 72×54 slot without being cropped. */
 		single = false
 	}: { refs: string[]; single?: boolean } = $props();
-
-	function onViewMissing(event: Event, ref: string) {
-		const el = event.currentTarget as HTMLImageElement;
-		// The display copy may not exist — video has none until a poster is
-		// captured. One step down to the original, then give up.
-		if (el.src.endsWith('.view.jpg')) el.src = mediaUrl(ref);
-		else el.style.visibility = 'hidden';
-	}
 </script>
 
 {#if single}
@@ -38,7 +31,7 @@
 				alt=""
 				loading="lazy"
 				decoding="async"
-				onerror={(e) => onViewMissing(e, refs[0])}
+				onerror={(e) => plateFallback(e, refs[0])}
 				class="h-full w-full object-cover"
 			/>
 		{/if}
@@ -60,7 +53,7 @@
 					alt=""
 					loading="lazy"
 					decoding="async"
-					onerror={(e) => onViewMissing(e, ref)}
+					onerror={(e) => plateFallback(e, ref)}
 					class="h-full w-full object-cover"
 				/>
 			{/if}

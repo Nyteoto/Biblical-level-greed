@@ -16,8 +16,8 @@
 	import ColorizedText from './ColorizedText.svelte';
 	import TodoEntryText from './TodoEntryText.svelte';
 	import { longpress } from './longpress';
-	import { mediaUrl, mediaViewUrl } from './api';
-	import { isVideo, type Shot } from './media';
+	import { mediaViewUrl } from './api';
+	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
 	import type { Day } from './log';
 	import type { Entry } from './api';
@@ -37,10 +37,6 @@
 	const time = (entry: Entry) =>
 		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
-	function onViewMissing(event: Event, ref: string) {
-		const el = event.currentTarget as HTMLImageElement;
-		if (el.src.endsWith('.view.jpg') && !isVideo(ref)) el.src = mediaUrl(ref);
-	}
 </script>
 
 <div data-day={day.key} class="flex flex-col gap-3">
@@ -76,12 +72,12 @@
 						alt=""
 						loading="lazy"
 						decoding="async"
-						onerror={(e) => onViewMissing(e, shot.ref)}
+						onerror={(e) => plateFallback(e, shot.ref)}
 						class="h-full w-full object-cover"
 					/>
 					{#if isVideo(shot.ref)}
 						<span
-							class="absolute bottom-1 left-1 rounded-[4px] bg-white/[0.88] px-1 font-mono text-[8px] text-neutral-800"
+							class="absolute bottom-1 left-1 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[8px] text-neutral-800"
 						>
 							▶
 						</span>

@@ -317,16 +317,17 @@ ADAPTERS.colorize = (i: { text: string }) => {
 
 const THEME: Record<string, string[]> = {
 	// lib/colors.ts — the syntax hues, darkened for the paper ground.
-	'#1e5fbf': ['#3b82f6'], // folder
+	'#007552': ['#3b82f6'], // folder — pine here, blue in the source
 	'#6b3fa0': ['#9333ea'], // time
 	'#b42342': ['#e11d48'], // pattern
-	'#ae1800': ['#d97706'], // directive
+	'#1f5fa0': ['#d97706'], // directive — the accent, whatever the accent is
 	'#5b3fbe': ['#8b5cf6'], // todo
 	// The caret and its halo. Ink again rather than inverted ink — the ground
 	// came back to light, so this is nearly the source's own value.
 	'#201e1d': ['#18181b'],
-	// The refusal red the validation layer blinks a token in, warmed to sit in
-	// the same family as the accent. Same role, same moment, different ground.
+	// The refusal red the validation layer blinks a token in. It used to sit in
+	// the accent's own family; now that the accent is blue, red belongs to
+	// refusal alone, which is the better arrangement and was an accident.
 	'#c2352b': ['#ef4444']
 };
 

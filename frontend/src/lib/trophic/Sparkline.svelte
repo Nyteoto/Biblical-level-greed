@@ -28,13 +28,18 @@
 	// part of the year does not exist", and it does — you just did not write.
 	const height = (n: number) => (n === 0 ? 6 : Math.max(10, (n / peak) * 100));
 
+	// The same four fills the month spine uses, from the same two variables. A
+	// hand-rolled gradient here had drifted a shade darker than the spine's, so
+	// last month looked like one thing on the shelf and another on the screen
+	// the card opens — which is precisely what "one array, two orientations"
+	// was supposed to make impossible.
 	const fill = (i: number, n: number) =>
 		n === 0
 			? 'var(--color-neutral-300)'
 			: i === live
 				? 'var(--gradient-spine)'
 				: i === live - 1
-					? 'linear-gradient(180deg,var(--color-accent-400),var(--color-accent-600))'
+					? 'var(--gradient-spine-last)'
 					: 'var(--color-neutral-400)';
 </script>
 

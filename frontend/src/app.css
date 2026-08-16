@@ -43,14 +43,27 @@
 	--color-neutral-700: #605d5d;
 	--color-neutral-800: #444141;
 
-	--color-accent: #ec3013;
-	--color-accent-100: #fff2ef;
-	--color-accent-300: #ffc4b8;
-	--color-accent-400: #ff9783;
-	--color-accent-500: #ff563c;
-	--color-accent-600: #dd2b0f;
+	/* The accent is slate blue. It was the Modernist system's red-orange
+	   (#ec3013) and that colour was doing more than marking what is live —
+	   red is an alarm, and on a screen where the accent means "this month" and
+	   "this album" and "on", an alarm is the wrong word for every one of them.
+	   Rotated in OKLCH with the lightness of each rung held exactly, so the
+	   ladder — and every contrast figure that depends on it — is unchanged:
+	   `accent-700` still reads 5.9:1 on the paper ground. The one thing this
+	   moved besides itself is the `<pointer>` tag, which used to be the blue
+	   this now is; see `colors.ts`.
+
+	   Note the ramp is a deliberate deviation from the bound Modernist project
+	   now, not a copy of it. If that project is ever re-pulled, this is the
+	   difference to keep. */
+	--color-accent: #3586d9;
+	--color-accent-100: #f1f6fc;
+	--color-accent-300: #bfd7f3;
+	--color-accent-400: #90bbed;
+	--color-accent-500: #539ceb;
+	--color-accent-600: #307dcb;
 	/* The rung accent-coloured *text* uses. The lighter ones are for fills. */
-	--color-accent-700: #ae1800;
+	--color-accent-700: #1f5fa0;
 
 	/* One step apart, and used as a ladder: a card at rest is `md`, lifted is
 	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two. */
@@ -64,9 +77,9 @@
 	   pills, bars and toggles that are otherwise unrelated, and repeating four
 	   colour stops at each site is how they drift apart. */
 	--gradient-ground: linear-gradient(178deg, #f7f6f6 0%, #f3f2f2 44%, #efeded 100%);
-	--gradient-accent: linear-gradient(140deg, #ff563c, #ae1800);
-	--gradient-spine: linear-gradient(180deg, #ff563c, #ae1800);
-	--gradient-spine-last: linear-gradient(180deg, #ffc4b8, #ff9783);
+	--gradient-accent: linear-gradient(140deg, #539ceb, #1f5fa0);
+	--gradient-spine: linear-gradient(180deg, #539ceb, #1f5fa0);
+	--gradient-spine-last: linear-gradient(180deg, #bfd7f3, #90bbed);
 }
 
 html {
@@ -112,10 +125,34 @@ body {
 }
 
 /* One focus ring for the whole app, on the accent so it reads as the app's own
-   rather than the browser's. */
+   rather than the browser's. Nothing may turn this off except the capture
+   textarea, which has a caret of its own doing the same job. */
 :focus-visible {
 	outline: 2px solid var(--color-accent);
 	outline-offset: 2px;
+}
+
+/* A bare input that fills a pill puts the ring on the pill instead of drawing a
+   second rectangle inside the first. Same ring, one step out. */
+.focus-pill:focus-within {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+/* The two exceptions, and they have to be written here rather than as a
+   `focus:outline-none` on the element.
+   Tailwind's utilities are emitted inside `@layer utilities` and the rule above
+   is unlayered — and an unlayered declaration beats a layered one whatever the
+   specificity says. So `focus:outline-none` in a class list looked like it
+   switched the ring off and did nothing at all. What it cost: the capture
+   draft's ring was drawn on tap and then clipped by the bar's own `overflow`
+   down to its bottom edge, which is a thin red line sitting just above the
+   indicator's notch, on the one screen whose whole argument is that it is bare.
+   - the draft shows focus with the caret it draws itself;
+   - an input inside a `.focus-pill` has already had the ring drawn for it. */
+textarea.smooth-layout:focus-visible,
+.focus-pill :focus-visible {
+	outline: none;
 }
 
 /* The tech tree's textured backdrop. Its screens are hidden rather than

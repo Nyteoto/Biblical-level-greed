@@ -23,7 +23,7 @@
 	 * backend is good at.
 	 */
 	import { mediaUrl, mediaViewUrl } from './api';
-	import { isVideo, type Shot } from './media';
+	import { isVideo, plateFallback, type Shot } from './media';
 
 	let {
 		shots,
@@ -71,10 +71,6 @@
 		step(dx < 0 ? 1 : -1);
 	}
 
-	function onViewMissing(event: Event, ref: string) {
-		const el = event.currentTarget as HTMLImageElement;
-		if (el.src.endsWith('.view.jpg')) el.src = mediaUrl(ref);
-	}
 </script>
 
 <svelte:window {onkeydown} />
@@ -120,7 +116,7 @@
 				<img
 					src={mediaViewUrl(shot.ref)}
 					alt=""
-					onerror={(e) => onViewMissing(e, shot.ref)}
+					onerror={(e) => plateFallback(e, shot.ref)}
 					class="max-h-full max-w-full rounded-[12px] object-contain"
 				/>
 			{/if}

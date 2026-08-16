@@ -14,11 +14,20 @@
 	 *   4000ms of stillness before the chrome dims (and 30s to come back)
 	 *   300ms  before autofocus on mount
 	 *
-	 * The redesign changed the surface and none of the behaviour. The draft now
-	 * sits in a white card with the deepest shadow on the screen, because it is
-	 * the one thing on it; the indicator line keeps its exact notched path and
-	 * only its fills moved to this palette. Everything above — the reminder
-	 * strips, the attachment chips, the pin — is the same code in a lighter suit.
+	 * The redesign changed the surface and none of the behaviour. It briefly put
+	 * the draft in a white card with the deepest shadow on the screen, and that
+	 * was wrong: a card is a container, and it made the thought being written
+	 * look like an object on the page rather than the page's whole subject. The
+	 * source has no card here either — the text sits on the ground with the
+	 * notched line under it, and that line is the only edge. Restored, with the
+	 * palette from the redesign. Everything above it — the reminder strips, the
+	 * attachment chips, the pin — stays a card, because those *are* objects.
+	 *
+	 * Nothing under the line explains the keys. There was a row reading `tab
+	 * takes <has>` and `enter sends · shift+enter is a newline`, and on a screen
+	 * whose whole argument is that it holds one thought and nothing else, a
+	 * standing instruction is the loudest thing on it. The syntax keys are their
+	 * own affordance and stay.
 	 *
 	 * There is deliberately no feed on this screen. The capture bar is for
 	 * getting a thought out of your head; reading them back is the log's job.
@@ -41,7 +50,7 @@
 		type Reminder,
 		type Vocab
 	} from '$lib/trophic/api';
-	import { SYNTAX_COLORS, UI_COLORS } from '$lib/trophic/colors';
+	import { UI_COLORS } from '$lib/trophic/colors';
 	import { deviceType } from '$lib/trophic/device.svelte';
 	import { attach, release, type Attachment } from '$lib/trophic/media';
 	import { tagForPin, withPinnedTag } from '$lib/trophic/pinned';
@@ -188,6 +197,10 @@
 	// Live validation. The only thing that can lock the bar, and it can only
 	// do it when a `--directive` disagrees with the folder registry — see
 	// validation.ts for why nothing else about a draft is checkable.
+	/** The one on screen: soonest due, which is the order the API hands them
+	 *  back in. */
+	const due = $derived(reminders[0] ?? null);
+
 	const validation = $derived(validate(draft, vocab));
 	const blinkIndices = $derived(validation.issues.flatMap((i) => i.blinkIndices));
 	const fixable = $derived(validation.issues.find((i) => i.createFolder)?.createFolder);
@@ -376,11 +389,6 @@
 	// redesign changes what colour it is and nothing about what it is.
 	const NOTCH =
 		'M0,0 L600,0 L600,2 L345,2 C342,2 340,13 335,13 L265,13 C260,13 258,2 255,2 L0,2 Z';
-
-	/** What `tab` would take right now: the pinned folder's tag if there is
-	 *  one, otherwise the most recent tag in the vocabulary. The hint names a
-	 *  real word the user has written rather than a placeholder. */
-	const hintTag = $derived(pinTag ?? vocab?.tags?.[0] ?? null);
 </script>
 
 <svelte:window onclick={() => (pinMenu = false)} />
@@ -390,7 +398,7 @@
      root: this screen is at its best with nothing on it but the line being
      written, and both of these fade out under the idle dim while you write. -->
 <header
-	class="ui-dim flex shrink-0 items-center justify-between px-[30px] pt-[22px] {uiDimmed
+	class="ui-dim flex shrink-0 items-center justify-between px-[34px] pt-[22px] {uiDimmed
 		? 'dimmed'
 		: ''}"
 >
@@ -446,7 +454,7 @@
 					{@const tag = tagForPin(f)}
 					<button
 						type="button"
-						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors hover:bg-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
+						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors hover:bg-neutral-200 disabled:opacity-50 disabled:hover:bg-transparent"
 						disabled={!tag}
 						title={tag ? `captures land as <${tag}>` : 'no tag points at this folder'}
 						onclick={() => {
@@ -474,17 +482,31 @@
 <main class="flex min-h-0 flex-1 flex-col items-center justify-center px-[30px]">
 	<div class="flex w-full max-w-[720px] flex-col gap-4">
 		<!-- The reminder strip. Above the box, because it is context for what
-		     you are about to write, not a task list to work through. -->
-		{#each reminders as reminder (reminder.entry_id + ':' + reminder.line)}
+		     you are about to write, not a task list to work through — and
+		     **one** strip, never a list, which is the same argument made in the
+		     layout. The source renders a single `activeReminder`
+		     (`CaptureClient.tsx:118`); this rendered every due line, and a
+		     corpus with two years in it turned the capture screen into seventy
+		     stacked cards with the writing box pushed off the bottom. Dismissing
+		     the top one brings up the next. -->
+		{#if due}
 			<div
 				class="flex items-baseline gap-4 rounded-[12px] bg-surface px-4 py-3 shadow-sm"
 				style="animation:landing-fade-in 0.3s ease-out"
 			>
 				<span class="min-w-0 flex-1 truncate font-mono text-[13px]">
-					{reminder.line_text}
+					{due.line_text}
 				</span>
+				{#if reminders.length > 1}
+					<!-- Said rather than hidden. One strip is the shape; a person who
+					     has been away for a month still has to be able to tell that
+					     there is a queue behind it. -->
+					<span class="shrink-0 text-[11px] text-neutral-700">
+						+{reminders.length - 1} more
+					</span>
+				{/if}
 				<span class="shrink-0 text-[11px] text-neutral-700">
-					{new Date(reminder.due_at).toLocaleDateString(undefined, {
+					{new Date(due.due_at).toLocaleDateString(undefined, {
 						month: 'short',
 						day: 'numeric'
 					})}
@@ -492,12 +514,12 @@
 				<button
 					type="button"
 					class="shrink-0 text-[11px] font-semibold text-neutral-700 transition-colors hover:text-accent-700"
-					onclick={() => dismiss(reminder)}
+					onclick={() => dismiss(due)}
 				>
 					dismiss
 				</button>
 			</div>
-		{/each}
+		{/if}
 
 		<!-- What is about to go with the line. Nothing is uploaded until send,
 		     so removing a chip costs nothing and a long clip is not sent twice
@@ -532,14 +554,16 @@
 			</div>
 		{/if}
 
-		<!-- The writing card. `--shadow-lg` is the deepest thing on the screen
-		     and it is on the only thing on the screen; the indicator line sits
-		     flush at its bottom edge inside the same `overflow:hidden` box. -->
+		<!-- The writing surface: no surface. The draft is on the page ground and
+		     the notched line is the only edge it has, which is the source's
+		     arrangement and the reason the bar reads as a place to think rather
+		     than a field to fill in. `overflow:hidden` stays — it is what clips
+		     the draft as it slides out on send. -->
 		<div
 			data-capture-box
 			role="group"
 			aria-label="capture"
-			class="relative overflow-hidden rounded-[18px] bg-surface shadow-lg"
+			class="relative overflow-hidden"
 			style="touch-action:pan-y"
 			ontouchstart={onTouchStart}
 			ontouchend={onTouchEnd}
@@ -568,10 +592,11 @@
 			</div>
 
 			<!-- The attach button, in the right padding `.smooth-layout` already
-			     reserves. A sibling of the slide-out wrapper, not a child:
-			     inside it, it would slide away with the draft on send. -->
+			     reserves, and on the baseline of the first line of the draft. A
+			     sibling of the slide-out wrapper, not a child: inside it, it
+			     would slide away with the draft on send. -->
 			<label
-				class="absolute top-[22px] right-[18px] cursor-pointer p-1 text-neutral-600 transition-colors hover:text-ink"
+				class="absolute top-[13px] right-0 cursor-pointer p-1 text-neutral-600 transition-colors hover:text-ink"
 				title="attach a photo or a clip"
 			>
 				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -599,11 +624,11 @@
 			>
 				<defs>
 					<linearGradient id="type-glow" x1="0" x2="1" y1="0" y2="0">
-						<stop offset="0%" stop-color="#ec3013" stop-opacity="0" />
-						<stop offset="25%" stop-color="#ff9783" />
-						<stop offset="50%" stop-color="#dd2b0f" />
-						<stop offset="75%" stop-color="#ff9783" />
-						<stop offset="100%" stop-color="#ec3013" stop-opacity="0" />
+						<stop offset="0%" stop-color="#3586d9" stop-opacity="0" />
+						<stop offset="25%" stop-color="#90bbed" />
+						<stop offset="50%" stop-color="#307dcb" />
+						<stop offset="75%" stop-color="#90bbed" />
+						<stop offset="100%" stop-color="#3586d9" stop-opacity="0" />
 					</linearGradient>
 				</defs>
 				<path d={NOTCH} fill={indicatorFill} style="transition:fill 0.3s ease" />
@@ -616,28 +641,15 @@
 			</svg>
 		</div>
 
-		<!-- The syntax keys, and the legend for the syntax in the same row. -->
+		<!-- The syntax keys. The only standing thing under the line, and they do
+		     something rather than say something. -->
 		<SyntaxBar oninsert={(t) => input?.insertText(t)} />
 
-		<div
-			class="ui-dim flex items-baseline gap-3.5 pt-0.5 text-[13px] text-neutral-700 {uiDimmed
-				? 'dimmed'
-				: ''}"
-		>
-			<span class="font-mono text-[12px]">tab</span>
-			{#if hintTag}
-				<span>
-					takes
-					<span style="color:{SYNTAX_COLORS.folder};font-weight:600">{`<${hintTag}>`}</span>
-				</span>
-			{:else}
-				<span>completes a tag you have written before</span>
-			{/if}
-			<span class="ml-auto">enter sends · shift+enter is a newline</span>
-		</div>
-
 		{#if nope}
-			<p class="text-[12px] text-neutral-700">Nope</p>
+			<!-- A refusal, so it takes the colour every other refusal in the app
+			     takes. It was grey, which made the one message the bar prints when
+			     it has just *declined* to keep something look like a footnote. -->
+			<p class="text-[12px] text-accent-700">Nope</p>
 		{/if}
 
 		{#if queued > 0}
@@ -656,7 +668,7 @@
 				{#if issue.createFolder}
 					<button
 						type="button"
-						class="rounded-lg bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink shadow-sm transition-shadow hover:shadow-md"
+						class="lift lift-sm rounded-lg bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink shadow-sm"
 						onclick={createMissingFolder}
 					>
 						create it

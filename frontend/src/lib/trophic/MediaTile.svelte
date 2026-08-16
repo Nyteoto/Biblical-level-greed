@@ -8,31 +8,18 @@
 	 * a video tile is a poster image rather than a `<video>` element, so a day
 	 * with thirty clips costs thirty JPEGs instead of thirty media pipelines.
 	 *
-	 * The `.view.jpg` → original fallback is the rule from `EntryMedia`: the
-	 * display copy may not exist yet (video has none until a poster is
-	 * captured) and may never exist (an image Pillow could not read). A video
-	 * with no poster gets the black plate and the play badge, which is honest —
-	 * there is nothing to show until it is opened.
+	 * What happens when the display copy will not load is `plateFallback` in
+	 * `media.ts`, shared with the ribbon, the mosaic and the lightbox so that a
+	 * missing poster looks the same wherever you meet it. A clip with none gets
+	 * the tinted plate and the play badge, which is honest — there is nothing
+	 * to show until it is opened.
 	 */
-	import { mediaUrl, mediaViewUrl } from './api';
-	import { isVideo } from './media';
+	import { mediaViewUrl } from './api';
+	import { isVideo, plateFallback } from './media';
 
 	let { ref, onopen }: { ref: string; onopen?: () => void } = $props();
 
 	const video = $derived(isVideo(ref));
-
-	let broken = $state(false);
-
-	function onViewMissing(event: Event) {
-		const el = event.currentTarget as HTMLImageElement;
-		// One step down, then give up: the original of a video is not an image,
-		// so retrying it forever would only flash a broken icon.
-		if (el.src.endsWith('.view.jpg') && !video) {
-			el.src = mediaUrl(ref);
-		} else {
-			broken = true;
-		}
-	}
 </script>
 
 <button
@@ -41,16 +28,14 @@
 	onclick={() => onopen?.()}
 	aria-label={video ? 'play clip' : 'open photo'}
 >
-	{#if !broken}
-		<img
-			src={mediaViewUrl(ref)}
-			alt=""
-			loading="lazy"
-			decoding="async"
-			onerror={onViewMissing}
-			class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-		/>
-	{/if}
+	<img
+		src={mediaViewUrl(ref)}
+		alt=""
+		loading="lazy"
+		decoding="async"
+		onerror={(e) => plateFallback(e, ref)}
+		class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+	/>
 	{#if video}
 		<!-- A white chip rather than a dark scrim. On the paper ground the badge
 		     has to read against a bright poster, and dimming half the frame to

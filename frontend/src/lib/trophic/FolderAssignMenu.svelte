@@ -77,14 +77,14 @@
 	style="left:{pos.x}px;top:{pos.y}px;animation:landing-fade-in 0.12s ease-out"
 >
 	<div class="px-2.5 pb-2">
-		<div class="px-1 pt-0.5 pb-2 text-[10px] font-bold tracking-[0.2em] text-neutral-600 uppercase">
+		<div class="px-1 pt-0.5 pb-2 text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
 			assign to folder
 		</div>
 		<input
 			bind:this={search}
 			bind:value={query}
 			placeholder="search…"
-			class="w-full rounded-lg bg-neutral-200 px-2.5 py-1.5 text-[12px] focus:outline-none"
+			class="w-full rounded-lg bg-neutral-200 px-2.5 py-1.5 text-[12px]"
 		/>
 	</div>
 

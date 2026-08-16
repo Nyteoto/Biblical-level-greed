@@ -47,12 +47,16 @@
 			.reverse()
 	);
 
+	// History is `neutral-400` here and on the card's sparkline. The spine used
+	// a lighter grey, which read as "empty" — and empty is a state the sparkline
+	// draws and this column does not, because a month with nothing in it is not
+	// a place you can jump to.
 	const fill = (month: number) =>
 		month === live
 			? 'var(--gradient-spine)'
 			: month === live - 1
 				? 'var(--gradient-spine-last)'
-				: 'var(--color-neutral-300)';
+				: 'var(--color-neutral-400)';
 </script>
 
 <div class="flex w-[70px] shrink-0 flex-col items-center gap-[9px] pb-[22px]">

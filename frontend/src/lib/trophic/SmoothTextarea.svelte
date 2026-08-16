@@ -213,6 +213,12 @@
 				>{/if}{/each}
 	</div>
 
+	<!-- No focus ring on this one: its focus is shown by the caret it draws
+	     itself. The rule is in `app.css` beside the ring it excepts, and not a
+	     `focus:outline-none` here, because a Tailwind utility is layered and the
+	     ring is not — the class sat here for months looking like it worked while
+	     the ring was drawn on every tap and clipped into a red line above the
+	     notch. -->
 	<textarea
 		bind:this={ta}
 		bind:value
@@ -222,7 +228,7 @@
 		autocomplete="off"
 		autocapitalize="none"
 		{...{ autocorrect: 'off' }}
-		class="smooth-layout relative w-full resize-none bg-transparent focus:outline-none"
+		class="smooth-layout relative w-full resize-none bg-transparent"
 		style="color:transparent;caret-color:transparent;background:transparent"
 		oninput={onInput}
 		onkeydown={onKeyDown}
@@ -291,11 +297,14 @@
 		font-size: 22px;
 		line-height: 32px;
 		letter-spacing: -0.012em;
-		/* These are the writing card's padding, not the textarea's: the card
-		   has none of its own, so that the overlay, the textarea and the caret
-		   all measure from the same origin. The right side is the reserve the
-		   paperclip sits in. */
-		padding: 24px 52px 18px 22px;
+		/* There is no card around this any more, so the draft is flush with the
+		   left edge of the column and lines up with the notched indicator under
+		   it and everything else the screen stacks. The padding that remains is
+		   doing two jobs and no decorative one: the right side is the reserve
+		   the paperclip sits in, and the top and bottom keep the caret and the
+		   descenders off the line. Both layers carry it, so the overlay, the
+		   textarea and the caret all measure from the same origin. */
+		padding: 10px 44px 14px 0;
 		margin: 0;
 		border: 0;
 		box-sizing: border-box;
