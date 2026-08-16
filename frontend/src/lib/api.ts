@@ -240,6 +240,30 @@ export interface StorageReport {
 
 export const getStorage = () => call<StorageReport>('/storage');
 
+/** When the copy on the other disk was last made, and whether one is running.
+ *  `last` is the ISO timestamp `backup.sh` writes into the destination on
+ *  success — the only fact about a backup worth reporting, and the one a
+ *  silent timer never answers. */
+export interface BackupStatus {
+	destination: string;
+	source: string;
+	last: string | null;
+	seconds_ago: number | null;
+	running: boolean;
+	result: { ok: boolean; message: string } | null;
+}
+
+export const getBackup = () => call<BackupStatus>('/backup');
+
+/** Start a run and return immediately; poll `getBackup`. Every refusal
+ *  `backup.sh` makes is still made — this starts the script, it does not
+ *  reimplement any part of it. */
+export const runBackup = () => call<BackupStatus>('/backup', { method: 'POST' });
+
+/** Re-read the tech tree's `.toml` files from disk. */
+export const reloadFromDisk = () =>
+	call<{ domains: number }>('/admin/reload', { method: 'POST' });
+
 /** Bytes as something a human reads at a glance. */
 export function bytes(n: number): string {
 	if (n < 1024) return `${n} B`;

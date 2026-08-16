@@ -123,6 +123,10 @@ def test_storage_survives_a_missing_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "LOG_DIR", empty / "log")
     monkeypatch.setattr(storage, "DOMAINS_DIR", empty / "domains")
     monkeypatch.setattr(storage, "INDEX_PATH", empty / "index.sqlite")
+    # Capture's half of the same data root. The report names it separately now,
+    # so a fresh install has to survive its paths being absent too.
+    monkeypatch.setattr(storage, "CAPTURE_LOG_DIR", empty / "capture" / "log")
+    monkeypatch.setattr(storage, "CAPTURE_INDEX_PATH", empty / "capture" / "index.sqlite")
 
     report = storage.report()
     assert report["total_bytes"] == 0

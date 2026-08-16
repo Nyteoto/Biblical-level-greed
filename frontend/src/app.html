@@ -9,19 +9,23 @@
 			content="width=device-width, initial-scale=1, viewport-fit=cover"
 		/>
 		<meta name="text-scale" content="scale" />
-		<title>Tech Tree</title>
+		<title>Trophic</title>
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
-		<meta name="theme-color" content="#14100c" />
+		<meta name="theme-color" content="#f3f2f2" />
 		<!-- iOS ignores the manifest for the home-screen icon and for standalone
 		     mode; these three are what "Add to Home Screen" actually reads. -->
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-		<meta name="apple-mobile-web-app-title" content="Growth" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+		<meta name="apple-mobile-web-app-title" content="Trophic" />
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover" style="background: #14100c">
+	<!-- The inline background is what paints before the stylesheet lands, so it
+	     has to be the ground's own flat colour rather than the old dark shell —
+	     an inline style also beats anything `app.css` says, which is how the
+	     whole app was still rendering on `#14100c` after the redesign. -->
+	<body data-sveltekit-preload-data="hover" style="background: #f3f2f2">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

@@ -3,6 +3,10 @@
 	 * Mapping — where a tag stops being loose and becomes part of a folder.
 	 * Ported from `screens/MappingClient.tsx`.
 	 *
+	 * It is no longer a tab. Settings shows the mapping at a glance and the one
+	 * number that ever needs acting on — how many tags point nowhere — and this
+	 * is where that link lands. `--assign` in the capture bar still opens it.
+	 *
 	 * The screen is two lists and one gesture. On the left of the divide are
 	 * the tags nothing has claimed, commonest first, because the one you have
 	 * written forty times is the one worth filing. On the right is where each
@@ -18,6 +22,8 @@
 	 * an input on the row, which is the same interaction without handing the
 	 * window over to the platform mid-gesture.
 	 */
+	import TabPill from '$lib/trophic/TabPill.svelte';
+	import { SYNTAX_COLORS } from '$lib/trophic/colors';
 	import {
 		createFolder,
 		getFolders,
@@ -87,7 +93,8 @@
 	let imported = $state<string | null>(null);
 
 	async function onFile(event: Event) {
-		const file = (event.currentTarget as HTMLInputElement).files?.[0];
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
 		if (!file) return;
 		importing = true;
 		imported = null;
@@ -103,134 +110,149 @@
 		}
 		importing = false;
 		// Let the same file be chosen again after a fix.
-		(event.currentTarget as HTMLInputElement).value = '';
+		input.value = '';
 	}
 </script>
 
-<header
-	class="sticky top-0 z-40 flex items-center justify-between bg-[#14100c] px-6 py-5 text-[11px] tracking-wide text-stone-500"
->
-	<a href="/" class="transition-colors hover:text-stone-300">← capture</a>
-	<span class="text-stone-300">mapping</span>
-	<a href="/log" class="transition-colors hover:text-stone-300">folders →</a>
-</header>
+<div class="flex min-h-dvh flex-col">
+	<div class="flex shrink-0 items-center justify-between px-[34px] pt-[22px]">
+		<TabPill />
+		<a href="/settings" class="text-[13px] font-semibold text-neutral-700 hover:text-ink">
+			← Settings
+		</a>
+	</div>
 
-<main class="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 pb-20">
-	{#if error}
-		<p class="text-[11px] text-red-400">{error}</p>
-	{/if}
-
-	<section class="flex flex-col gap-3">
-		<div class="text-[10px] tracking-[0.15em] text-stone-500 uppercase">
-			unassigned · {unassigned.length}
+	<main class="mx-auto flex w-full max-w-[860px] flex-1 flex-col gap-[26px] px-[34px] pt-[26px] pb-16">
+		<div>
+			<div class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">
+				Point nowhere
+			</div>
+			<div class="mt-2 flex items-baseline gap-4">
+				<h1 class="text-[52px] leading-[0.95] font-extrabold tracking-[-0.035em]">
+					{unassigned.length}
+				</h1>
+				<span class="text-[13px] text-neutral-700">
+					{unassigned.length === 1 ? 'tag has' : 'tags have'} been written and never filed. Mapping
+					one is retroactive: every entry that ever carried it joins the folder.
+				</span>
+			</div>
 		</div>
 
-		{#if unassigned.length === 0}
-			<p class="text-[11px] text-stone-500">nothing to assign. caught up.</p>
+		{#if error}
+			<p class="text-[12px] text-accent-700">{error}</p>
 		{/if}
 
-		<div class="flex flex-col">
-			{#each unassigned as tag (tag.tag)}
-				<div class="flex items-baseline justify-between gap-4 border-b border-stone-800 py-3">
-					<span class="text-sm">
-						<span style="color:#60a5fa">{`<${tag.tag}>`}</span>
-						<span class="ml-2 text-[10px] text-stone-500">×{tag.count}</span>
-					</span>
+		{#if unassigned.length > 0}
+			<div class="rounded-[16px] bg-surface px-[18px] py-2 shadow-md">
+				{#each unassigned as tag (tag.tag)}
+					<div class="flex items-center gap-4 py-3">
+						<span class="font-mono text-[14px]" style="color:{SYNTAX_COLORS.folder}">
+							{`<${tag.tag}>`}
+						</span>
+						<span class="text-[12px] text-neutral-700 tabular-nums">×{tag.count}</span>
+						<span class="flex-1"></span>
 
-					{#if naming === tag.tag}
-						<form
-							class="flex items-baseline gap-2"
-							onsubmit={(e) => {
-								e.preventDefault();
-								createAndAssign(tag.tag);
-							}}
-						>
-							<!-- svelte-ignore a11y_autofocus -->
-							<input
-								autofocus
-								bind:value={newName}
-								placeholder="folder name"
-								class="w-32 border-b border-stone-700 bg-transparent py-1 text-[11px] text-stone-200 transition-colors focus:border-stone-500 focus:outline-none"
-								style="caret-color:#e7e5e4"
-								onkeydown={(e) => {
-									if (e.key === 'Escape') naming = null;
+						{#if naming === tag.tag}
+							<form
+								class="flex items-center gap-2"
+								onsubmit={(e) => {
+									e.preventDefault();
+									createAndAssign(tag.tag);
 								}}
-							/>
-							<button type="submit" class="text-[11px] text-stone-400 hover:text-stone-200">
-								create
-							</button>
-						</form>
-					{:else}
-						<select
-							value=""
-							class="cursor-pointer bg-transparent text-[11px] text-stone-400 transition-colors hover:text-stone-200 focus:outline-none"
-							style="color-scheme:dark"
-							onchange={(e) => {
-								const value = e.currentTarget.value;
-								e.currentTarget.value = '';
-								if (value === '__new__') {
-									newName = '';
-									naming = tag.tag;
-								} else if (value) {
-									assign(tag.tag, value);
-								}
-							}}
-						>
-							<option value="" disabled>→ folder</option>
-							{#each folders as f (f.id)}
-								<option value={f.id}>{f.name}</option>
-							{/each}
-							<option value="__new__">+ new folder…</option>
-						</select>
-					{/if}
-				</div>
-			{/each}
-		</div>
-	</section>
-
-	{#if assignedFolders.length > 0}
-		<section class="flex flex-col gap-4">
-			<div class="text-[10px] tracking-[0.15em] text-stone-500 uppercase">assigned</div>
-			{#each assignedFolders as f (f.id)}
-				<div class="flex flex-col gap-1.5">
-					<div class="flex items-center gap-2 text-xs text-stone-300">
-						<span class="h-2 w-2 shrink-0 rounded-full" style="background:{f.color}"></span>
-						<a href="/folders/{f.id}" class="hover:text-stone-100">{f.name}</a>
-					</div>
-					<div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-						{#each f.tags as tag (tag)}
-							<button
-								type="button"
-								class="text-blue-400/80 transition-colors hover:text-red-400"
-								title="click to unassign"
-								onclick={() => unassign(tag, f.id)}
 							>
-								{`<${tag}>`}
-							</button>
-						{/each}
+								<!-- svelte-ignore a11y_autofocus -->
+								<input
+									autofocus
+									bind:value={newName}
+									placeholder="folder name"
+									class="w-40 rounded-lg bg-neutral-200 px-3 py-1.5 text-[13px] focus:outline-none"
+									onkeydown={(e) => {
+										if (e.key === 'Escape') naming = null;
+									}}
+								/>
+								<button type="submit" class="text-[13px] font-semibold">create</button>
+							</form>
+						{:else}
+							<select
+								value=""
+								class="cursor-pointer rounded-lg bg-neutral-200 px-3 py-1.5 text-[13px] font-semibold focus:outline-none"
+								onchange={(e) => {
+									const value = e.currentTarget.value;
+									e.currentTarget.value = '';
+									if (value === '__new__') {
+										newName = '';
+										naming = tag.tag;
+									} else if (value) {
+										assign(tag.tag, value);
+									}
+								}}
+							>
+								<option value="" disabled>→ folder</option>
+								{#each folders as f (f.id)}
+									<option value={f.id}>{f.name}</option>
+								{/each}
+								<option value="__new__">+ new folder…</option>
+							</select>
+						{/if}
 					</div>
-				</div>
-			{/each}
-		</section>
-	{/if}
+				{/each}
+			</div>
+		{:else}
+			<p class="text-[13px] text-neutral-700">nothing to assign. caught up.</p>
+		{/if}
 
-	<section class="flex flex-col gap-2 border-t border-stone-800 pt-5">
-		<div class="text-[10px] tracking-[0.15em] text-stone-500 uppercase">import</div>
-		<p class="text-[11px] leading-relaxed text-stone-500">
-			a CSV of <span class="text-stone-400">time, text, tags, patterns</span>. Rows keep their own
-			dates, and the tag columns are written back into the line — an imported entry is a line like
-			any other.
-		</p>
-		<label class="flex items-baseline gap-3 text-[11px]">
-			<span
-				class="cursor-pointer rounded bg-stone-800 px-2.5 py-1 text-stone-400 transition-colors hover:bg-stone-700 hover:text-stone-200"
-			>
-				{importing ? 'reading…' : 'choose a file'}
-				<input type="file" accept=".csv,text/csv" class="hidden" onchange={onFile} />
-			</span>
-			{#if imported}
-				<span class="text-emerald-400">{imported}</span>
-			{/if}
-		</label>
-	</section>
-</main>
+		{#if assignedFolders.length > 0}
+			<div>
+				<div class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+					Where the rest went
+				</div>
+				<div class="mt-2.5 rounded-[16px] bg-surface px-[18px] py-2 shadow-md">
+					{#each assignedFolders as f (f.id)}
+						<div class="flex items-baseline gap-3 py-3">
+							<span
+								class="h-2 w-2 shrink-0 translate-y-[-2px] rounded-full"
+								style="background:{f.color}"
+							></span>
+							<a href="/folders/{f.id}" class="shrink-0 text-[14px] font-semibold">{f.name}</a>
+							<div class="flex flex-1 flex-wrap justify-end gap-x-3 gap-y-1">
+								{#each f.tags as tag (tag)}
+									<button
+										type="button"
+										class="font-mono text-[12px] transition-colors hover:text-accent-700"
+										style="color:{f.color}"
+										title="click to unmap — the entries stay, they just leave this folder"
+										onclick={() => unassign(tag, f.id)}
+									>
+										{`<${tag}>`}
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<div>
+			<div class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">Import</div>
+			<div class="mt-2.5 flex flex-col gap-3 rounded-[16px] bg-surface px-[18px] py-4 shadow-md">
+				<p class="text-[13px] leading-[1.5] text-neutral-700">
+					A CSV of <span class="font-mono text-neutral-800">time, text, tags, patterns</span>. Rows
+					keep their own dates, and the tag columns are written back into the line — an imported
+					entry is a line like any other.
+				</p>
+				<label class="flex items-center gap-3 text-[13px]">
+					<span
+						class="lift lift-sm cursor-pointer rounded-[11px] bg-surface px-4 py-2.5 font-semibold shadow-sm"
+					>
+						{importing ? 'reading…' : 'Choose a file'}
+						<input type="file" accept=".csv,text/csv" class="hidden" onchange={onFile} />
+					</span>
+					{#if imported}
+						<span class="text-neutral-800">{imported}</span>
+					{/if}
+				</label>
+			</div>
+		</div>
+	</main>
+</div>

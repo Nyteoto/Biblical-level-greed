@@ -250,6 +250,56 @@ def list_dates() -> dict:
     return {"dates": store.dates(), "version": store.version}
 
 
+YEAR_RE = re.compile(r"^\d{4}$")
+
+
+def _year(value: str | None) -> str | None:
+    """`all` and an absent parameter both mean "do not scope by year" — the
+    first is the setting turned off, the second a caller that never had one."""
+    if value is None or value == "all":
+        return None
+    if not YEAR_RE.match(value):
+        raise HTTPException(400, "year must be YYYY or 'all'")
+    return value
+
+
+@router.get("/shelf")
+def shelf(year: str | None = None) -> dict:
+    """The year shelf: every album with anything in it this year, its twelve
+    month volumes, its lead media and its chapter count.
+
+    All of it derived on the read. An album is a folder seen through one year,
+    and no row anywhere records that pairing — see `index.shelf`.
+    """
+    return {**store.shelf(_year(year)), "version": store.version}
+
+
+@router.get("/album")
+def album(folder: str | None = None, year: str | None = None) -> dict:
+    """One album, one year. `folder` absent (or `unfiled`) is the pile nothing
+    has claimed, which the shelf offers as an album of its own."""
+    target = None if folder in (None, "", "unfiled") else folder
+    try:
+        return {**store.album(target, _year(year)), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+@router.post("/reindex")
+def reindex() -> dict:
+    """Throw the index away and replay the log.
+
+    Safe by construction — the index is a projection and nothing else — which
+    is why this can be a button rather than a maintenance procedure.
+    """
+    store.reindex()
+    return {
+        "indexed": store.indexed,
+        "warnings": store.warnings,
+        "version": store.version,
+    }
+
+
 @router.get("/cumulative")
 def cumulative(up_to: str) -> dict:
     """Word count, tag bars and the sentiment weekday chart, as of a day.

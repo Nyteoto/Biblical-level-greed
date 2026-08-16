@@ -46,3 +46,13 @@ data.*/
 # of that name at *any* depth, which silently excluded the entire ported UI in
 # frontend/src/lib/trophic/ and frontend/src/routes/trophic/.
 /trophic/
+
+# The design bundle the Log/Capture/Settings redesign was built from: prototype
+# HTML frames, a README naming every token, and a copy of the bound Modernist
+# design system. Ignored for the same reason as the bundle above — it is a
+# read-once reference produced elsewhere, not part of this program, and the
+# built screens are now the authority on what shipped. What it decided is kept
+# where it is load-bearing: the light palette in
+# `frontend/src/lib/trophic/colors.ts`, the two model switches in
+# `settings.svelte.ts`, and the shape of the Log in CLAUDE.md.
+/design_handoff_trophic_ui/

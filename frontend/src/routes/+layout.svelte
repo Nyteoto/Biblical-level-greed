@@ -1,73 +1,38 @@
 <script lang="ts">
 	import '../app.css';
-	import { page } from '$app/state';
-	import XpMeter from '$lib/components/XpMeter.svelte';
+	// Trophic's animation vocabulary, and the `.trophic` scope below that its
+	// reduced-motion rule keys off. It sits at the root now rather than on the
+	// capture route group: Settings and the Manual are Trophic's screens too,
+	// and they were the two that quietly opted out of it.
+	import '$lib/trophic/trophic.css';
 	import UploadBar from '$lib/trophic/UploadBar.svelte';
-	import { xpState } from '$lib/xpstore.svelte';
 
 	let { children } = $props();
 
-	// Capture is the app now, so it holds the root and leads the bar. The tech
-	// tree is support: it still has its own screens, its own log and its own
-	// index, and the two share a data root and a process rather than a model.
-	// The Manual lives under Settings — read closely once and skimmed rarely
-	// after that, which does not earn a permanent tab.
-	const tabs = [
-		{ href: '/', label: 'Capture' },
-		{ href: '/log', label: 'Log' },
-		{ href: '/today', label: 'Today' },
-		{ href: '/tree', label: 'Trees' },
-		{ href: '/settings', label: 'Settings' }
-	];
-
-	// `/log` and `/folders/x` are both the log's territory, so the Log tab
-	// stays lit while reading a folder.
-	const isActive = (href: string) =>
-		href === '/'
-			? page.url.pathname === '/'
-			: href === '/log'
-				? ['/log', '/folders', '/mapping'].some((p) => page.url.pathname.startsWith(p))
-				: page.url.pathname.startsWith(href);
+	// The shell is now almost nothing: a ground, an upload bar, and the page.
+	//
+	// The tab bar that used to live here is gone, and so is the XP meter beside
+	// it. Both belonged to the arrangement where the tech tree was the app and
+	// capture was a fifth tab; capture is the app, the tree's screens are
+	// hidden, and there is no XP economy on screen to meter. Navigation is one
+	// white pill (`TabPill.svelte`) that each screen places for itself, because
+	// it does not sit in the same corner on all three — see that file.
 </script>
 
 <svelte:head>
-	<title>Personal Growth System</title>
+	<title>Trophic</title>
 </svelte:head>
 
-<div class="flex min-h-dvh flex-col bg-[#14100c] text-stone-300">
-	<!-- Centred uppercase tabs, as in the reference. -->
-	<header class="relative border-b border-black/60 bg-gradient-to-b from-[#20191200] to-[#00000060]">
-		<div class="flex h-11 items-stretch justify-center gap-1">
-			{#each tabs as tab}
-				<a
-					href={tab.href}
-					class="relative flex items-center px-5 text-[12px] font-semibold tracking-[0.22em] uppercase transition
-					{isActive(tab.href)
-						? 'text-amber-300'
-						: 'text-stone-500 hover:text-stone-300'}"
-				>
-					{tab.label}
-					{#if isActive(tab.href)}
-						<span class="absolute inset-x-3 bottom-0 h-[2px] bg-amber-400/80"></span>
-					{/if}
-				</a>
-			{/each}
-		</div>
-
-		<!-- XP rides in the corner, on every page. It decides what you can start
-		     now, so it cannot live on one screen you have to go and look at. -->
-		{#if xpState.xp}
-			<div class="absolute inset-y-0 right-3 flex items-center">
-				<XpMeter xp={xpState.xp} />
-			</div>
-		{/if}
-	</header>
-
-	<!-- Above the page, below the tabs: an upload outlives the screen that
-	     started it, so its progress belongs to the shell. -->
+<!-- `data-shell-header` is what claims the status-bar inset on an installed
+     phone. It is an attribute rather than a `header` selector because the Log's
+     day headings are `header` elements too, and every one of them was quietly
+     padding itself by the height of the notch. -->
+<div data-shell-header class="trophic flex min-h-dvh flex-col">
+	<!-- Above the page: an upload outlives the screen that started it, so its
+	     progress belongs to the shell rather than to the capture bar. -->
 	<UploadBar />
 
-	<main class="flex-1">
+	<main class="flex flex-1 flex-col">
 		{@render children()}
 	</main>
 </div>

@@ -60,6 +60,58 @@ export interface UnassignedTag {
 	count: number;
 }
 
+/** A folder seen through one year. Everything below is a derived read — no row
+ *  anywhere records the pairing, which is what lets the year setting be a
+ *  switch rather than a migration. */
+export interface Album extends Folder {
+	/** Entries in this album *this year*. `entry_count` on a plain Folder is
+	 *  all of history; both are offered because the card is about the year and
+	 *  the sidebar is about the project. */
+	all_time_count: number;
+	media_count: number;
+	/** Twelve entry counts, January first. The sparkline and the month spine
+	 *  read the same list — one lying down, one standing up. */
+	volumes: number[];
+	/** `Feb–May`, or `Feb`. Empty when the album is empty. */
+	months: string;
+	chapters: number;
+	/** The newest few attachments — the card's mosaic. */
+	lead: string[];
+}
+
+/** A contiguous run of months inside one album-year, named from the user's own
+ *  commonest tag or pattern inside it. Derived on every read. */
+export interface Chapter {
+	name: string;
+	range: string;
+	first_month: number;
+	last_month: number;
+	entries: number;
+}
+
+export interface Shelf {
+	year: string | null;
+	/** Every year the log has anything in, newest first. The year rail. */
+	years: string[];
+	albums: Album[];
+	unfiled: number;
+	entries: number;
+	media: number;
+	previous: { year: string; entries: number } | null;
+}
+
+export interface AlbumView {
+	/** Null for the unfiled pile, which is an album you can open like any
+	 *  other but is not a folder. */
+	folder: Folder | null;
+	year: string | null;
+	entries: Entry[];
+	volumes: number[];
+	chapters: Chapter[];
+	media_count: number;
+	sentiments: { name: string; count: number }[];
+}
+
 export interface Reminder {
 	entry_id: string;
 	/** Line index within the entry that carried the `{time}`. */
@@ -121,6 +173,19 @@ export const toggleLine = (id: string, line: number) =>
 	});
 
 export const getDates = () => call<{ dates: Record<string, number> }>('/dates');
+
+/** The year shelf. `year` of `'all'` — which is what the yearly-restart switch
+ *  turned off sends — drops the filter without changing the shape. */
+export const getShelf = (year: string) => call<Shelf>(`/shelf?year=${year}`);
+
+/** One album, one year. A null folder is the unfiled pile. */
+export const getAlbum = (folder: string | null, year: string) =>
+	call<AlbumView>(`/album?folder=${folder ?? 'unfiled'}&year=${year}`);
+
+/** Throw the capture index away and replay the log. Safe by construction —
+ *  the index is a projection and nothing else. */
+export const reindex = () =>
+	call<{ indexed: number; warnings: string[] }>('/reindex', { method: 'POST' });
 
 export const getVocab = () => call<Vocab>('/vocab');
 

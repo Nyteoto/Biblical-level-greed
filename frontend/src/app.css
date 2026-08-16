@@ -1,20 +1,126 @@
 @import 'tailwindcss';
 
+/* Archivo and JetBrains Mono, self-hosted. The app is read on an iPad over
+   Tailscale with no route to the open internet, so a webfont CDN would simply
+   not resolve there; these are variable woff2 files served off the same origin
+   as everything else. Variable rather than five static weights because the
+   design uses 400 through 800 and a single axis file is smaller than two of
+   them. */
+@import '@fontsource-variable/archivo';
+@import '@fontsource-variable/jetbrains-mono';
+
+/*
+ * The paper-light editorial ground, from the bound Modernist system.
+ *
+ * Two things here are deliberate deviations from Modernist and are on the
+ * design brief rather than accidents: soft radii where the system says 0, and
+ * **elevation instead of dividers**. There are no rules in this UI. Anything
+ * that needs to be a group is a white card on the tinted ground, and anything
+ * that needs to be above something else casts a shadow. If you find yourself
+ * reaching for `border-b` to separate two rows, the answer is a card.
+ *
+ * The neutral ramp below deliberately *overrides* Tailwind's own `neutral`
+ * palette rather than sitting beside it under another name, so `text-neutral-700`
+ * in a component is the same 700 the handoff table names. Nothing in the app
+ * uses Tailwind's stock neutrals — the tech tree, which is the only older code
+ * left, is on `stone`.
+ */
 @theme {
-	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-	--font-mono: ui-monospace, 'JetBrains Mono', 'Fira Code', monospace;
+	--font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, 'Fira Code', monospace;
+
+	--color-ground: #f3f2f2;
+	--color-surface: #ffffff;
+	--color-ink: #201e1d;
+
+	--color-neutral-200: #eae7e7;
+	--color-neutral-300: #d7d3d3;
+	--color-neutral-400: #bab6b6;
+	/* 500 is a fill and a bar colour. Never small text: it does not clear the
+	   contrast line on this ground, which is why 600–800 exist. */
+	--color-neutral-500: #9b9797;
+	--color-neutral-600: #7d7979;
+	--color-neutral-700: #605d5d;
+	--color-neutral-800: #444141;
+
+	--color-accent: #ec3013;
+	--color-accent-100: #fff2ef;
+	--color-accent-300: #ffc4b8;
+	--color-accent-400: #ff9783;
+	--color-accent-500: #ff563c;
+	--color-accent-600: #dd2b0f;
+	/* The rung accent-coloured *text* uses. The lighter ones are for fills. */
+	--color-accent-700: #ae1800;
+
+	/* One step apart, and used as a ladder: a card at rest is `md`, lifted is
+	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two. */
+	--shadow-sm: 0 1px 2px rgba(45, 43, 43, 0.14);
+	--shadow-md: 0 3px 10px rgba(45, 43, 43, 0.16);
+	--shadow-lg: 0 12px 32px rgba(45, 43, 43, 0.22);
+}
+
+:root {
+	/* The two gradients, as values rather than utilities: they are painted onto
+	   pills, bars and toggles that are otherwise unrelated, and repeating four
+	   colour stops at each site is how they drift apart. */
+	--gradient-ground: linear-gradient(178deg, #f7f6f6 0%, #f3f2f2 44%, #efeded 100%);
+	--gradient-accent: linear-gradient(140deg, #ff563c, #ae1800);
+	--gradient-spine: linear-gradient(180deg, #ff563c, #ae1800);
+	--gradient-spine-last: linear-gradient(180deg, #ffc4b8, #ff9783);
 }
 
 html {
-	background: #14100c;
-	color-scheme: dark;
+	background: var(--color-ground);
+	color-scheme: light;
 }
 
 body {
 	-webkit-font-smoothing: antialiased;
+	background: var(--gradient-ground);
+	background-attachment: fixed;
+	color: var(--color-ink);
+	font-family: var(--font-sans);
 }
 
-/* Faint warm grid behind the tree, echoing the reference's textured backdrop. */
+/* The accent gradient, wherever a thing is the live one: the active tab, the
+   active album, the primary button, an on toggle, this month's bar. */
+.accent-fill {
+	background-image: var(--gradient-accent);
+	color: #fff;
+}
+
+/* A card lifts by exactly one shadow step and rises at most a pixel. More than
+   that and a grid of album cards reads as a trampoline. */
+.lift {
+	transition:
+		box-shadow 200ms ease,
+		transform 200ms ease;
+}
+@media (hover: hover) {
+	.lift:hover {
+		transform: translateY(-1px);
+	}
+	.lift-sm:hover {
+		box-shadow: var(--shadow-md);
+	}
+	.lift-md:hover {
+		box-shadow: var(--shadow-lg);
+	}
+}
+.lift:active {
+	transform: translateY(0);
+}
+
+/* One focus ring for the whole app, on the accent so it reads as the app's own
+   rather than the browser's. */
+:focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}
+
+/* The tech tree's textured backdrop. Its screens are hidden rather than
+   deleted, so the styles they need stay here — an unhidden screen that renders
+   without its own background is a worse state than a hidden one. */
 .blueprint {
 	background-image:
 		linear-gradient(rgba(214, 178, 120, 0.035) 1px, transparent 1px),
@@ -27,14 +133,14 @@ body {
 	width: 10px;
 }
 ::-webkit-scrollbar-track {
-	background: #14100c;
+	background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-	background: #2e2620;
+	background: var(--color-neutral-300);
 	border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-	background: #453a30;
+	background: var(--color-neutral-400);
 }
 
 /* -- installed on a phone ------------------------------------------------ */
@@ -46,8 +152,10 @@ body {
 	padding-right: env(safe-area-inset-right);
 }
 
-/* The tab bar is the top-most chrome, so it absorbs the status-bar inset. */
-header {
+/* The shell's header is the top-most chrome, so it absorbs the status-bar
+   inset. Scoped to the shell rather than every `header`: the Log's day headers
+   are `header` elements too, and each of them was quietly claiming the notch. */
+[data-shell-header] {
 	padding-top: env(safe-area-inset-top);
 }
 
@@ -57,23 +165,16 @@ main {
 }
 
 /* How much room a full-height page actually has.
-   The three rules above add the insets back as padding but nothing subtracted
-   them again, so a page asking for `100vh - 2.75rem` was that much taller than
-   the screen: on iOS the overflow pushed anything docked to the bottom — the
-   tool shelf — under the fold, while desktop looked fine because its insets are
-   all 0. Subtract the same chrome that gets added, in one place, so no page has
-   to re-derive it.
+   The rules above add the insets back as padding but nothing subtracted them
+   again, so a page asking for `100dvh` was that much taller than the screen.
+   Subtract the same chrome that gets added, in one place, so no page has to
+   re-derive it.
 
    `dvh` rather than `vh`: `vh` is the *largest* the viewport can be, which on
    iOS is the size with the browser chrome retracted, not the size on screen. */
 :root {
-	/* The h-11 tab bar in +layout.svelte, plus its 1px bottom border. Leaving
-	   the border out left the page one pixel taller than the screen, which is
-	   invisible but enough to make iOS rubber-band on every drag. */
-	--tabbar-height: calc(2.75rem + 1px);
 	--content-height: calc(
-		100dvh - var(--tabbar-height) - env(safe-area-inset-top) -
-			env(safe-area-inset-bottom)
+		100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)
 	);
 }
 

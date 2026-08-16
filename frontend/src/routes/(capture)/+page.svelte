@@ -14,14 +14,20 @@
 	 *   4000ms of stillness before the chrome dims (and 30s to come back)
 	 *   300ms  before autofocus on mount
 	 *
+	 * The redesign changed the surface and none of the behaviour. The draft now
+	 * sits in a white card with the deepest shadow on the screen, because it is
+	 * the one thing on it; the indicator line keeps its exact notched path and
+	 * only its fills moved to this palette. Everything above — the reminder
+	 * strips, the attachment chips, the pin — is the same code in a lighter suit.
+	 *
 	 * There is deliberately no feed on this screen. The capture bar is for
 	 * getting a thought out of your head; reading them back is the log's job.
 	 */
 	import { goto } from '$app/navigation';
 	import SmoothTextarea from '$lib/trophic/SmoothTextarea.svelte';
 	import SyntaxBar from '$lib/trophic/SyntaxBar.svelte';
+	import TabPill from '$lib/trophic/TabPill.svelte';
 	import {
-		attachMedia,
 		capture,
 		captureBody,
 		createFolder,
@@ -35,8 +41,8 @@
 		type Reminder,
 		type Vocab
 	} from '$lib/trophic/api';
-	import { UI_COLORS } from '$lib/trophic/colors';
-	import { deviceType, virtualKeyboard } from '$lib/trophic/device.svelte';
+	import { SYNTAX_COLORS, UI_COLORS } from '$lib/trophic/colors';
+	import { deviceType } from '$lib/trophic/device.svelte';
 	import { attach, release, type Attachment } from '$lib/trophic/media';
 	import { tagForPin, withPinnedTag } from '$lib/trophic/pinned';
 	import { pinned } from '$lib/trophic/pinned.svelte';
@@ -61,7 +67,6 @@
 	let typeGlow = $state(0);
 	let error = $state<string | null>(null);
 	let uiDimmed = $state(false);
-	let inputFocused = $state(false);
 	let isMobile = $state(false);
 
 	let glowTimer: ReturnType<typeof setTimeout>;
@@ -72,7 +77,6 @@
 	// shown rather than hidden: the user has to be able to see that a thought
 	// is held and not lost, or they will retype it.
 	let queued = $state(0);
-	const keyboard = virtualKeyboard();
 
 	// Files chosen but not yet sent. They upload on send, not on pick, so a
 	// change of mind costs nothing and a five-minute video is not uploaded
@@ -296,7 +300,6 @@
 		}
 	}
 
-
 	function handlePaste(e: ClipboardEvent) {
 		const text = e.clipboardData?.getData('text/plain') ?? '';
 		if (!text || !URL_RE.test(text)) return;
@@ -321,16 +324,15 @@
 		setTimeout(() => (suppressGlow = false), 100);
 
 		// The CLI. `--folders` keeps its name from the source even though what
-		// it opens here is called the log — it is the same screen: the daily
-		// log lives on the folders page there.
+		// it opens here is called the log — it is the same screen.
 		const cmd = draft.trim().toLowerCase();
 		if (cmd === '--folders' || cmd === '--log') {
 			draft = '';
 			goto('/log');
 			return;
 		}
-		// `--assign` keeps the source's name for the mapping screen; it is one
-		// of the tokenizer's nav commands, so it never reads as a directive.
+		// `--assign` keeps the source's name for the mapping screen, which the
+		// redesign made a page hanging off Settings rather than a tab of its own.
 		if (cmd === '--assign') {
 			draft = '';
 			goto('/mapping');
@@ -370,64 +372,81 @@
 		justSent ? UI_COLORS.success : shaking ? UI_COLORS.error : UI_COLORS.muted
 	);
 	// The notch is one filled shape so the top edge stays a single straight
-	// line; the trapezoid is cut out of the bottom.
+	// line; the trapezoid is cut out of the bottom. Kept to the pixel — the
+	// redesign changes what colour it is and nothing about what it is.
 	const NOTCH =
 		'M0,0 L600,0 L600,2 L345,2 C342,2 340,13 335,13 L265,13 C260,13 258,2 255,2 L0,2 Z';
+
+	/** What `tab` would take right now: the pinned folder's tag if there is
+	 *  one, otherwise the most recent tag in the vocabulary. The hint names a
+	 *  real word the user has written rather than a placeholder. */
+	const hintTag = $derived(pinTag ?? vocab?.tags?.[0] ?? null);
 </script>
 
 <svelte:window onclick={() => (pinMenu = false)} />
 
+<!-- The header holds the whole of the app's navigation on the left and the pin
+     on the right, and nothing else. The wordmark went when capture took the
+     root: this screen is at its best with nothing on it but the line being
+     written, and both of these fade out under the idle dim while you write. -->
 <header
-	class="ui-dim sticky top-0 z-40 flex items-center justify-between bg-[#14100c] px-6 py-5 text-[11px] tracking-wide text-stone-500 {uiDimmed
+	class="ui-dim flex shrink-0 items-center justify-between px-[30px] pt-[22px] {uiDimmed
 		? 'dimmed'
 		: ''}"
 >
-	<!-- Almost empty on purpose. The wordmark went when capture took the root:
-	     the tab bar already says where you are, and this screen is at its best
-	     with nothing on it but the line you are writing.
-	     The pin sits here rather than beside the attach button, which is the
-	     other place it could go: that button lives in the 40px of right padding
-	     the text area reserves, and a folder name does not fit in 40px. Up here
-	     it also inherits the idle dim, so it fades out while you write and is
-	     back the moment you move. -->
+	<TabPill />
+
 	<div class="relative">
 		<button
 			type="button"
-			class="flex items-center gap-1.5 transition-colors hover:text-stone-300"
+			class="lift lift-sm flex items-center gap-[9px] rounded-[10px] bg-surface px-[13px] py-2 shadow-sm"
 			onclick={(e) => {
 				e.stopPropagation();
 				pinMenu = !pinMenu;
 			}}
 		>
 			{#if pinnedFolder}
-				<span class="h-1.5 w-1.5 rounded-full" style="background:{pinnedFolder.color}"></span>
-				<span style="color:{pinnedFolder.color}">{pinnedFolder.name}</span>
+				<span class="h-2 w-2 rounded-full" style="background:{pinnedFolder.color}"></span>
+				<span class="text-[13px] font-semibold">{pinnedFolder.name}</span>
+				<span class="text-[11px] text-neutral-700">
+					pinned ·
+					<!-- Unpinning is one word inside the pill rather than a second
+					     control: the pill is only on screen when something is
+					     pinned, so the two are never ambiguous. -->
+					<span
+						role="button"
+						tabindex="0"
+						class="hover:text-accent-700"
+						onclick={(e) => {
+							e.stopPropagation();
+							pin.set(null);
+							pinMenu = false;
+						}}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ' ') {
+								e.preventDefault();
+								e.stopPropagation();
+								pin.set(null);
+							}
+						}}>unpin</span
+					>
+				</span>
 			{:else}
-				<span class="text-stone-600">pin a folder</span>
+				<span class="h-2 w-2 rounded-full bg-neutral-400"></span>
+				<span class="text-[13px] font-semibold text-neutral-700">pin a folder</span>
 			{/if}
 		</button>
 
 		{#if pinMenu}
 			<div
-				class="absolute top-full left-0 z-50 mt-2 flex max-h-[60vh] min-w-[170px] flex-col overflow-y-auto rounded border border-stone-700 bg-[#1b1613] py-1.5 shadow-xl"
+				class="absolute top-full right-0 z-50 mt-2 flex max-h-[60vh] min-w-[190px] flex-col overflow-y-auto rounded-[12px] bg-surface p-1.5 shadow-lg"
+				style="animation:landing-fade-in 0.15s ease-out"
 			>
-				{#if pin.id}
-					<button
-						type="button"
-						class="px-4 py-2 text-left text-[12px] text-stone-400 transition-colors hover:bg-stone-800 hover:text-stone-200"
-						onclick={() => {
-							pin.set(null);
-							pinMenu = false;
-						}}
-					>
-						unpin
-					</button>
-				{/if}
 				{#each folders as f (f.id)}
 					{@const tag = tagForPin(f)}
 					<button
 						type="button"
-						class="flex items-center gap-2 px-4 py-2 text-left text-[12px] transition-colors hover:bg-stone-800 disabled:opacity-30"
+						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors hover:bg-neutral-200 disabled:opacity-30 disabled:hover:bg-transparent"
 						disabled={!tag}
 						title={tag ? `captures land as <${tag}>` : 'no tag points at this folder'}
 						onclick={() => {
@@ -435,18 +454,15 @@
 							pinMenu = false;
 						}}
 					>
-						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:{f.color}"></span>
-						<span class="truncate" style="color:{f.id === pin.id ? f.color : '#d6d3d1'}">
-							{f.name}
-						</span>
+						<span class="h-2 w-2 shrink-0 rounded-full" style="background:{f.color}"></span>
+						<span class="truncate {f.id === pin.id ? 'font-bold' : ''}">{f.name}</span>
 					</button>
 				{:else}
-					<span class="px-4 py-2 text-[12px] text-stone-500">no folders yet</span>
+					<span class="px-3 py-2 text-[13px] text-neutral-700">no folders yet</span>
 				{/each}
 			</div>
 		{/if}
 	</div>
-	<span></span>
 </header>
 
 <!-- Centred, and it stays centred when the keyboard opens.
@@ -454,21 +470,20 @@
      the bar to the top of the screen the instant you tapped it. The source
      does not reflow here and neither should this: Safari scrolls a focused
      input into view on its own, and a layout that jumps under your thumb is
-     worse than one that sits a little high. `keyboard.open` earns its keep
-     one place only — the syntax keys below. -->
-<main class="flex flex-1 flex-col items-center justify-center px-6 pb-24">
-	<div class="flex w-full max-w-xl flex-col gap-3">
+     worse than one that sits a little high. -->
+<main class="flex min-h-0 flex-1 flex-col items-center justify-center px-[30px]">
+	<div class="flex w-full max-w-[720px] flex-col gap-4">
 		<!-- The reminder strip. Above the box, because it is context for what
 		     you are about to write, not a task list to work through. -->
 		{#each reminders as reminder (reminder.entry_id + ':' + reminder.line)}
 			<div
-				class="flex items-baseline justify-between gap-4 rounded border border-stone-800 bg-stone-900/50 px-3 py-2"
+				class="flex items-baseline gap-4 rounded-[12px] bg-surface px-4 py-3 shadow-sm"
 				style="animation:landing-fade-in 0.3s ease-out"
 			>
-				<span class="min-w-0 flex-1 truncate font-mono text-[12px] text-stone-300">
+				<span class="min-w-0 flex-1 truncate font-mono text-[13px]">
 					{reminder.line_text}
 				</span>
-				<span class="shrink-0 text-[10px] text-stone-500">
+				<span class="shrink-0 text-[11px] text-neutral-700">
 					{new Date(reminder.due_at).toLocaleDateString(undefined, {
 						month: 'short',
 						day: 'numeric'
@@ -476,7 +491,7 @@
 				</span>
 				<button
 					type="button"
-					class="shrink-0 text-[10px] text-stone-500 transition-colors hover:text-stone-300"
+					class="shrink-0 text-[11px] font-semibold text-neutral-700 transition-colors hover:text-accent-700"
 					onclick={() => dismiss(reminder)}
 				>
 					dismiss
@@ -488,10 +503,10 @@
 		     so removing a chip costs nothing and a long clip is not sent twice
 		     because the text was edited after picking it. -->
 		{#if attachments.length > 0}
-			<div class="flex flex-wrap gap-2">
+			<div class="flex flex-wrap gap-2.5">
 				{#each attachments as item (item.key)}
 					<div
-						class="relative h-16 w-16 overflow-hidden rounded border border-stone-800 bg-stone-900"
+						class="relative h-[74px] w-[74px] overflow-hidden rounded-[12px] bg-neutral-200 shadow-sm"
 					>
 						{#if item.kind === 'image'}
 							<img src={item.preview} alt="" class="h-full w-full object-cover" />
@@ -499,12 +514,16 @@
 							<!-- svelte-ignore a11y_media_has_caption -->
 							<video src={item.preview} muted playsinline class="h-full w-full object-cover"
 							></video>
-							<span class="absolute bottom-0.5 left-1 text-[9px] text-stone-300">clip</span>
+							<span
+								class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+							>
+								clip
+							</span>
 						{/if}
 
 						<button
 							type="button"
-							class="absolute top-0 right-0 bg-black/60 px-1 text-[10px] text-stone-300 hover:text-red-400"
+							class="absolute top-[5px] right-[5px] flex h-[19px] w-[19px] items-center justify-center rounded-full bg-white/90 text-[12px] leading-none text-neutral-800 shadow-sm transition-colors hover:text-accent"
 							aria-label="remove"
 							onclick={() => drop(item.key)}>×</button
 						>
@@ -513,11 +532,14 @@
 			</div>
 		{/if}
 
+		<!-- The writing card. `--shadow-lg` is the deepest thing on the screen
+		     and it is on the only thing on the screen; the indicator line sits
+		     flush at its bottom edge inside the same `overflow:hidden` box. -->
 		<div
 			data-capture-box
 			role="group"
 			aria-label="capture"
-			class="relative overflow-hidden"
+			class="relative overflow-hidden rounded-[18px] bg-surface shadow-lg"
 			style="touch-action:pan-y"
 			ontouchstart={onTouchStart}
 			ontouchend={onTouchEnd}
@@ -541,20 +563,18 @@
 						placeholder="what happened?"
 						onkeydown={handleKeyDown}
 						onpaste={handlePaste}
-						onfocus={() => (inputFocused = true)}
-						onblur={() => (inputFocused = false)}
 					/>
 				</div>
 			</div>
 
-			<!-- The attach button, in the 40px of right padding `.smooth-layout`
-			     already reserves. A sibling of the slide-out wrapper, not a
-			     child: inside it, it would slide away with the draft on send. -->
+			<!-- The attach button, in the right padding `.smooth-layout` already
+			     reserves. A sibling of the slide-out wrapper, not a child:
+			     inside it, it would slide away with the draft on send. -->
 			<label
-				class="absolute top-2 right-0 cursor-pointer p-2 text-stone-600 transition-colors hover:text-stone-300"
+				class="absolute top-[22px] right-[18px] cursor-pointer p-1 text-neutral-600 transition-colors hover:text-ink"
 				title="attach a photo or a clip"
 			>
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+				<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
 					stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 					<path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.67 3.67 0 1 1 5.18 5.18l-9.2 9.2a1.83 1.83 0 1 1-2.59-2.6l8.49-8.48" />
 				</svg>
@@ -569,8 +589,8 @@
 			</label>
 
 			<!-- The indicator line. Its colour is the only feedback the bar
-			     gives: grey resting, amber while you type, green for 900ms on
-			     send, red plus a damped shake on a refusal. -->
+			     gives: grey resting, the accent gradient while you type, green
+			     for 900ms on send, red plus a damped shake on a refusal. -->
 			<svg
 				viewBox="0 0 600 14"
 				preserveAspectRatio="none"
@@ -579,13 +599,11 @@
 			>
 				<defs>
 					<linearGradient id="type-glow" x1="0" x2="1" y1="0" y2="0">
-						<stop offset="0%" stop-color="transparent" />
-						<stop offset="5%" stop-color="#f59e0b" stop-opacity="0.3" />
-						<stop offset="25%" stop-color="#f59e0b" stop-opacity="0.7" />
-						<stop offset="50%" stop-color="#f59e0b" />
-						<stop offset="75%" stop-color="#f59e0b" stop-opacity="0.7" />
-						<stop offset="95%" stop-color="#f59e0b" stop-opacity="0.3" />
-						<stop offset="100%" stop-color="transparent" />
+						<stop offset="0%" stop-color="#ec3013" stop-opacity="0" />
+						<stop offset="25%" stop-color="#ff9783" />
+						<stop offset="50%" stop-color="#dd2b0f" />
+						<stop offset="75%" stop-color="#ff9783" />
+						<stop offset="100%" stop-color="#ec3013" stop-opacity="0" />
 					</linearGradient>
 				</defs>
 				<path d={NOTCH} fill={indicatorFill} style="transition:fill 0.3s ease" />
@@ -598,36 +616,47 @@
 			</svg>
 		</div>
 
-		<!-- OR'd, as the source has it: visualViewport detection misses iPad
-		     split and floating keyboards, and focus alone misses the case where
-		     the keyboard is up but focus has moved to a suggestion. -->
-		{#if isMobile}
-			<SyntaxBar
-				visible={keyboard.open || inputFocused}
-				oninsert={(t) => input?.insertText(t)}
-			/>
-		{/if}
+		<!-- The syntax keys, and the legend for the syntax in the same row. -->
+		<SyntaxBar oninsert={(t) => input?.insertText(t)} />
+
+		<div
+			class="ui-dim flex items-baseline gap-3.5 pt-0.5 text-[13px] text-neutral-700 {uiDimmed
+				? 'dimmed'
+				: ''}"
+		>
+			<span class="font-mono text-[12px]">tab</span>
+			{#if hintTag}
+				<span>
+					takes
+					<span style="color:{SYNTAX_COLORS.folder};font-weight:600">{`<${hintTag}>`}</span>
+				</span>
+			{:else}
+				<span>completes a tag you have written before</span>
+			{/if}
+			<span class="ml-auto">enter sends · shift+enter is a newline</span>
+		</div>
 
 		{#if nope}
-			<p class="text-center text-[11px] text-stone-500">Nope</p>
+			<p class="text-[12px] text-neutral-700">Nope</p>
 		{/if}
 
 		{#if queued > 0}
-			<p class="text-[11px] text-stone-500">
+			<p class="text-[12px] text-neutral-700">
 				{queued}
 				{queued === 1 ? 'line' : 'lines'} waiting for the connection — they will send themselves
 			</p>
 		{/if}
 
 		<!-- One issue at a time: the first is the one to fix, and a stack of
-		     red text under the capture bar is its own kind of noise. -->
+		     red text under the capture bar is its own kind of noise. Never a
+		     red field — the tokens in the draft are already blinking. -->
 		{#each validation.issues.slice(0, 1) as issue (issue.message)}
-			<p class="flex items-baseline gap-2 text-[11px] text-red-400">
+			<p class="flex items-baseline gap-3 text-[12px] text-accent-700">
 				<span>{issue.message}</span>
 				{#if issue.createFolder}
 					<button
 						type="button"
-						class="rounded bg-stone-800 px-2 py-0.5 text-[10px] text-stone-300 transition-colors hover:bg-stone-700"
+						class="rounded-lg bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink shadow-sm transition-shadow hover:shadow-md"
 						onclick={createMissingFolder}
 					>
 						create it
@@ -637,23 +666,11 @@
 		{/each}
 
 		{#if error}
-			<p class="text-[11px] text-red-400">{error}</p>
+			<p class="text-[12px] text-accent-700">{error}</p>
 		{/if}
 	</div>
 </main>
 
-{#if !isMobile}
-	<footer
-		class="ui-dim pointer-events-none fixed right-0 bottom-0 left-0 flex flex-col items-center pt-3 pb-5 {uiDimmed
-			? 'dimmed'
-			: ''}"
-	>
-		<p class="text-center text-[11px] leading-relaxed text-stone-500">
-			<span style="color:#60a5faaa">&lt;tag&gt;</span>
-			<span class="mx-2 text-stone-700">&middot;</span>
-			<span style="color:#fb7185aa">\pattern</span>
-			<span class="mx-2 text-stone-700">&middot;</span>
-			<span>enter to send, tab to choose existing tags</span>
-		</p>
-	</footer>
-{/if}
+<!-- The column above is vertically centred in whatever is left, so the page
+     needs a foot of the same height as the header to centre against. -->
+<div class="h-[62px] shrink-0"></div>

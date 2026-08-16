@@ -12,7 +12,13 @@
 	 * photograph the syntax colours read as damage to the image. The tags are
 	 * still legible in the log itself, one tap away.
 	 *
-	 * Video here *is* a `<video>` element with controls, unlike the tile: one
+	 * The backdrop stays dark, and that is the one place in this app that is not
+ * on the paper ground. A photograph is looked at against black — a light
+ * surround shifts how its own tones read, which is the whole reason galleries
+ * are painted the way they are. The chrome around it is white rather than
+ * stone so it belongs to this design.
+ *
+ * Video here *is* a `<video>` element with controls, unlike the tile: one
 	 * at a time, opened deliberately, is exactly the case the Range-serving
 	 * backend is good at.
 	 */
@@ -85,11 +91,11 @@
 		ontouchstart={onTouchStart}
 		ontouchend={onTouchEnd}
 	>
-		<div class="flex items-center justify-between px-5 py-4 text-[11px] text-stone-500">
+		<div class="flex items-center justify-between px-6 py-4 text-[12px] text-white/55">
 			<span class="tabular-nums">{index + 1} / {shots.length}</span>
 			<button
 				type="button"
-				class="px-2 text-stone-400 transition-colors hover:text-stone-100"
+				class="px-2 text-white/70 transition-colors hover:text-white"
 				onclick={onclose}
 				aria-label="close"
 			>
@@ -108,14 +114,14 @@
 					autoplay
 					playsinline
 					preload="metadata"
-					class="max-h-full max-w-full rounded bg-black"
+					class="max-h-full max-w-full rounded-[12px] bg-black"
 				></video>
 			{:else}
 				<img
 					src={mediaViewUrl(shot.ref)}
 					alt=""
 					onerror={(e) => onViewMissing(e, shot.ref)}
-					class="max-h-full max-w-full rounded object-contain"
+					class="max-h-full max-w-full rounded-[12px] object-contain"
 				/>
 			{/if}
 		</div>
@@ -123,25 +129,25 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="shrink-0 px-6 pt-4 pb-8" onclick={(e) => e.stopPropagation()}>
 			{#if shot.entry.clean_text.trim()}
-				<p class="mx-auto max-w-xl text-center text-[13px] leading-relaxed whitespace-pre-wrap text-stone-300">
+				<p class="mx-auto max-w-xl text-center text-[15px] leading-relaxed whitespace-pre-wrap text-white/85">
 					{shot.entry.clean_text}
 				</p>
 			{/if}
-			<div class="mt-3 flex items-center justify-center gap-6 text-[11px] text-stone-500">
+			<div class="mt-4 flex items-center justify-center gap-6 text-[12px] text-white/55">
 				<button
 					type="button"
-					class="px-3 py-1 transition-colors hover:text-stone-200 disabled:opacity-25"
+					class="px-3 py-1 transition-colors hover:text-white disabled:opacity-25"
 					disabled={index === 0}
 					onclick={() => step(-1)}
 				>
 					← prev
 				</button>
-				<a href="/media/{shot.ref}" target="_blank" rel="noreferrer" class="hover:text-stone-200">
+				<a href="/media/{shot.ref}" target="_blank" rel="noreferrer" class="hover:text-white">
 					original
 				</a>
 				<button
 					type="button"
-					class="px-3 py-1 transition-colors hover:text-stone-200 disabled:opacity-25"
+					class="px-3 py-1 transition-colors hover:text-white disabled:opacity-25"
 					disabled={index === shots.length - 1}
 					onclick={() => step(1)}
 				>

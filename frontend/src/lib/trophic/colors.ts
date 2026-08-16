@@ -1,32 +1,46 @@
-// Trophic's palette, re-lit for this app's dark shell.
+// Trophic's palette, re-lit for the paper-light ground.
 //
-// The hue assignments are the product and do not move: blue is a folder, rose
-// is a sentiment, purple is time. What moved is lightness — the originals were
-// chosen against white (`logic/colors.ts`: #3b82f6, #9333ea, #e11d48, #d97706,
-// #8b5cf6) and every one of them is too dark to read on #14100c. Each is
-// lifted to the 400 rung of the same Tailwind ramp, which keeps the
-// relationships between them and gets them over the contrast line.
+// The hue assignments are the product and have never moved: blue is a folder,
+// rose is a sentiment, purple is time. What moves with the shell is lightness.
+// The source chose these against white (`logic/colors.ts`: #3b82f6, #9333ea,
+// #e11d48, #d97706, #8b5cf6) and they are *nearly* right here — but the shell
+// is #f3f2f2 rather than #fff, the type is Archivo rather than a mono, and at
+// 17px inside running prose the originals sit on the contrast line rather than
+// over it. Each is taken down a rung or two of the same hue and given weight
+// 600, which is what makes a tag read as a tag in a paragraph without the
+// colour having to shout.
 //
-// If a light theme ever comes back, swap this file and nothing else.
+// This file went from the dark shell's 400-rung set to this one in a single
+// edit and nothing else changed, which is the property worth keeping: **if the
+// ground ever moves again, swap this file and nothing else.**
+//
+// One consequence to know about before editing: `scripts/verify-ui.ts` holds a
+// `THEME` table mapping every colour emitted here back to the source colour it
+// stands in for, and the corpus comparison translates through it and then
+// demands an exact match. Change a value here and that table changes with it,
+// or 700-odd fixtures start failing for a reason that has nothing to do with
+// behaviour.
 
 export const SYNTAX_COLORS = {
-	folder: '#60a5fa', // blue-400   <pointer>
-	time: '#c084fc', // purple-400 {time-link}
-	pattern: '#fb7185', // rose-400   \pattern
-	directive: '#f59e0b', // amber-500  --directive
-	todo: '#a78bfa' // violet-400 --todo
+	folder: '#1e5fbf', // <pointer>
+	time: '#6b3fa0', // {time-link}
+	pattern: '#b42342', // \pattern
+	// The directive is the accent itself: it is the one token that acts on the
+	// app rather than describing the thought, and it only ever appears in the
+	// capture bar.
+	directive: '#ae1800', // --directive  (--color-accent-700)
+	todo: '#5b3fbe' // --todo
 } as const;
 
 export const UI_COLORS = {
-	ink: '#e7e5e4', // stone-200 — text and the caret
-	// The caret's halo. The source is `rgba(24,24,27,0.2)` — ink at 20% — and
-	// this is the same alpha on the inverted ink, so the caret glows against
-	// the dark ground the way it shadows against the light one.
-	inkGlow: 'rgba(231,229,228,0.2)',
-	muted: '#57534e', // stone-600 — the resting indicator, checkbox borders
-	dim: '#a8a29e', // stone-400 — timestamps, labels
-	success: '#34d399', // emerald-400 — sent
-	error: '#ef4444' // red-500 — refused
+	ink: '#201e1d', // the text and the caret
+	// The caret's halo — the source's `rgba(24,24,27,0.2)`, which is ink at 20%
+	// and stays ink at 20% here because the ground came back to light.
+	inkGlow: 'rgba(32,30,29,0.2)',
+	muted: '#bab6b6', // neutral-400 — the resting indicator, checkbox borders
+	dim: '#605d5d', // neutral-700 — timestamps, labels
+	success: '#2f9e6d', // sent
+	error: '#c2352b' // refused
 } as const;
 
 /** Which token kinds get colour when an entry is rendered read-only.

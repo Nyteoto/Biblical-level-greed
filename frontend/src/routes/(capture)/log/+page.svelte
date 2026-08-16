@@ -1,120 +1,65 @@
 <script lang="ts">
 	/**
-	 * The log — what you made, given back to you at the end of the day.
+	 * The year shelf — the top of the tree.
 	 *
-	 * This is a deliberate departure from the source, and from what this file
-	 * used to be. The source's log is a date ruler down one side of a fixed
-	 * 520px pane showing one day at a time; it was built for a text capture
-	 * tool with no media in it, and against a folder of photographs and clips
-	 * it is the wrong instrument — a narrow one-directional portal that cannot
-	 * answer "how much is in here". Chronological order is the one thing it
-	 * did well, and a scrolling feed does that too.
+	 * What this screen answers, and what the flat feed it replaced could not:
+	 * which albums exist this year, how big each one is, and when each was
+	 * busy. Three questions you cannot answer by scrolling, which is the whole
+	 * argument for it. **Scrolling is for reading, never for travelling** — the
+	 * year rail, the jump field and the cards are all constant-cost, and none
+	 * of them gets slower as the journal gets longer.
 	 *
-	 * So: a feed of days, newest first, each a contact sheet over its lines.
-	 * Dates are a label now rather than a control. Navigation is scrolling,
-	 * because that is what a journal is read with.
+	 * An album is a folder seen through one year, and that pairing is stored
+	 * nowhere: every count, mosaic and sparkline here comes back from
+	 * `/api/capture/shelf`, which recomputes all of it from the day keys. That
+	 * is why "albums restart each year" can be a switch in Settings rather than
+	 * a migration — turning it off passes `all` and the same read answers.
 	 *
-	 * Two reads, not one:
-	 *   - `all` is a window on the newest entries, widened by `load more`.
-	 *   - a folder chip is the *whole* folder, from `/folders/{id}`, because a
-	 *     project read back should not stop at the edge of a window that was
-	 *     sized for the unfiltered feed.
-	 *
-	 * The cumulative readings are still here, at the foot and folded away.
-	 * They are true and they are drawn, never interpreted — they are just not
-	 * what you open the log for.
+	 * The one thing this screen deliberately will not do is show entries. It is
+	 * an index; reading happens one album down.
 	 */
-	import DayBlock from '$lib/trophic/DayBlock.svelte';
-	import FolderAssignMenu from '$lib/trophic/FolderAssignMenu.svelte';
-	import Lightbox from '$lib/trophic/Lightbox.svelte';
-	import { todayKey } from '$lib/trophic/day';
-	import type { Shot } from '$lib/trophic/media';
-	import {
-		assignEntry,
-		createFolder,
-		getEntries,
-		getFolder,
-		getFolders,
-		getVocab,
-		toggleLine,
-		type Entry,
-		type Folder
-	} from '$lib/trophic/api';
+	import { goto } from '$app/navigation';
+	import Mosaic from '$lib/trophic/Mosaic.svelte';
+	import Sparkline from '$lib/trophic/Sparkline.svelte';
+	import TabPill from '$lib/trophic/TabPill.svelte';
+	import { logSettings } from '$lib/trophic/settings.svelte';
+	import { getShelf, type Shelf } from '$lib/trophic/api';
 
-	/** One page of the unfiltered feed. Two hundred entries is months of this
-	 *  journal; the day the number is wrong, `load more` is already there. */
-	const PAGE = 200;
-
-	let entries = $state<Entry[]>([]);
-	let folders = $state<Folder[]>([]);
-	let tagToFolder = $state<Record<string, string>>({});
-	let cumulative = $state<{
-		folders: { name: string; count: number }[];
-		word_count: number;
-		sentiments: { name: string; total: number; dow: number[] }[];
-	} | null>(null);
+	let shelf = $state<Shelf | null>(null);
 	let error = $state<string | null>(null);
+	let loading = $state(true);
+	let jump = $state('');
 
-	let limit = $state(PAGE);
-	let selectedFolder = $state<string | null>(null);
-	let loading = $state(false);
-	/** True while the window is smaller than what is on disk. */
-	let more = $state(false);
-
-	let lightbox = $state<{ shots: Shot[]; index: number } | null>(null);
-	let assignMenu = $state<{ x: number; y: number; entry: Entry } | null>(null);
-
-	let showReadings = $state(false);
-	let activeSentiment = $state<string | null>(null);
-	let pickerOpen = $state(false);
-
-	let creating = $state(false);
-	let newName = $state('');
-
-	const today = todayKey();
+	const thisYear = String(new Date().getFullYear());
+	let year = $state(thisYear);
 
 	$effect(() => {
-		try {
-			showReadings = localStorage.getItem('trophic-show-readings') === '1';
-			activeSentiment = localStorage.getItem('trophic-sentiment');
-		} catch {
-			/* ignore */
-		}
-		refreshFolders();
-		getVocab()
-			.then((v) => (tagToFolder = v.tag_to_folder))
-			.catch(() => {});
-		fetch(`/api/capture/cumulative?up_to=${today}`)
-			.then((r) => (r.ok ? r.json() : null))
-			.then((c) => (cumulative = c))
-			.catch(() => {});
+		logSettings.hydrate();
 	});
 
-	// The feed. Keyed on the two things that decide what it holds, so nothing
-	// refetches when a checkbox is ticked or a menu opens.
+	// Keyed on the only two things that decide what comes back, so nothing
+	// refetches when the jump field is typed in.
 	let lastKey = '';
 	$effect(() => {
-		const key = `${selectedFolder ?? ''}:${limit}`;
+		const key = logSettings.yearAlbums ? year : 'all';
 		if (key === lastKey) return;
 		lastKey = key;
-		load(selectedFolder, limit);
+		load(key);
 	});
 
-	async function load(folderId: string | null, want: number) {
+	async function load(key: string) {
 		loading = true;
 		error = null;
 		try {
-			if (folderId) {
-				entries = (await getFolder(folderId)).entries;
-				more = false;
-			} else {
-				const page = (await getEntries({ limit: want })).entries;
-				// A window that came back full is a window that cut something
-				// off, and what it cut off is the *oldest* day — whose tally
-				// would then be a lie. Drop that day and offer `load more`
-				// instead of showing a day block that undercounts itself.
-				more = page.length === want;
-				entries = more ? page.filter((e) => e.day !== page[page.length - 1].day) : page;
+			shelf = await getShelf(key);
+			// A fresh install, or a year the rail offered that has since been
+			// emptied: fall to the newest year that exists rather than showing
+			// an empty shelf under a heading that says 2026.
+			if (shelf.albums.length === 0 && shelf.unfiled === 0 && shelf.years.length > 0) {
+				if (logSettings.yearAlbums && !shelf.years.includes(year)) {
+					year = shelf.years[0];
+					lastKey = '';
+				}
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -122,348 +67,247 @@
 		loading = false;
 	}
 
-	/** Which folders an entry resolves into: through its tags, or by hand. */
-	function foldersOf(entry: Entry): Folder[] {
-		const ids = new Set<string>(entry.manual_folders);
-		for (const tag of entry.folders) {
-			const id = tagToFolder[tag];
-			if (id) ids.add(id);
-		}
-		return folders.filter((f) => ids.has(f.id));
-	}
-
-	const groups = $derived.by(() => {
-		const map = new Map<string, Entry[]>();
-		for (const e of entries) {
-			if (!map.has(e.day)) map.set(e.day, []);
-			map.get(e.day)!.push(e);
-		}
-		return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+	/** `Opens on: latest day` — go straight into the album written in most
+	 *  recently rather than stopping at the index. Right for someone deep in
+	 *  one project, wrong for someone with six, which is why it is a setting. */
+	let jumped = false;
+	$effect(() => {
+		if (jumped || logSettings.openOn !== 'latest' || !shelf) return;
+		jumped = true;
+		const first = shelf.albums[0];
+		if (first) goto(`/folders/${first.id}?year=${shelf.year ?? 'all'}`, { replaceState: true });
 	});
 
-	function dayLabel(key: string): string {
-		if (key === today) return 'today';
-		const [y, m, d] = key.split('-').map(Number);
-		const date = new Date(y, m - 1, d);
-		const yesterday = new Date();
-		yesterday.setDate(yesterday.getDate() - 1);
-		if (date.toDateString() === yesterday.toDateString()) return 'yesterday';
-		return date.toLocaleDateString(undefined, {
-			weekday: 'short',
-			day: 'numeric',
-			month: 'short',
-			// The year only once it stops being obvious, which is the only time
-			// it carries information.
-			year: y === new Date().getFullYear() ? undefined : 'numeric'
-		});
-	}
+	const albumHref = (id: string | null) =>
+		`/folders/${id ?? 'unfiled'}?year=${shelf?.year ?? 'all'}`;
 
-	/** Chips: what you are working on first, what is done last and dimmed. */
-	const chips = $derived(
-		[...folders]
-			.filter((f) => f.entry_count > 0 || f.state === 'active')
-			.sort((a, b) => {
-				const rank = (f: Folder) => (f.state === 'active' ? 0 : f.state === 'shipped' ? 2 : 1);
-				return rank(a) - rank(b) || b.entry_count - a.entry_count;
-			})
+	/** Which month counts as live. Only in the year we are actually in — in
+	 *  2025 read from 2026, nothing is happening and the whole row is history. */
+	const liveMonth = $derived(
+		shelf?.year === thisYear || shelf?.year === null ? new Date().getMonth() : -1
 	);
 
-	async function refreshFolders() {
-		try {
-			folders = (await getFolders()).folders;
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
-	}
+	/** Big cards for what is running, one-line strips for what is not. The
+	 *  split is by size rather than by state: an album with three entries in it
+	 *  does not earn a mosaic even if the folder is marked active. */
+	const LEAD = 3;
+	const lead = $derived(shelf?.albums.slice(0, LEAD) ?? []);
+	const quiet = $derived(shelf?.albums.slice(LEAD) ?? []);
 
-	async function onToggle(entry: Entry, line: number) {
-		try {
-			const { entry: updated } = await toggleLine(entry.id, line);
-			entries = entries.map((e) => (e.id === updated.id ? updated : e));
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
-	}
+	const STATE_WORD: Record<string, string> = { active: 'running', shipped: 'shipped' };
 
-	async function refile(entry: Entry, folderId: string | null) {
-		error = null;
-		try {
-			const { entry: updated } = await assignEntry(entry.id, folderId);
-			entries = entries.map((e) => (e.id === updated.id ? updated : e));
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
-		await refreshFolders();
-	}
-
-	async function submitNewFolder(event: SubmitEvent) {
+	function submitJump(event: SubmitEvent) {
 		event.preventDefault();
-		const name = newName.trim();
-		if (!name) return;
-		newName = '';
-		creating = false;
-		error = null;
-		try {
-			await createFolder(name);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
+		const query = jump.trim();
+		if (!query) return;
+		// A date goes to the day it names; anything else is a word, and the
+		// album whose name or tags match it is the best guess. Both land on a
+		// screen that can read, which is the point of the field.
+		const day = query.match(/^\d{4}-\d{2}-\d{2}$/);
+		if (day) {
+			goto(`/folders/unfiled?year=${query.slice(0, 4)}&day=${query}`);
+			return;
 		}
-		await refreshFolders();
+		const needle = query.toLowerCase().replace(/^[<\\]|>$/g, '');
+		const hit = shelf?.albums.find(
+			(a) => a.name.toLowerCase().includes(needle) || a.tags.some((t) => t.includes(needle))
+		);
+		if (hit) goto(albumHref(hit.id));
+		else error = `nothing here matches “${query}”`;
 	}
-
-	function persist(key: string, value: string) {
-		try {
-			localStorage.setItem(key, value);
-		} catch {
-			/* ignore */
-		}
-	}
-
-	const activeSentimentData = $derived(
-		cumulative?.sentiments.find((s) => s.name === activeSentiment) ?? cumulative?.sentiments[0]
-	);
-
-	const DOW = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
-	const selected = $derived(folders.find((f) => f.id === selectedFolder) ?? null);
-	const shown = $derived(entries.length);
 </script>
 
-<svelte:window onclick={() => (pickerOpen = false)} />
-
-<!-- The chip rail is the header. There is no title and no back link: the tab
-     bar above says both, and repeating it a centimetre lower is furniture. -->
-<header class="sticky top-0 z-30 bg-[#14100c] pt-3 pb-2">
-	<div class="trophic-scrollbar-hide mx-auto flex w-full max-w-2xl gap-1.5 overflow-x-auto px-6 pb-1">
-		<button
-			type="button"
-			class="shrink-0 rounded-full px-3 py-1.5 text-[11px] whitespace-nowrap transition-colors {selectedFolder ===
-			null
-				? 'bg-stone-200 text-stone-900'
-				: 'bg-stone-900 text-stone-400 hover:bg-stone-800'}"
-			onclick={() => (selectedFolder = null)}
+<div class="flex min-h-dvh">
+	<!-- The year rail. Two digits is enough — the heading spells the year out
+	     in full a few centimetres away, and the rail is a place you learn the
+	     position of rather than read. -->
+	<div class="flex w-[92px] shrink-0 flex-col items-center gap-1.5 py-[26px]">
+		<span
+			class="mb-3.5 text-[10px] font-bold tracking-[0.2em] text-neutral-600"
+			style="writing-mode:vertical-rl;transform:rotate(180deg)"
 		>
-			all
-		</button>
-		{#each chips as f (f.id)}
-			{@const on = selectedFolder === f.id}
+			TROPHIC LOG
+		</span>
+		{#each shelf?.years ?? [] as y (y)}
+			{@const on = logSettings.yearAlbums && y === shelf?.year}
 			<button
 				type="button"
-				class="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] whitespace-nowrap transition-colors {on
-					? 'text-stone-900'
-					: 'bg-stone-900 hover:bg-stone-800'} {f.state === 'shipped' && !on ? 'opacity-45' : ''}"
-				style={on ? `background:${f.color}` : `color:${f.color}`}
-				onclick={() => (selectedFolder = on ? null : f.id)}
+				class="rounded-[12px] px-3 py-2.5 text-[15px] transition-colors {on
+					? 'accent-fill font-extrabold shadow-md'
+					: 'font-semibold text-neutral-700 hover:text-ink'}"
+				onclick={() => {
+					logSettings.setYearAlbums(true);
+					year = y;
+				}}
 			>
-				{f.name}
-				<span class="tabular-nums {on ? 'opacity-60' : 'opacity-50'}">{f.entry_count}</span>
+				{y.slice(2)}
 			</button>
 		{/each}
 		<button
 			type="button"
-			class="shrink-0 rounded-full border border-dashed border-stone-800 px-3 py-1.5 text-[11px] whitespace-nowrap text-stone-600 transition-colors hover:border-stone-700 hover:text-stone-400"
-			onclick={() => (creating = !creating)}
+			class="mt-auto text-[11px] transition-colors {logSettings.yearAlbums
+				? 'text-neutral-600 hover:text-ink'
+				: 'font-bold text-accent-700'}"
+			title="every year at once"
+			onclick={() => logSettings.setYearAlbums(!logSettings.yearAlbums)}
 		>
-			{creating ? 'cancel' : '+ folder'}
+			all
 		</button>
 	</div>
-</header>
 
-<main class="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 pb-24">
-	{#if creating}
-		<form class="flex items-baseline gap-3" onsubmit={submitNewFolder}>
-			<!-- svelte-ignore a11y_autofocus -->
-			<input
-				autofocus
-				bind:value={newName}
-				placeholder="folder name"
-				class="flex-1 border-b border-stone-700 bg-transparent py-2 text-sm text-stone-200 transition-colors focus:border-stone-500 focus:outline-none"
-				style="caret-color:#e7e5e4"
-				onkeydown={(e) => {
-					if (e.key === 'Escape') creating = false;
-				}}
-			/>
-			<button type="submit" class="text-[11px] text-stone-400 hover:text-stone-200">create</button>
-		</form>
-	{/if}
+	<div class="flex min-w-0 flex-1 flex-col gap-[26px] px-[46px] pt-[26px]">
+		<TabPill />
 
-	{#if selected}
-		<!-- Filtered: say what is being shown, and offer the folder's own page,
-		     which is the same feed with a head on it. -->
-		<div class="flex items-baseline justify-between text-[11px]">
-			<span class="text-stone-500">
-				{shown}
-				{shown === 1 ? 'entry' : 'entries'} in <span style="color:{selected.color}"
-					>{selected.name}</span
+		<div class="flex items-end justify-between gap-6">
+			<div>
+				<div class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">
+					Year shelf
+				</div>
+				<div class="mt-2 flex items-baseline gap-4">
+					<h1 class="text-[64px] leading-[0.9] font-extrabold tracking-[-0.035em]">
+						{logSettings.yearAlbums ? (shelf?.year ?? year) : 'All'}
+					</h1>
+					{#if shelf}
+						<span class="text-[14px] text-neutral-700 tabular-nums">
+							{shelf.albums.length}
+							{shelf.albums.length === 1 ? 'album' : 'albums'} ·
+							{shelf.entries.toLocaleString()} entries ·
+							{shelf.media.toLocaleString()} media
+						</span>
+					{/if}
+				</div>
+			</div>
+
+			<form
+				class="flex min-w-[250px] items-center gap-2.5 rounded-[12px] bg-surface px-3.5 py-[11px] shadow-sm"
+				onsubmit={submitJump}
+			>
+				<svg
+					width="15"
+					height="15"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.6"
+					stroke-linecap="round"
+					class="shrink-0 text-neutral-600"
+					aria-hidden="true"
 				>
-			</span>
-			<a href="/folders/{selected.id}" class="text-stone-500 hover:text-stone-300">open →</a>
-		</div>
-	{/if}
-
-	{#if error}
-		<p class="text-[11px] text-red-400">{error}</p>
-	{/if}
-
-	{#if groups.length === 0}
-		<p class="pt-6 text-[11px] text-stone-500">
-			{loading
-				? 'reading…'
-				: selected
-					? 'nothing in this folder yet.'
-					: 'capture something and it will be here.'}
-		</p>
-	{:else}
-		<div class="flex flex-col gap-8">
-			{#each groups as [day, list] (day)}
-				<DayBlock
-					{day}
-					label={dayLabel(day)}
-					entries={list}
-					{foldersOf}
-					onopen={(shots, index) => (lightbox = { shots, index })}
-					ontoggle={onToggle}
-					onassign={(entry, x, y) => (assignMenu = { x, y, entry })}
+					<circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" />
+				</svg>
+				<input
+					bind:value={jump}
+					placeholder="Jump to a date, tag or word"
+					class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-neutral-700 focus:outline-none"
 				/>
-			{/each}
+			</form>
 		</div>
-	{/if}
 
-	{#if more}
-		<button
-			type="button"
-			class="self-center rounded-full border border-stone-800 px-5 py-2 text-[11px] text-stone-500 transition-colors hover:border-stone-700 hover:text-stone-300"
-			onclick={() => (limit += PAGE)}
-			disabled={loading}
-		>
-			{loading ? 'reading…' : 'load more'}
-		</button>
-	{/if}
+		{#if error}
+			<p class="text-[12px] text-accent-700">{error}</p>
+		{/if}
 
-	<!-- ── Readings ─────────────────────────────────────────────────────────
-	     Stored and drawn, never interpreted. Folded away by default: they are
-	     a thing you go and look at, not a thing you are shown. -->
-	<div class="mt-4 border-t border-stone-900 pt-4">
-		<button
-			type="button"
-			class="text-[10px] tracking-[0.15em] text-stone-600 uppercase transition-colors hover:text-stone-400"
-			onclick={() => {
-				showReadings = !showReadings;
-				persist('trophic-show-readings', showReadings ? '1' : '0');
-			}}
-		>
-			readings {showReadings ? '▾' : '▸'}
-		</button>
-
-		{#if showReadings && cumulative}
-			<div class="mt-4 flex flex-col gap-5 text-[11px]">
-				<span class="text-stone-500">{cumulative.word_count.toLocaleString()} words</span>
-
-				{#if cumulative.folders.length > 0}
-					{@const max = Math.max(...cumulative.folders.map((f) => f.count))}
-					<div class="flex flex-col gap-1.5">
-						{#each cumulative.folders as f (f.name)}
-							<div class="flex items-center gap-2" title="{f.count} entries tagged <{f.name}>">
-								<span class="w-24 shrink-0 truncate text-right" style="color:#60a5fa"
-									>{`<${f.name}>`}</span
+		{#if loading && !shelf}
+			<p class="text-[13px] text-neutral-700">reading…</p>
+		{:else if shelf && shelf.albums.length === 0 && shelf.unfiled === 0}
+			<p class="text-[13px] text-neutral-700">capture something and it will be here.</p>
+		{:else if shelf}
+			<div class="grid grid-cols-3 gap-[22px]">
+				<!-- Running albums: a mosaic, a name, twelve months and a tally.
+				     Everything on this card is a derived read. -->
+				{#each lead as album (album.id)}
+					<a
+						href={albumHref(album.id)}
+						class="lift lift-md flex flex-col gap-[13px] rounded-[16px] bg-surface p-4 shadow-md"
+					>
+						<Mosaic refs={album.lead} />
+						<div class="flex items-baseline justify-between gap-2.5">
+							<span class="truncate text-[20px] font-bold tracking-[-0.015em]">
+								{album.name}
+							</span>
+							{#if STATE_WORD[album.state]}
+								<span
+									class="shrink-0 rounded-md bg-accent-100 px-[7px] py-[3px] text-[10px] font-bold tracking-[0.1em] text-accent-700 uppercase"
 								>
-								<div class="h-[6px] flex-1 overflow-hidden rounded-full bg-stone-800">
-									<div
-										class="h-full rounded-full transition-all duration-500"
-										style="width:{(f.count / max) * 100}%;background:#60a5fa"
-									></div>
-								</div>
-								<span class="w-6 shrink-0 text-right text-stone-500 tabular-nums">{f.count}</span>
-							</div>
-						{/each}
-					</div>
-				{/if}
-
-				{#if activeSentimentData}
-					{@const s = activeSentimentData}
-					{@const peak = Math.max(...s.dow, 0.01)}
-					<div class="flex flex-col gap-3">
-						<div class="relative self-start">
-							<button
-								type="button"
-								class="rounded bg-rose-500/15 px-2.5 py-1 text-[10px] tracking-wide text-rose-300 transition-colors hover:bg-rose-500/25"
-								onclick={(e) => {
-									e.stopPropagation();
-									pickerOpen = !pickerOpen;
-								}}
-							>
-								{`\\${s.name} ▾`}
-							</button>
-							{#if pickerOpen}
-								<div
-									class="absolute top-full left-0 z-50 mt-1 min-w-[120px] rounded border border-stone-700 bg-[#1b1613] py-1 shadow-lg"
-								>
-									{#each cumulative.sentiments as opt (opt.name)}
-										<button
-											type="button"
-											class="w-full px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-stone-800 {opt.name ===
-											s.name
-												? 'text-rose-300'
-												: 'text-stone-400'}"
-											onclick={() => {
-												activeSentiment = opt.name;
-												persist('trophic-sentiment', opt.name);
-												pickerOpen = false;
-											}}
-										>
-											{`\\${opt.name}`}<span class="ml-2 text-stone-600">{opt.total}</span>
-										</button>
-									{/each}
-								</div>
+									{STATE_WORD[album.state]}
+								</span>
 							{/if}
 						</div>
-						<div class="flex justify-center py-1">
-							<div class="flex items-end gap-3 pt-3" title="average \{s.name} per weekday">
-								{#each s.dow as v, i (i)}
-									<div class="flex flex-col items-center gap-1" style="width:20px">
-										<span
-											class="text-[9px] leading-none text-stone-500 tabular-nums"
-											style="opacity:{v > 0 ? 1 : 0}"
-										>
-											{v % 1 === 0 ? v : v.toFixed(1)}
-										</span>
-										<div
-											class="w-full rounded-t bg-rose-400/80 transition-all duration-500"
-											style="height:{Math.max((v / peak) * 56, v > 0 ? 2 : 0)}px"
-										></div>
-										<span class="text-[8px] leading-none text-stone-600">{DOW[i]}</span>
-									</div>
-								{/each}
+						<Sparkline volumes={album.volumes} live={liveMonth} />
+						<div
+							class="flex items-baseline justify-between text-[12px] text-neutral-700 tabular-nums"
+						>
+							<span>
+								{album.entry_count}
+								{album.entry_count === 1 ? 'entry' : 'entries'}
+								{#if album.media_count}· {album.media_count} media{/if}
+							</span>
+							<span>{album.chapters} {album.chapters === 1 ? 'chapter' : 'chapters'}</span>
+						</div>
+					</a>
+				{/each}
+
+				<!-- Everything else: one row each. Same information, less of it. -->
+				{#each quiet as album (album.id)}
+					<a
+						href={albumHref(album.id)}
+						class="lift lift-sm flex items-center gap-3.5 rounded-[16px] bg-surface p-4 shadow-sm"
+					>
+						<div class="h-[54px] w-[72px] shrink-0">
+							<Mosaic refs={album.lead} single />
+						</div>
+						<div class="min-w-0 flex-1">
+							<div class="truncate text-[17px] font-bold tracking-[-0.01em]">{album.name}</div>
+							<div class="mt-[3px] text-[12px] text-neutral-700">
+								{album.entry_count}
+								{album.entry_count === 1 ? 'entry' : 'entries'}
+								{#if album.months}· {album.months}{/if}
 							</div>
 						</div>
-					</div>
-				{/if}
+						{#if STATE_WORD[album.state]}
+							<span
+								class="shrink-0 text-[10px] font-bold tracking-[0.1em] text-neutral-700 uppercase"
+							>
+								{STATE_WORD[album.state]}
+							</span>
+						{/if}
+					</a>
+				{/each}
 
-				<a href="/mapping" class="text-stone-600 hover:text-stone-400">mapping →</a>
+				{#if shelf.unfiled > 0}
+					<!-- The pile nothing has claimed. Dashed and unfilled because it
+					     is not a project — it is the raw material of one, and the
+					     way out of it is Settings → Folders & tags. -->
+					<a
+						href={albumHref(null)}
+						class="flex items-center gap-3 rounded-[16px] border-[1.5px] border-dashed border-neutral-400 p-4 text-neutral-700 transition-colors hover:border-neutral-600 hover:text-ink"
+					>
+						<span class="text-[15px] font-semibold">
+							Unfiled{logSettings.yearAlbums ? ' this year' : ''}
+						</span>
+						<span class="ml-auto text-[13px] tabular-nums">{shelf.unfiled}</span>
+					</a>
+				{/if}
 			</div>
+
+			<!-- The year below, pinned to the foot, half off the bottom edge:
+			     the shelf hands back rather than ending. -->
+			{#if shelf.previous}
+				{@const before = shelf.previous}
+				<button
+					type="button"
+					class="lift lift-md mt-auto flex items-center gap-5 rounded-t-[16px] bg-surface px-[22px] py-[18px] text-left shadow-md"
+					onclick={() => (year = before.year)}
+				>
+					<span class="text-[22px] font-extrabold tracking-[-0.02em] text-neutral-700">
+						{before.year}
+					</span>
+					<span class="text-[13px] text-neutral-700">
+						{before.entries.toLocaleString()} entries
+					</span>
+					<span class="ml-auto text-[13px] font-semibold">Open year →</span>
+				</button>
+			{/if}
 		{/if}
 	</div>
-</main>
-
-{#if lightbox}
-	{@const open = lightbox}
-	<Lightbox
-		shots={open.shots}
-		index={open.index}
-		onindex={(index) => (lightbox = { shots: open.shots, index })}
-		onclose={() => (lightbox = null)}
-	/>
-{/if}
-
-{#if assignMenu}
-	{@const target = assignMenu.entry}
-	<FolderAssignMenu
-		x={assignMenu.x}
-		y={assignMenu.y}
-		{folders}
-		current={target.manual_folders[0] ?? null}
-		onselect={(folderId) => refile(target, folderId)}
-		onclear={() => refile(target, null)}
-		onclose={() => (assignMenu = null)}
-	/>
-{/if}
+</div>

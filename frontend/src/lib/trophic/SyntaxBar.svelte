@@ -1,12 +1,23 @@
 <script lang="ts">
-	/** Mobile syntax keys. Ported from SyntaxBar.tsx.
+	/** The syntax keys. Ported from SyntaxBar.tsx.
 	 *
 	 * `<`, `{`, `\` and `--` are all buried two taps deep on a phone keyboard,
 	 * which is enough friction to stop someone tagging a thought at all. Split
-	 * left and right so both thumbs reach a group. */
+	 * left and right so both thumbs reach a group.
+	 *
+	 * They are on every device now, not just a touch one. The screen this app
+	 * is actually read and written on is an iPad in landscape with no hardware
+	 * keyboard, which the device classification calls a tablet rather than a
+	 * mobile — and on that machine the row was never drawn. Showing it always
+	 * costs a desktop one line of chrome it can ignore, which is the cheaper
+	 * mistake of the two.
+	 *
+	 * Each glyph is painted in the colour of what it makes, so the row doubles
+	 * as the legend for the syntax. That is why there is no separate key.
+	 */
 	import { SYNTAX_COLORS } from './colors';
 
-	let { visible, oninsert }: { visible: boolean; oninsert: (text: string) => void } = $props();
+	let { oninsert }: { oninsert: (text: string) => void } = $props();
 
 	const LEFT = [
 		{ label: '<', color: SYNTAX_COLORS.folder },
@@ -22,44 +33,41 @@
 	let pressed = $state<string | null>(null);
 </script>
 
-{#if visible}
-	<div class="flex justify-between pt-2">
-		{#each [LEFT, RIGHT] as group, gi (gi)}
-			<div class="flex gap-1.5">
-				{#each group as k (k.label)}
-					<button
-						type="button"
-						class="min-w-[40px] rounded-lg border py-1.5 text-center text-[14px] leading-none font-semibold transition-[transform,background,box-shadow] duration-75 select-none"
-						style="color:{pressed === k.label ? '#14100c' : k.color};
-						       background:{pressed === k.label ? '#57534e' : '#241d18'};
-						       border-color:{pressed === k.label ? '#78716c' : '#3a322a'};
-						       box-shadow:{pressed === k.label ? 'none' : '0 1px 0 0 #3a322a'};
-						       transform:translateY({pressed === k.label ? 1 : 0}px);
-						       -webkit-tap-highlight-color:transparent;touch-action:manipulation"
-						onmousedown={(e) => {
-							e.preventDefault();
-							pressed = k.label;
-						}}
-						onmouseup={() => {
-							pressed = null;
-							oninsert(k.label);
-						}}
-						onmouseleave={() => (pressed = null)}
-						ontouchstart={(e) => {
-							e.preventDefault();
-							pressed = k.label;
-						}}
-						ontouchend={(e) => {
-							e.preventDefault();
-							pressed = null;
-							oninsert(k.label);
-						}}
-						ontouchcancel={() => (pressed = null)}
-					>
-						{k.label}
-					</button>
-				{/each}
-			</div>
-		{/each}
-	</div>
-{/if}
+<div class="flex justify-between">
+	{#each [LEFT, RIGHT] as group, gi (gi)}
+		<div class="flex gap-2">
+			{#each group as k (k.label)}
+				<button
+					type="button"
+					class="min-w-[46px] rounded-[11px] py-[10px] text-center text-[16px] leading-none font-bold transition-[transform,background,box-shadow] duration-75 select-none"
+					style="color:{k.color};
+					       background:{pressed === k.label ? 'var(--color-neutral-200)' : '#fff'};
+					       box-shadow:{pressed === k.label ? 'none' : 'var(--shadow-sm)'};
+					       transform:translateY({pressed === k.label ? 1 : 0}px);
+					       -webkit-tap-highlight-color:transparent;touch-action:manipulation"
+					onmousedown={(e) => {
+						e.preventDefault();
+						pressed = k.label;
+					}}
+					onmouseup={() => {
+						pressed = null;
+						oninsert(k.label);
+					}}
+					onmouseleave={() => (pressed = null)}
+					ontouchstart={(e) => {
+						e.preventDefault();
+						pressed = k.label;
+					}}
+					ontouchend={(e) => {
+						e.preventDefault();
+						pressed = null;
+						oninsert(k.label);
+					}}
+					ontouchcancel={() => (pressed = null)}
+				>
+					{k.label}
+				</button>
+			{/each}
+		</div>
+	{/each}
+</div>

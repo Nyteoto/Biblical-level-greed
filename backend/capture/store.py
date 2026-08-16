@@ -101,6 +101,17 @@ class Store:
                 "sentiments": index.folder_sentiments(self.conn, folder_id),
             }
 
+    def shelf(self, year: str | None) -> dict:
+        with self._lock:
+            return index.shelf(self.conn, year)
+
+    def album(self, folder_id: str | None, year: str | None) -> dict:
+        with self._lock:
+            found = index.album(self.conn, folder_id, year)
+            if found is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            return found
+
     def unassigned_tags(self) -> list[dict]:
         with self._lock:
             return index.unassigned_tags(self.conn)

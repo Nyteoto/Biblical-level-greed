@@ -22,10 +22,10 @@
 				<button
 					type="button"
 					aria-label={done.has(li) ? 'untick' : 'tick'}
-					class="mt-[3px] flex h-[14px] w-[14px] shrink-0 items-center justify-center rounded border border-stone-600 transition-colors hover:border-stone-400"
+					class="mt-[5px] flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[5px] border transition-colors"
 					style={done.has(li)
-						? `background-color:${UI_COLORS.muted};border-color:${UI_COLORS.muted}`
-						: undefined}
+						? `background-color:${UI_COLORS.dim};border-color:${UI_COLORS.dim}`
+						: `border-color:${UI_COLORS.muted}`}
 					onclick={(e) => {
 						e.stopPropagation();
 						ontoggle?.(li);
@@ -37,7 +37,7 @@
 							height="10"
 							viewBox="0 0 10 10"
 							fill="none"
-							stroke="#e7e5e4"
+							stroke="#ffffff"
 							stroke-width="1.5"
 							stroke-linecap="round"
 							stroke-linejoin="round"
@@ -47,10 +47,11 @@
 					{/if}
 				</button>
 			{/if}
+			<!-- The type is inherited from the row this sits in — the lead day sets
+			     17px and a light row sets 16px, and a todo is a line like any
+			     other rather than a different kind of thing. -->
 			<span
-				class="font-mono text-[13px] leading-relaxed {done.has(li)
-					? 'text-stone-500 line-through'
-					: 'text-stone-300'}"
+				class="leading-[inherit] {done.has(li) ? 'text-neutral-600 line-through' : ''}"
 				style="overflow-wrap:anywhere;word-break:break-word"
 			>
 				<ColorizedText text={line} />

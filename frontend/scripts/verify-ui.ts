@@ -39,7 +39,8 @@ import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src
 import { enqueue, flush, pendingCount, STORAGE_KEY } from '../src/lib/trophic/retry-queue.ts';
 import { todayKey } from '../src/lib/trophic/day.ts';
 import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
-import type { Vocab } from '../src/lib/trophic/api.ts';
+import { foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
+import type { Entry, Vocab } from '../src/lib/trophic/api.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CORPUS = join(HERE, '..', '..', 'trophic', 'golden', 'corpus');
@@ -302,32 +303,36 @@ ADAPTERS.colorize = (i: { text: string }) => {
 
 // ── The one declared deviation: colour ────────────────────────────────────
 //
-// The source was painted against white and this app is `#14100c`, so every
-// colour was re-lit. That is written down in TROPHIC.md as a deliberate
-// deviation — but "we changed the colours" is the kind of excuse that hides
-// a real mistake, so it is spelled out here instead: each colour this port
-// emits, and the source colour(s) it stands in for. Anything else is a
-// failure. Geometry, ordering and op counts are compared exactly.
+// The source was painted against white and this app is painted on `#f3f2f2`
+// in Archivo, so every colour was re-lit. That is written down in TROPHIC.md
+// as a deliberate deviation — but "we changed the colours" is the kind of
+// excuse that hides a real mistake, so it is spelled out here instead: each
+// colour this port emits, and the source colour(s) it stands in for. Anything
+// else is a failure. Geometry, ordering and op counts are compared exactly.
 //
-// Two entries map to more than one source colour, and that is the honest
-// record of a judgement call: the source drew the track and the day ticks in
-// the same `#e4e4e7`, which vanished on a dark ground, so the port split them
-// and reused one warm grey across two of the source's roles.
+// This table has been rewritten once already, when the shell went from
+// `#14100c` back to paper. That it was the *only* thing that had to change is
+// the point of keeping it: the hues never moved, only their lightness, and a
+// one-line-per-colour table is what proves that rather than asserts it.
 
 const THEME: Record<string, string[]> = {
-	// lib/colors.ts — the syntax hues, each lifted to the 400 rung.
-	'#60a5fa': ['#3b82f6'], // folder
-	'#c084fc': ['#9333ea'], // time
-	'#fb7185': ['#e11d48'], // pattern
-	'#f59e0b': ['#d97706'], // directive
-	'#a78bfa': ['#8b5cf6'], // todo
-	// The caret and its halo, ink inverted against the dark ground.
-	'#e7e5e4': ['#18181b']
+	// lib/colors.ts — the syntax hues, darkened for the paper ground.
+	'#1e5fbf': ['#3b82f6'], // folder
+	'#6b3fa0': ['#9333ea'], // time
+	'#b42342': ['#e11d48'], // pattern
+	'#ae1800': ['#d97706'], // directive
+	'#5b3fbe': ['#8b5cf6'], // todo
+	// The caret and its halo. Ink again rather than inverted ink — the ground
+	// came back to light, so this is nearly the source's own value.
+	'#201e1d': ['#18181b'],
+	// The refusal red the validation layer blinks a token in, warmed to sit in
+	// the same family as the accent. Same role, same moment, different ground.
+	'#c2352b': ['#ef4444']
 };
 
 /** `rgba(r,g,b,a)` translations, alpha carried through unchanged. */
 const THEME_RGB: Record<string, string> = {
-	'231,229,228': '24,24,27' // ink — the caret and its halo
+	'32,30,29': '24,24,27' // ink — the caret and its halo
 };
 
 function translated(actual: string): string[] {
@@ -484,6 +489,77 @@ function localChecks(): string[] {
 			failures.push(`  tagForPin(${JSON.stringify(folder)}) = ${JSON.stringify(got)}, ` +
 				`expected ${JSON.stringify(want)}`);
 		}
+	}
+
+	// The Log's quiet-stretch merge. No corpus covers it — the source has no
+	// such thing — and it is the one piece of this UI that can *swallow* days
+	// rather than crash, so it gets an oracle here. The invariant being
+	// checked is the only one that matters: **merging never loses an entry.**
+	const day = (key: string, texts: string[], media: string[] = []): Entry[] =>
+		texts.map((text, i) => ({
+			id: `${key}-${i}`,
+			ts: `${key}T09:0${i}:00Z`,
+			day: key,
+			raw_text: text,
+			clean_text: text,
+			folders: [],
+			times: [],
+			patterns: [],
+			todo_lines: [],
+			todo_done: [],
+			manual_folders: [],
+			media: i === 0 ? media : []
+		}));
+
+	const feed = [
+		...day('2026-08-15', ['loud'], ['a.jpg']), // has media — never quiet
+		...day('2026-08-14', ['one']),
+		...day('2026-08-13', ['one', 'two']),
+		...day('2026-08-12', ['one']),
+		...day('2026-08-11', ['a', 'b', 'c']), // three lines — not quiet
+		...day('2026-08-10', ['one'])
+	];
+	const days = groupDays(feed);
+	if (days.map((d) => d.key).join(',') !== '2026-08-15,2026-08-14,2026-08-13,2026-08-12,2026-08-11,2026-08-10') {
+		failures.push(`  groupDays did not come back newest first: ${days.map((d) => d.key)}`);
+	}
+
+	const folded = foldQuiet(days);
+	const shape = folded
+		.map((row) => (row.kind === 'stretch' ? `stretch(${row.days.length})` : row.day.key))
+		.join(' ');
+	if (shape !== '2026-08-15 stretch(3) 2026-08-11 2026-08-10') {
+		failures.push(`  foldQuiet gave ${shape}`);
+	}
+	// A run of one stays a row: a strip saying "quiet stretch · 1 line" is
+	// longer than the line it is hiding.
+	if (folded.at(-1)?.kind !== 'day') {
+		failures.push('  foldQuiet merged a run of one quiet day into a stretch');
+	}
+	// Nothing may go missing, with the merge on or off.
+	for (const merge of [true, false]) {
+		const seen = foldQuiet(days, merge).flatMap((row) =>
+			row.kind === 'stretch' ? row.days : [row.day]
+		);
+		const count = seen.reduce((n, d) => n + d.entries.length, 0);
+		if (count !== feed.length) {
+			failures.push(`  foldQuiet(merge=${merge}) held ${count} entries, not ${feed.length}`);
+		}
+	}
+
+	// ISO weeks belong to the year holding their Thursday, so the turn of the
+	// year is where the naive "day of year over seven" gets it wrong — and the
+	// turn of the year is exactly what the Log draws attention to.
+	const weekCases: [string, number][] = [
+		['2026-01-01', 1], // a Thursday: week 1 of 2026
+		['2025-01-01', 1], // a Wednesday: still week 1
+		['2027-01-01', 53], // a Friday: week 53 of 2026
+		['2026-08-15', 33],
+		['2026-12-31', 53]
+	];
+	for (const [key, want] of weekCases) {
+		const got = isoWeek(key);
+		if (got !== want) failures.push(`  isoWeek(${key}) = ${got}, expected ${want}`);
 	}
 
 	return failures;

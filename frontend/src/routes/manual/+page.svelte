@@ -1,294 +1,233 @@
 <script lang="ts">
-	// The manual is deliberately static: no fetch, no state, nothing that can be
-	// out of date with the server. Everything here is a claim about design, and
-	// the numbers in it are the ones the trees were actually built from.
-	const kinds = [
-		['drill', 'distinct days', 'Repetition. Decays without upkeep — hands rot, so `decay_days` sends them back to maintenance.'],
-		['study', 'distinct days', 'Comprehension. Holds once held, so nothing here ever goes stale.'],
-		['project', 'phases, not days', 'One indivisible burst. A film shoot is four fourteen-hour days after three idle weeks — you cannot do 12% of a shoot day, so a counter would lie.'],
-		['exam', 'prep days + a date', 'Scored by someone else, on their calendar. If nobody else is scoring you, it is not an exam.'],
-		['social', 'occasions', 'Needs other people. Never forced to complete, because you cannot schedule someone else.']
-	];
+	/**
+	 * The manual, rewritten for Trophic.
+	 *
+	 * It used to describe the tech tree's node kinds, domain shapes and
+	 * seasons. Those screens are hidden and this page is reached from Settings,
+	 * whose card promises "what the syntax does, and why the log is
+	 * append-only" — so that is what it says now.
+	 *
+	 * Deliberately static: no fetch, no state, nothing that can be out of date
+	 * with the server. Everything here is a claim about design, and every rule
+	 * below exists because a specific way of keeping a journal was found to
+	 * lose things.
+	 */
+	import TabPill from '$lib/trophic/TabPill.svelte';
+	import { SYNTAX_COLORS } from '$lib/trophic/colors';
 
-	const shapes = [
-		['ladder', 'exactly one', 'Levels that genuinely nest, like HSK.'],
-		['strands', 'one per strand', 'Tracks a real curriculum runs at once. Berklee teaches harmony, ear training and technique in the same semester on purpose — showing one would starve the others.'],
-		['cycles', 'project + what feeds it', 'AFI has you direct three complete films before you are ready for any of them. The craft serves the film in front of you.']
-	];
-
-	const seasons = [
-		['high', 'the full board, or only the strands the season names', 'The one or two domains you are actually acquiring.'],
-		['low', 'only nodes about to go stale', 'Holding ground. On a quiet week this shows nothing, which is the correct answer.'],
-		['off', 'nothing at all', 'Only legal where nothing decays. The loader refuses it otherwise.']
+	const syntax = [
+		{
+			glyph: '<folder>',
+			color: SYNTAX_COLORS.folder,
+			name: 'a pointer',
+			body: 'Says what this line is about. A tag is a real thing the moment you type it — nothing has to exist first, and a tag no folder has claimed is not a mistake, it is how tags start.'
+		},
+		{
+			glyph: '{2d}',
+			color: SYNTAX_COLORS.time,
+			name: 'a time link',
+			body: 'Comes back to you when it is due. `{2d}`, `{friday}`, `{03/04}`. The date is worked out from the day you wrote the line, so a rebuild reproduces every reminder exactly.'
+		},
+		{
+			glyph: '\\pattern',
+			color: SYNTAX_COLORS.pattern,
+			name: 'a pattern',
+			body: 'How it went, in your own word. `\\win`, `\\stuck`, `\\steady`. They are counted and drawn under Readings, and never interpreted — nothing here will tell you what your week meant.'
+		},
+		{
+			glyph: '--directive',
+			color: SYNTAX_COLORS.directive,
+			name: 'a directive',
+			body: 'Files the line under that name as you send it, and is not part of the line afterwards. `--todo` makes a line tickable. Only ever in the capture bar.'
+		}
 	];
 </script>
 
-<svelte:head><title>Manual · Personal Growth System</title></svelte:head>
+<svelte:head><title>Manual · Trophic</title></svelte:head>
 
-<article class="mx-auto max-w-3xl px-6 py-10 text-[13px] leading-relaxed text-stone-400">
-	<header class="mb-10">
-		<h1 class="text-[15px] font-semibold tracking-[0.24em] text-stone-200 uppercase">Manual</h1>
-		<p class="mt-2 text-stone-500">
-			How to use this, and why it is built the way it is. Every rule below exists because
-			a specific way of tracking practice was found to lie.
-		</p>
-	</header>
+<div class="flex min-h-dvh flex-col">
+	<div class="flex shrink-0 items-center justify-between px-[34px] pt-[22px]">
+		<TabPill />
+		<a href="/settings" class="text-[13px] font-semibold text-neutral-700 hover:text-ink">
+			← Settings
+		</a>
+	</div>
 
-	<!-- 1 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			1 · The one question
-		</h2>
-		<p>
-			<strong class="text-stone-200">What do I work on right now, and for how long?</strong>
-			Everything on the <span class="text-stone-300">Today</span> screen answers that and
-			nothing else. Open it, do what the cards say, click them off, close it. If you are
-			ever deciding <em>what</em> to do rather than doing it, the board has failed.
-		</p>
-	</section>
-
-	<!-- 2 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			2 · Reading Today
-		</h2>
-		<dl class="space-y-2 border-l border-stone-800 pl-4">
-			<div>
-				<dt class="text-stone-300">Declared today</dt>
-				<dd>
-					The sum of every active card's minimum, added up from what you typed. Not advice
-					— arithmetic. It exists because the cost of a board was the one input that was
-					never visible, and six domains at once came to <span class="font-mono text-stone-300">10.2 h/day</span>
-					without ever saying so.
-				</dd>
-			</div>
-			<div>
-				<dt class="text-stone-300">Level bar</dt>
-				<dd>
-					White is what yesterday left you with; amber is what today added. Levelling up
-					collapses the white to zero, because none of the new level was there yesterday.
-				</dd>
-			</div>
-			<div>
-				<dt class="text-stone-300">Out of season</dt>
-				<dd>
-					Domains you are holding rather than advancing. Empty is the normal state and
-					means nothing is owed — it is not the same as having finished.
-				</dd>
-			</div>
-		</dl>
-	</section>
-
-	<!-- 3 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			3 · Gate, entry, estimate
-		</h2>
-		<p class="mb-3">
-			Three fields on every node, answering three different questions. They are the whole
-			model.
-		</p>
-		<div class="space-y-2 border-l border-stone-800 pl-4">
-			<p>
-				<strong class="text-stone-200">Gate</strong> — what "done" actually means, in a
-				sentence. <em>The app never reads it.</em> You decide when it is true and press
-				complete. Accrual is the machine's job; judgement is yours.
+	<article class="mx-auto flex w-full max-w-[720px] flex-col gap-[34px] px-[34px] pt-[26px] pb-20">
+		<header>
+			<div class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">Manual</div>
+			<h1 class="mt-2 text-[52px] leading-[0.95] font-extrabold tracking-[-0.035em]">
+				One line at a time
+			</h1>
+			<p class="mt-4 max-w-[560px] text-[17px] leading-[1.55] text-neutral-800">
+				You type a line, attach what you made, press enter. The app files it and reads it back
+				as a journal. Everything below is a consequence of that, and every rule exists because
+				some other way of keeping a journal was found to lose things.
 			</p>
-			<p>
-				<strong class="text-stone-200">Entry</strong> — where to <em>start</em>: the book,
-				the free course, the search string that returns the right thing. It exists because a
-				tree of titles and gates is only usable by someone who already knows the field.
-				It shows on a card until the first session, then gets out of the way.
+		</header>
+
+		<!-- 1 · The syntax -->
+		<section class="flex flex-col gap-3">
+			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+				1 · Four marks
+			</h2>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				There are four, and none of them is required. A line with no marks on it is a
+				perfectly good capture — it lands in the log, on today, unfiled, and stays there
+				until you decide otherwise. The marks are how you say something extra without
+				stopping to fill in a form.
 			</p>
-			<p>
-				<strong class="text-stone-200">Estimate</strong> — a <em>guess</em> at how many days
-				this takes. Not a target, not a contract. You may finish under it, and you may keep
-				logging past it; both are measurements of the guess, and the node reports the gap.
-				Sessions logged after completion are upkeep, not cost, and are excluded.
+			<div class="mt-1 rounded-[16px] bg-surface px-[18px] py-2 shadow-md">
+				{#each syntax as item (item.glyph)}
+					<div class="flex flex-col gap-1.5 py-[15px]">
+						<div class="flex items-baseline gap-3">
+							<span class="font-mono text-[15px] font-medium" style="color:{item.color}">
+								{item.glyph}
+							</span>
+							<span class="text-[13px] text-neutral-700">{item.name}</span>
+						</div>
+						<p class="text-[14px] leading-[1.55] text-neutral-800">{item.body}</p>
+					</div>
+				{/each}
+			</div>
+			<p class="max-w-[600px] text-[14px] leading-[1.6] text-neutral-700">
+				<strong class="font-semibold text-ink">Tab completes a mark you have written before.</strong>
+				The suggestions are ranked by what you actually use, and the list is drawn upwards from
+				the caret, so the best match is nearest your thumb.
 			</p>
-		</div>
-		<p class="mt-3 text-stone-500">
-			The estimates shipped here are known to be low — the nine Teach Yourself CS subjects
-			get 66 h each against its own 100–200. They were left low deliberately: the point is
-			to find the real multiplier from completed nodes rather than invent a second set of
-			numbers to be wrong about.
-		</p>
-	</section>
+		</section>
 
-	<!-- 4 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			4 · Node kinds
-		</h2>
-		<p class="mb-3">A node's kind decides how it accrues and whether it can complete.</p>
-		<div class="overflow-x-auto">
-			<table class="w-full border-collapse text-left">
-				<thead>
-					<tr class="border-b border-stone-800 text-[10px] tracking-[0.14em] text-stone-600 uppercase">
-						<th class="py-1.5 pr-3 font-normal">kind</th>
-						<th class="py-1.5 pr-3 font-normal">accrues</th>
-						<th class="py-1.5 font-normal">why it exists</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each kinds as [kind, accrues, why]}
-						<tr class="border-b border-stone-800/50 align-top">
-							<td class="py-1.5 pr-3 font-mono text-amber-300/80">{kind}</td>
-							<td class="py-1.5 pr-3 whitespace-nowrap text-stone-500">{accrues}</td>
-							<td class="py-1.5">{why}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-	</section>
+		<!-- 2 · Append-only -->
+		<section class="flex flex-col gap-3">
+			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+				2 · Nothing is ever edited
+			</h2>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				The log is a file of lines that only ever grows. Every screen in this app is a
+				<em>fold</em> over that file — the albums, the counts, the chapters, the sparklines,
+				which folder an entry is in. None of it is stored anywhere; all of it is recomputed
+				on the way to your eyes.
+			</p>
+			<div class="rounded-[16px] bg-surface px-[18px] py-4 shadow-md">
+				<p class="text-[14px] leading-[1.6] text-neutral-800">
+					Three things follow, and they are the reason for the whole arrangement:
+				</p>
+				<ul class="mt-3 flex flex-col gap-2.5 text-[14px] leading-[1.6] text-neutral-800">
+					<li>
+						<strong class="font-semibold">Ticking a box does not change a line.</strong> It appends
+						the fact that you ticked it. Untick and that is appended too. The line you wrote at
+						the time still says what it said.
+					</li>
+					<li>
+						<strong class="font-semibold">The index is disposable.</strong> Delete it — there is a
+						button in Settings — and the log rebuilds it exactly. If a number here cannot be
+						recomputed from what you typed, it does not belong in the app.
+					</li>
+					<li>
+						<strong class="font-semibold">Retuning the app re-scores all of history.</strong>
+						Because nothing is baked in at write time, a change to how lines are read applies to
+						every line you have ever written, with nothing to migrate.
+					</li>
+				</ul>
+			</div>
+		</section>
 
-	<!-- 5 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			5 · Shapes, and hard vs soft
-		</h2>
-		<div class="mb-4 overflow-x-auto">
-			<table class="w-full border-collapse text-left">
-				<thead>
-					<tr class="border-b border-stone-800 text-[10px] tracking-[0.14em] text-stone-600 uppercase">
-						<th class="py-1.5 pr-3 font-normal">shape</th>
-						<th class="py-1.5 pr-3 font-normal">active at once</th>
-						<th class="py-1.5 font-normal">taken from</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each shapes as [shape, active, why]}
-						<tr class="border-b border-stone-800/50 align-top">
-							<td class="py-1.5 pr-3 font-mono text-amber-300/80">{shape}</td>
-							<td class="py-1.5 pr-3 whitespace-nowrap text-stone-500">{active}</td>
-							<td class="py-1.5">{why}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-		<p>
-			A solid edge is <strong class="text-stone-200">hard</strong>: the node is locked until
-			its prerequisite is complete. A dashed edge is <strong class="text-stone-200">soft</strong>:
-			advice, ordered after, startable now anyway.
-		</p>
-		<p class="mt-2 text-stone-500">
-			This distinction is the sharpest claim in the system. Every edge in
-			<span class="font-mono">electrical-engineering</span> is hard, because attempting
-			signals and systems without linear algebra produces zero progress. Almost every edge in
-			<span class="font-mono">filmmaking</span> is soft, because being unready is the method —
-			a locked first film would teach the opposite. The same tree structure means opposite
-			things, so the file has to say which.
-		</p>
-	</section>
+		<!-- 3 · Folders -->
+		<section class="flex flex-col gap-3">
+			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+				3 · A folder is a question, not a box
+			</h2>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				An entry is in a folder because one of its tags points there — not because anything
+				put it there. Point <span class="font-mono" style="color:{SYNTAX_COLORS.folder}"
+					>&lt;deploy&gt;</span
+				>
+				at a folder in Settings and every entry you have <em>ever</em> written with that tag joins
+				it, instantly, with nothing to backfill. Unpoint it and they leave again.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				<strong class="font-semibold">The pin</strong> is the shortcut for a run of entries about
+				one thing: pin a folder and every capture gets that folder's tag appended to the line
+				itself. What is stored is a line that reads exactly as though you had typed the tag —
+				which is why a pinned capture survives a rebuild like any other.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				You can also file one line by hand: right-click it, or hold it on a touch screen.
+			</p>
+		</section>
 
-	<!-- 6 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			6 · Seasons — deliberate neglect
-		</h2>
-		<p class="mb-3">
-			Six domains acquiring at once is <span class="font-mono text-stone-300">~10 h/day</span>.
-			Six domains merely <em>held</em> is <span class="font-mono text-stone-300">~33 min/day</span>.
-			You can hold six things; you cannot learn six things at once. Seasons are the mechanism
-			for that difference, and they are the most important control here.
-		</p>
-		<div class="mb-3 overflow-x-auto">
-			<table class="w-full border-collapse text-left">
-				<thead>
-					<tr class="border-b border-stone-800 text-[10px] tracking-[0.14em] text-stone-600 uppercase">
-						<th class="py-1.5 pr-3 font-normal">state</th>
-						<th class="py-1.5 pr-3 font-normal">shows</th>
-						<th class="py-1.5 font-normal">for</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each seasons as [state, shows, why]}
-						<tr class="border-b border-stone-800/50 align-top">
-							<td class="py-1.5 pr-3 font-mono text-amber-300/80">{state}</td>
-							<td class="py-1.5 pr-3">{shows}</td>
-							<td class="py-1.5 text-stone-500">{why}</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-		<p>
-			Low season needs no configuration, because <span class="font-mono">decay_days</span>
-			already said what a held domain owes you: a node reappears once it is within a quarter
-			of its own window. A 14-day drill returns at 11 idle days; a 180-day one at 135.
-		</p>
-		<p class="mt-2">
-			A season ends on <strong class="text-stone-200">a date or a shipped node, whichever
-			lands first</strong>. A trigger alone deadlocks when the project stalls — which is what
-			projects do — and a date alone throws away the reward for finishing early. The app
-			tells you the season is over and offers the switch; it never flips it for you.
-		</p>
-		<p class="mt-2 text-stone-500">
-			Set it per domain under <span class="text-stone-400">Tech Tree → edit</span>.
-		</p>
-	</section>
+		<!-- 4 · The Log -->
+		<section class="flex flex-col gap-3">
+			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+				4 · Reading it back
+			</h2>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				<strong class="font-semibold">Albums restart each year.</strong> A folder belongs to a
+				year, so a project running since 2024 is three albums rather than one endless scroll.
+				That cap is what lets the month spine down the right edge stay twelve bars forever —
+				an instrument you read at a glance instead of a list that grows.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				<strong class="font-semibold">Chapters are month runs the app named from your own
+					tags.</strong> Nothing invents a chapter title: it is the commonest pattern or tag inside
+				that run of months, or the months themselves if there is nothing to use.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				<strong class="font-semibold">Quiet stretches merge.</strong> Runs of days with a line or
+				two and no media collapse into one strip. It is a merge and never a hide — the strip says
+				how many lines it is holding, and expands into exactly the rows it replaced. Both this
+				and the yearly restart are switches in Settings, and neither changes a stored byte.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				Reaching history should never cost scrolling. The year rail, the month spine, the
+				chapter list and the jump field are all one action, whatever the size of the journal.
+				<strong class="font-semibold">Scrolling is for reading.</strong>
+			</p>
+		</section>
 
-	<!-- 7 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			7 · What the app refuses to do
-		</h2>
-		<ul class="space-y-1.5 border-l border-stone-800 pl-4">
-			<li>
-				<strong class="text-stone-200">It never decides for you.</strong> No timers, no
-				minute tracking, no notifications. A click carries no duration, so no minute is
-				recorded that was not measured.
-			</li>
-			<li>
-				<strong class="text-stone-200">It never scores the decision.</strong> XP exists, and
-				it is fenced off — a read-only projection that cannot reach which node is active,
-				what is due, or what a season does. There is a test asserting the board does not
-				import it.
-			</li>
-			<li>
-				<strong class="text-stone-200">It never rewrites history.</strong> The log is
-				append-only. Undo appends; completion appends; a ticked checklist item appends. The
-				list forgets, the file does not.
-			</li>
-			<li>
-				<strong class="text-stone-200">It never interprets a number.</strong> Metric
-				readings are stored and drawn. Nothing changes because of one.
-			</li>
-		</ul>
-		<p class="mt-3 text-stone-500">
-			The point of all four: the board must be predictable by reading the
-			<span class="font-mono">.toml</span>. If you cannot predict it at a glance, that is a
-			bug — not a feature you have not learned yet.
-		</p>
-	</section>
+		<!-- 5 · Media and the connection -->
+		<section class="flex flex-col gap-3">
+			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+				5 · Photographs, clips, and a bad connection
+			</h2>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				Files are uploaded when you press enter, not when you pick them — so changing your
+				mind costs nothing and a five-minute video is never sent twice because you edited the
+				line. The line goes in immediately and the files catch up behind it; the bar under the
+				tabs is that happening.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				Every original is kept byte for byte, and a smaller display copy is made beside it for
+				the screen. Both are on this machine and nowhere else — which is what the
+				<strong class="font-semibold">On disk</strong> panel in Settings is for, and why the
+				backup button is beside it.
+			</p>
+			<p class="max-w-[600px] text-[15px] leading-[1.6] text-neutral-800">
+				If the connection is dead when you press enter, the line is queued and sent when the
+				browser comes back; the count of waiting lines is shown under the bar. If the
+				<em>server</em> refuses, you get your text back instead. The two are different and the
+				screen treats them differently, because losing a captured thought is the one thing
+				this app must never do.
+			</p>
+		</section>
 
-	<!-- 8 -->
-	<section class="mb-9">
-		<h2 class="mb-2 text-[11px] font-semibold tracking-[0.2em] text-amber-300/90 uppercase">
-			8 · Your data
-		</h2>
-		<p>
-			Plain files, in <span class="font-mono text-stone-300">data/</span>. Trees are hand-editable
-			TOML; the log and checklist are append-only JSONL; the SQLite index is a disposable
-			cache you can delete at any time. Editing a tree in the UI rewrites the whole file, so
-			comments in it do not survive — the rationale lives in
-			<span class="font-mono">docs/sources.md</span> instead.
-		</p>
-		<p class="mt-2">
-			Running on two machines: point both at one shared folder and there is nothing to sync,
-			or use a private git remote, where the append-only log merges without conflicts. See
-			<span class="font-mono text-stone-300">SYNC.md</span>.
-		</p>
-	</section>
-
-	<footer class="border-t border-stone-800 pt-4 text-stone-600">
-		<p>
-			The trees shipped here are sequenced from HSK 3.0, the Berklee guitar and drum cores,
-			MIT 6-5, Teach Yourself CS and the AFI directing curriculum. What was researched and
-			what was chosen are separated honestly in
-			<span class="font-mono">docs/sources.md</span>.
-		</p>
-	</footer>
-</article>
+		<!-- 6 · Absent -->
+		<section class="flex flex-col gap-3">
+			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+				6 · What is deliberately missing
+			</h2>
+			<div class="rounded-[16px] bg-surface px-[18px] py-4 shadow-md">
+				<p class="text-[14px] leading-[1.6] text-neutral-800">
+					No notifications. No streaks, scores or nudges. No editing or deleting a line — a
+					wrong entry is corrected by writing the correction. No sharing, no accounts, no
+					second user. No links: paste one and the bar refuses it, because this is a place for
+					your own words.
+				</p>
+				<p class="mt-3 text-[14px] leading-[1.6] text-neutral-800">
+					Patterns are counted and drawn and <strong class="font-semibold">never
+						interpreted</strong>. These are refusals rather than gaps.
+				</p>
+			</div>
+		</section>
+	</article>
+</div>

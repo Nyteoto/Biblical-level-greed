@@ -1,132 +1,160 @@
 <script lang="ts">
 	/**
-	 * One folder, read back as the case study it turned into.
+	 * One album, one year — the screen this app is used on most.
 	 *
-	 * The tag chips are the folder's definition, not a summary of it — every
-	 * entry below is here because of one of them, or because it was filed by
-	 * hand. `+ assign` opens the unclaimed tags inline so a folder can be
-	 * widened from the place you noticed it was too narrow, which is why that
-	 * shortcut exists rather than a trip to mapping.
+	 * An album is a folder read through a single year. Nothing stores that
+	 * pairing: `/api/capture/album` recomputes the entries, the twelve month
+	 * volumes and the chapters from the day keys on every read, which is what
+	 * makes "albums restart each year" a switch in Settings rather than a
+	 * migration, and what makes remapping a tag re-cut this whole screen with
+	 * nothing to backfill.
 	 *
-	 * Everything below the head is the log's own rendering, scoped to this
-	 * folder: same day blocks, same tiles, same lightbox. That is deliberate —
-	 * a project is not a different kind of reading, it is the same reading with
-	 * the rest of life filtered out, and it should not feel like another screen.
+	 * **Reaching history must not cost scrolling.** The album list, the chapter
+	 * list and the month spine are all constant-cost, and the year cap is what
+	 * keeps the spine constant-*size*: twelve bars, whatever the project's age.
+	 * Scrolling is for reading. If something here starts needing a scroll to
+	 * reach rather than to read, it has gone backwards.
 	 *
-	 * Two things are only here. The **cover** is the folder's most recent media,
-	 * full width: a project is recognised by the last thing you made in it, not
-	 * by its name. The **contact sheet** drops the words and shows nothing but
-	 * media at the densest the screen allows, which is how you scan months of
-	 * something at once — the thing the ruler this replaced could never do.
+	 * The header is journal-first on purpose — the month and the week number,
+	 * not the folder name. You are reading a stretch of your life that happens
+	 * to be filed under a project, and the sidebar already says which. The name
+	 * repeats in a small pill only because the sidebar collapses.
+	 *
+	 * Below the header the days are two shapes and no more: the newest day gets
+	 * the photograph and the caption (`LeadDay`), and everything under it is a
+	 * line with a date on it (`LightDay`), with runs of quiet days folded into
+	 * a strip. The rules that decide which is which are in `log.ts`, where a
+	 * local check in `verify:ui` can hold them to never losing an entry.
 	 */
 	import { page } from '$app/state';
-	import DayBlock from '$lib/trophic/DayBlock.svelte';
+	import { goto } from '$app/navigation';
 	import FolderAssignMenu from '$lib/trophic/FolderAssignMenu.svelte';
+	import LeadDay from '$lib/trophic/LeadDay.svelte';
+	import LightDay from '$lib/trophic/LightDay.svelte';
 	import Lightbox from '$lib/trophic/Lightbox.svelte';
 	import MediaTile from '$lib/trophic/MediaTile.svelte';
+	import MonthSpine from '$lib/trophic/MonthSpine.svelte';
+	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { todayKey } from '$lib/trophic/day';
-	import { mediaUrl, mediaViewUrl } from '$lib/trophic/api';
-	import { isVideo, type Shot } from '$lib/trophic/media';
+	import { foldQuiet, groupDays, isoWeek, monthLabel, stretchLabel, stretchTally } from '$lib/trophic/log';
+	import { logSettings } from '$lib/trophic/settings.svelte';
+	import type { Shot } from '$lib/trophic/media';
 	import {
 		assignEntry,
 		deleteFolder,
-		getFolder,
-		getFolders,
+		getAlbum,
+		getShelf,
 		getUnassignedTags,
 		patchFolder,
 		toggleLine,
+		type AlbumView,
 		type Entry,
-		type Folder,
-		type FolderDetail,
+		type Shelf,
 		type UnassignedTag
 	} from '$lib/trophic/api';
-	import { goto } from '$app/navigation';
 
 	const id = $derived(page.params.id!);
+	/** `unfiled` is an album you can open like any other and is not a folder. */
+	const folderId = $derived(id === 'unfiled' ? null : id);
+	const year = $derived(page.url.searchParams.get('year') ?? String(new Date().getFullYear()));
 
-	let detail = $state<FolderDetail | null>(null);
-	let folders = $state<Folder[]>([]);
+	let album = $state<AlbumView | null>(null);
+	let shelf = $state<Shelf | null>(null);
 	let unassigned = $state<UnassignedTag[]>([]);
 	let error = $state<string | null>(null);
-	let showAssign = $state(false);
+	let loading = $state(true);
+
+	let collapsed = $state(false);
 	let sheet = $state(false);
-	let menu = $state<{ x: number; y: number; entry: Entry } | null>(null);
-	let lightbox = $state<{ shots: Shot[]; index: number } | null>(null);
+	let showReadings = $state(false);
 	let options = $state(false);
 	let renaming = $state(false);
 	let renameValue = $state('');
+	/** Which quiet stretches the user has opened, by their first day. */
+	let expanded = $state<Set<string>>(new Set());
+
+	let menu = $state<{ x: number; y: number; entry: Entry } | null>(null);
+	let lightbox = $state<{ shots: Shot[]; index: number } | null>(null);
+	let column = $state<HTMLElement | null>(null);
 
 	const today = todayKey();
-
-	async function refresh() {
-		try {
-			const [d, f, u] = await Promise.all([getFolder(id), getFolders(), getUnassignedTags()]);
-			detail = d;
-			folders = f.folders;
-			unassigned = u.tags;
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		}
-	}
+	const thisYear = String(new Date().getFullYear());
 
 	$effect(() => {
-		void id;
+		logSettings.hydrate();
+	});
+
+	let lastKey = '';
+	$effect(() => {
+		const key = `${id}:${year}`;
+		if (key === lastKey) return;
+		lastKey = key;
 		refresh();
 	});
 
-	const entries = $derived(detail?.entries ?? []);
-
-	/** Every attachment in the folder, newest first — the contact sheet, and
-	 *  the pool the cover is drawn from. */
-	const shots = $derived(
-		entries.flatMap((entry) => (entry.media ?? []).map((ref) => ({ ref, entry })))
-	);
-
-	const groups = $derived.by(() => {
-		const map = new Map<string, Entry[]>();
-		for (const e of entries) {
-			if (!map.has(e.day)) map.set(e.day, []);
-			map.get(e.day)!.push(e);
+	async function refresh() {
+		loading = true;
+		try {
+			const [a, s, u] = await Promise.all([
+				getAlbum(folderId, year),
+				getShelf(year),
+				getUnassignedTags()
+			]);
+			album = a;
+			shelf = s;
+			unassigned = u.tags;
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
 		}
-		return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-	});
-
-	/** `11 days · 3 Mar → 14 Mar`. Days worked in, not days elapsed: a project
-	 *  you touched on eleven days over a year is eleven days of work, and the
-	 *  calendar distance between the ends says nothing about it. */
-	const stat = $derived.by(() => {
-		if (groups.length === 0) return null;
-		const days = groups.map(([day]) => day);
-		const first = days[days.length - 1];
-		const last = days[0];
-		const short = (key: string) => {
-			const [y, m, d] = key.split('-').map(Number);
-			return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-				day: 'numeric',
-				month: 'short',
-				year: y === new Date().getFullYear() ? undefined : 'numeric'
-			});
-		};
-		const range = first === last ? short(last) : `${short(first)} → ${short(last)}`;
-		return `${days.length} ${days.length === 1 ? 'day' : 'days'} · ${range}`;
-	});
-
-	function dayLabel(key: string): string {
-		if (key === today) return 'today';
-		const [y, m, d] = key.split('-').map(Number);
-		return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-			weekday: 'short',
-			day: 'numeric',
-			month: 'short',
-			year: y === new Date().getFullYear() ? undefined : 'numeric'
-		});
+		loading = false;
 	}
 
-	const STATES: { value: string; label: string }[] = [
-		{ value: '', label: 'open' },
-		{ value: 'active', label: 'active' },
-		{ value: 'shipped', label: 'shipped' }
-	];
+	const days = $derived(groupDays(album?.entries ?? []));
+	const rows = $derived(foldQuiet(days.slice(1), logSettings.mergeQuiet));
+	const lead = $derived(days[0] ?? null);
+	/** Every attachment in the album, newest first — the contact sheet. */
+	const shots = $derived(days.flatMap((d) => d.media));
+
+	const liveMonth = $derived(year === thisYear || year === 'all' ? new Date().getMonth() : -1);
+	const previousYear = $derived(shelf?.previous?.year ?? null);
+
+	const name = $derived(album?.folder?.name ?? 'Unfiled');
+	/** The month the top of the column is in. The header is about where you
+	 *  are in the year, not about the album, so it reads off the lead day. */
+	const heading = $derived(lead ? monthLabel(lead.key) : '');
+
+	/** Scroll to the newest day in a month. `days` is newest first, so the first
+	 *  match is the top of that month — which is where the reading starts. */
+	function jumpToMonth(month: number) {
+		const mm = String(month + 1).padStart(2, '0');
+		const target = days.find((d) => d.key.slice(5, 7) === mm);
+		if (!target) return;
+		// The day may be inside a collapsed quiet stretch, in which case there
+		// is nothing on screen to scroll to. Open it first.
+		const stretch = rows.find(
+			(row) => row.kind === 'stretch' && row.days.some((d) => d.key === target.key)
+		);
+		if (stretch?.kind === 'stretch') expanded = new Set([...expanded, stretch.days[0].key]);
+		requestAnimationFrame(() =>
+			column
+				?.querySelector(`[data-day="${target.key}"]`)
+				?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+		);
+	}
+
+	function toTop() {
+		column?.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+
+	function toggleStretch(key: string) {
+		const next = new Set(expanded);
+		if (next.has(key)) next.delete(key);
+		else next.add(key);
+		expanded = next;
+	}
+
+	const albumHref = (target: string | null) => `/folders/${target ?? 'unfiled'}?year=${year}`;
 
 	async function act(work: Promise<unknown>) {
 		error = null;
@@ -135,266 +163,438 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
+		lastKey = '';
 		await refresh();
 	}
 
 	async function onToggle(entry: Entry, line: number) {
 		try {
 			const { entry: updated } = await toggleLine(entry.id, line);
-			if (detail) {
-				detail.entries = detail.entries.map((e) => (e.id === updated.id ? updated : e));
-			}
+			if (album) album.entries = album.entries.map((e) => (e.id === updated.id ? updated : e));
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
 	}
 
 	async function submitRename() {
-		const name = renameValue.trim();
+		const next = renameValue.trim();
 		renaming = false;
-		if (!name || name === detail?.folder.name) return;
-		await act(patchFolder(id, { name }));
+		if (!next || !folderId || next === album?.folder?.name) return;
+		await act(patchFolder(folderId, { name: next }));
 	}
 
 	async function remove() {
 		// The folder, not what was written into it — the entries stay and their
 		// tags go back in the unassigned pool. Worth saying out loud, because
 		// "delete" beside a wall of photographs reads worse than it is.
-		if (!confirm('Delete this folder? Its entries stay in the log.')) return;
+		if (!folderId) return;
+		if (!confirm('Delete this album? Its entries stay in the log.')) return;
 		try {
-			await deleteFolder(id);
+			await deleteFolder(folderId);
 			await goto('/log');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
 	}
 
-	const cover = $derived(shots[0] ?? null);
+	const STATES: { value: string; label: string }[] = [
+		{ value: '', label: 'open' },
+		{ value: 'active', label: 'running' },
+		{ value: 'shipped', label: 'shipped' }
+	];
 </script>
 
 <svelte:window onclick={() => (options = false)} />
 
-<header class="sticky top-0 z-30 bg-[#14100c] py-4 text-[11px] tracking-wide text-stone-500">
-	<div class="mx-auto flex w-full max-w-2xl items-center justify-between px-6">
-		<a href="/log" class="transition-colors hover:text-stone-300">← log</a>
-		<div class="relative">
-			<button
-				type="button"
-				class="px-2 transition-colors hover:text-stone-300"
-				aria-label="folder options"
-				onclick={(e) => {
-					e.stopPropagation();
-					options = !options;
-				}}
-			>
-				···
-			</button>
-			{#if options}
-				<!-- No stopPropagation: both items close the menu themselves, so
-				     letting the click reach the window costs nothing. -->
-				<div
-					class="absolute top-full right-0 z-50 mt-1 flex min-w-[130px] flex-col rounded border border-stone-700 bg-[#1b1613] py-1.5 text-left shadow-xl"
+<div class="flex h-dvh">
+	<!-- ── Sidebar ─────────────────────────────────────────────────────────
+	     No border. Cards on the tinted ground, which is the rule everywhere in
+	     this design: a group is a white surface, never a rule. Collapsing it is
+	     why the album's name repeats in the header. -->
+	{#if !collapsed}
+		<aside class="flex w-[252px] shrink-0 flex-col overflow-y-auto py-6">
+			<div class="mx-3 mb-[18px]">
+				<TabPill compact />
+			</div>
+
+			<div class="flex items-baseline gap-[9px] px-[22px] pb-5">
+				<span class="text-[22px] font-extrabold tracking-[-0.02em]">
+					{year === 'all' ? 'All' : year}
+				</span>
+				<span class="text-[12px] text-neutral-700">
+					{shelf?.albums.length ?? 0}
+					{shelf?.albums.length === 1 ? 'album' : 'albums'}
+				</span>
+				<button
+					type="button"
+					class="ml-auto text-[16px] text-neutral-600 transition-colors hover:text-ink"
+					aria-label="collapse the sidebar"
+					onclick={() => (collapsed = true)}>‹</button
 				>
+			</div>
+
+			<div class="mx-3 flex flex-col gap-0.5 rounded-[14px] bg-surface p-2 shadow-md">
+				{#each shelf?.albums ?? [] as a (a.id)}
+					{@const on = a.id === folderId}
+					<a
+						href={albumHref(a.id)}
+						class="flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] transition-colors {on
+							? 'accent-fill'
+							: a.state === 'shipped'
+								? 'text-neutral-700 hover:bg-neutral-200'
+								: 'hover:bg-neutral-200'}"
+					>
+						<span class="min-w-0 flex-1 truncate {on ? 'text-[15px] font-bold' : 'text-[14px]'}">
+							{a.name}
+						</span>
+						{#if a.state === 'shipped' && !on}
+							<span class="text-[10px] font-bold tracking-[0.1em] uppercase">shipped</span>
+						{:else}
+							<span class="text-[12px] tabular-nums {on ? 'opacity-85' : 'text-neutral-700'}">
+								{a.entry_count}
+							</span>
+						{/if}
+					</a>
+				{/each}
+				{#if shelf && shelf.unfiled > 0}
+					<a
+						href={albumHref(null)}
+						class="flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] transition-colors {folderId ===
+						null
+							? 'accent-fill'
+							: 'text-neutral-700 hover:bg-neutral-200'}"
+					>
+						<span class="min-w-0 flex-1 truncate text-[14px]">Unfiled</span>
+						<span class="text-[12px] tabular-nums">{shelf.unfiled}</span>
+					</a>
+				{/if}
+			</div>
+
+			<!-- Chapters: month runs the app named from the user's own commonest
+			     tag or pattern inside each run. Derived on the read like
+			     everything else — nothing here was typed as a chapter. -->
+			{#if album && album.chapters.length > 0}
+				<div
+					class="px-[22px] pt-[26px] pb-2.5 text-[10px] font-bold tracking-[0.2em] text-neutral-600 uppercase"
+				>
+					Chapters
+				</div>
+				<div class="mx-3 flex flex-col gap-2">
+					{#each album.chapters as chapter, i (chapter.name + chapter.range)}
+						<button
+							type="button"
+							class="flex items-baseline gap-2.5 rounded-[12px] text-left {i === 0
+								? 'bg-surface px-3.5 py-[11px] shadow-sm'
+								: 'px-3.5 py-[9px]'}"
+							onclick={() => jumpToMonth(chapter.last_month - 1)}
+						>
+							{#if i === 0}
+								<span
+									class="w-[3px] self-stretch rounded-[2px]"
+									style="background:var(--gradient-spine)"
+								></span>
+							{/if}
+							<span
+								class="min-w-0 flex-1 truncate {i === 0
+									? 'text-[14px] font-bold'
+									: 'text-[14px] text-neutral-800'}"
+							>
+								{chapter.name}
+							</span>
+							<span class="shrink-0 text-[11px] text-neutral-700">{chapter.range}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			<p class="mt-auto px-[22px] pt-4 text-[11px] leading-[1.5] text-neutral-700">
+				Chapters are month runs the app named from your own tags.
+			</p>
+		</aside>
+	{/if}
+
+	<div class="flex min-w-0 flex-1 flex-col pt-6">
+		<!-- ── Header ────────────────────────────────────────────────────────
+		     Journal-first: the month and the week, then the album's name as a
+		     small pill so a collapsed sidebar still says where you are. -->
+		<div class="flex shrink-0 items-center justify-between px-[34px] pb-[22px]">
+			<div class="flex items-baseline gap-3.5">
+				{#if collapsed}
 					<button
 						type="button"
-						class="px-4 py-2 text-left text-[12px] text-stone-300 transition-colors hover:bg-stone-800 hover:text-stone-100"
-						onclick={() => {
-							renameValue = detail?.folder.name ?? '';
-							renaming = true;
+						class="text-[16px] text-neutral-600 transition-colors hover:text-ink"
+						aria-label="show the sidebar"
+						onclick={() => (collapsed = false)}>›</button
+					>
+				{/if}
+				<span class="text-[12px] font-bold tracking-[0.22em] uppercase">{heading}</span>
+				{#if lead}
+					<span class="text-[12px] text-neutral-700">week {isoWeek(lead.key)}</span>
+				{/if}
+
+				<div class="relative">
+					<button
+						type="button"
+						class="rounded-lg bg-surface px-[9px] py-1 text-[12px] text-neutral-700 shadow-sm transition-shadow hover:shadow-md"
+						title="rename, ship or delete this album"
+						onclick={(e) => {
+							e.stopPropagation();
+							options = !options;
 						}}
 					>
-						rename
+						{name}
 					</button>
+
+					<!-- Everything that changes the *folder* rather than the view.
+					     Behind the name because the name is what it is about, and
+					     because the redesign gave these no home of their own —
+					     dropping them would have quietly removed working features. -->
+					{#if options && album?.folder}
+						{@const folder = album.folder}
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div
+							class="absolute top-full left-0 z-50 mt-2 flex w-[290px] flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-lg"
+							style="animation:landing-fade-in 0.15s ease-out"
+							onclick={(e) => e.stopPropagation()}
+						>
+							{#if renaming}
+								<form
+									onsubmit={(e) => {
+										e.preventDefault();
+										submitRename();
+									}}
+								>
+									<!-- svelte-ignore a11y_autofocus -->
+									<input
+										autofocus
+										bind:value={renameValue}
+										class="w-full rounded-lg bg-neutral-200 px-3 py-2 text-[14px] focus:outline-none"
+										onkeydown={(e) => {
+											if (e.key === 'Escape') renaming = false;
+										}}
+									/>
+								</form>
+							{:else}
+								<button
+									type="button"
+									class="text-left text-[14px] font-semibold"
+									onclick={() => {
+										renameValue = folder.name;
+										renaming = true;
+									}}
+								>
+									{folder.name}
+									<span class="ml-2 text-[12px] font-normal text-neutral-700">rename</span>
+								</button>
+							{/if}
+
+							<!-- The lifecycle. Three states and no taxonomy: the empty
+							     one is the default, and a folder never marked is an
+							     interest rather than a project. -->
+							<div class="flex gap-0.5 rounded-[9px] bg-neutral-200 p-[3px]">
+								{#each STATES as s (s.value)}
+									<button
+										type="button"
+										class="flex-1 rounded-[7px] px-2.5 py-[5px] text-[12px] transition-colors {folder.state ===
+										s.value
+											? 'bg-surface font-bold shadow-sm'
+											: 'font-semibold text-neutral-700'}"
+										onclick={() => act(patchFolder(folder.id, { state: s.value }))}
+									>
+										{s.label}
+									</button>
+								{/each}
+							</div>
+
+							<div class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px]">
+								{#each folder.tags as tag (tag)}
+									<button
+										type="button"
+										class="font-mono transition-colors hover:text-accent-700"
+										style="color:var(--color-accent-700)"
+										title="click to unmap"
+										onclick={() => act(patchFolder(folder.id, { remove_tags: [tag] }))}
+									>
+										{`<${tag}>`}
+									</button>
+								{:else}
+									<span class="text-neutral-700">no tags point here yet</span>
+								{/each}
+							</div>
+
+							{#if unassigned.length > 0}
+								<div class="flex flex-wrap gap-2 rounded-[10px] bg-neutral-200 p-2.5 text-[12px]">
+									{#each unassigned.slice(0, 8) as tag (tag.tag)}
+										<button
+											type="button"
+											class="font-mono transition-colors hover:opacity-70"
+											style="color:var(--color-neutral-800)"
+											title="point this tag here"
+											onclick={() => act(patchFolder(folder.id, { add_tags: [tag.tag] }))}
+										>
+											{`<${tag.tag}>`}<span class="ml-1 text-neutral-700">×{tag.count}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+
+							<button
+								type="button"
+								class="self-start text-[12px] font-semibold text-accent-700"
+								onclick={remove}
+							>
+								Delete this album
+							</button>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			<div class="flex items-center gap-4 text-[12px] text-neutral-700">
+				{#if shots.length > 1}
 					<button
 						type="button"
-						class="px-4 py-2 text-left text-[12px] text-red-400 transition-colors hover:bg-stone-800 hover:text-red-300"
-						onclick={remove}
+						class="transition-colors hover:text-ink {sheet ? 'text-ink' : ''}"
+						onclick={() => (sheet = !sheet)}
 					>
-						delete
+						Contact sheet
 					</button>
-				</div>
+				{/if}
+				{#if album && album.sentiments.length > 0}
+					<button
+						type="button"
+						class="transition-colors hover:text-ink {showReadings ? 'text-ink' : ''}"
+						onclick={() => (showReadings = !showReadings)}
+					>
+						Readings
+					</button>
+				{/if}
+				<button
+					type="button"
+					class="rounded-lg bg-surface px-[11px] py-1.5 font-semibold text-ink shadow-sm transition-shadow hover:shadow-md"
+					onclick={toTop}
+				>
+					Today ↑
+				</button>
+			</div>
+		</div>
+
+		<div class="flex min-h-0 flex-1">
+			<div bind:this={column} class="min-w-0 flex-1 overflow-y-auto px-8 pb-16">
+				{#if error}
+					<p class="pb-4 text-[12px] text-accent-700">{error}</p>
+				{/if}
+
+				{#if loading && !album}
+					<p class="text-[13px] text-neutral-700">reading…</p>
+				{:else if days.length === 0}
+					<p class="text-[13px] text-neutral-700">capture something and it will be here.</p>
+				{:else if sheet}
+					<!-- Words off. Everything ever made in here, densest possible —
+					     the thing the ruler this replaced could never do. -->
+					<div class="grid grid-cols-6 gap-1.5">
+						{#each shots as shot, i (shot.entry.id + ':' + shot.ref)}
+							<MediaTile ref={shot.ref} onopen={() => (lightbox = { shots, index: i })} />
+						{/each}
+					</div>
+				{:else}
+					<div class="flex flex-col gap-[34px]">
+						{#if lead}
+							<LeadDay
+								day={lead}
+								today={lead.key === today}
+								onopen={(s, index) => (lightbox = { shots: s, index })}
+								ontoggle={onToggle}
+								onassign={(entry, x, y) => (menu = { x, y, entry })}
+							/>
+						{/if}
+
+						<div class="flex flex-col gap-3">
+							{#each rows as row (row.kind === 'stretch' ? row.days[0].key : row.day.key)}
+								{#if row.kind === 'day'}
+									<LightDay
+										day={row.day}
+										onopen={(s, index) => (lightbox = { shots: s, index })}
+										ontoggle={onToggle}
+										onassign={(entry, x, y) => (menu = { x, y, entry })}
+									/>
+								{:else if expanded.has(row.days[0].key)}
+									{#each row.days as day (day.key)}
+										<LightDay
+											{day}
+											onopen={(s, index) => (lightbox = { shots: s, index })}
+											ontoggle={onToggle}
+											onassign={(entry, x, y) => (menu = { x, y, entry })}
+										/>
+									{/each}
+									<button
+										type="button"
+										class="self-start text-[12px] font-semibold text-neutral-700 transition-colors hover:text-ink"
+										onclick={() => toggleStretch(row.days[0].key)}
+									>
+										Collapse ▴
+									</button>
+								{:else}
+									<!-- A merge, never a hide: the strip says how many lines
+									     it is holding and expands into exactly the rows it
+									     replaced. -->
+									<button
+										type="button"
+										class="lift lift-sm flex items-baseline gap-4 rounded-[12px] bg-surface px-4 py-[13px] text-left text-neutral-700 shadow-sm"
+										onclick={() => toggleStretch(row.days[0].key)}
+									>
+										<span class="w-[92px] shrink-0 text-[13px] font-semibold">
+											{stretchLabel(row.days)}
+										</span>
+										<span class="flex-1 text-[14px]">{stretchTally(row.days)}</span>
+										<span class="text-[12px] font-semibold">Expand ▾</span>
+									</button>
+								{/if}
+							{/each}
+						</div>
+
+						<!-- The album's sentiment counts. Stored and drawn, never
+						     interpreted — a reading, not a verdict. -->
+						{#if showReadings && album}
+							{@const max = Math.max(...album.sentiments.map((s) => s.count), 1)}
+							<div class="flex max-w-[420px] flex-col gap-2 rounded-[16px] bg-surface p-4 shadow-md">
+								{#each album.sentiments as s (s.name)}
+									<div class="flex items-center gap-3 text-[12px]">
+										<span
+											class="w-24 shrink-0 truncate text-right font-mono"
+											style="color:var(--color-accent-700)"
+										>
+											{`\\${s.name}`}
+										</span>
+										<div class="h-[7px] flex-1 overflow-hidden rounded-[4px] bg-neutral-200">
+											<div
+												class="h-full rounded-[4px]"
+												style="width:{(s.count / max) * 100}%;background:var(--gradient-accent)"
+											></div>
+										</div>
+										<span class="w-6 shrink-0 text-right text-neutral-700 tabular-nums">
+											{s.count}
+										</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			{#if album && !sheet}
+				<MonthSpine
+					volumes={album.volumes}
+					live={liveMonth}
+					{previousYear}
+					onpick={jumpToMonth}
+				/>
 			{/if}
 		</div>
 	</div>
-</header>
-
-<main class="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 pb-24">
-	{#if error}
-		<p class="text-[11px] text-red-400">{error}</p>
-	{/if}
-
-	{#if detail}
-		{@const folder = detail.folder}
-
-		{#if cover}
-			<!-- The last thing made in here, at the top. Clipped to a band rather
-			     than shown whole: it is a way in, not the photograph itself. -->
-			<button
-				type="button"
-				class="-mx-6 block h-40 overflow-hidden bg-stone-900 sm:mx-0 sm:h-48 sm:rounded"
-				onclick={() => (lightbox = { shots, index: 0 })}
-				aria-label="open the most recent"
-			>
-				{#if isVideo(cover.ref)}
-					<img src={mediaViewUrl(cover.ref)} alt="" class="h-full w-full object-cover opacity-90" />
-				{:else}
-					<img
-						src={mediaViewUrl(cover.ref)}
-						alt=""
-						onerror={(e) => ((e.currentTarget as HTMLImageElement).src = mediaUrl(cover.ref))}
-						class="h-full w-full object-cover"
-					/>
-				{/if}
-			</button>
-		{/if}
-
-		<div class="flex flex-col gap-3">
-			{#if renaming}
-				<form
-					onsubmit={(e) => {
-						e.preventDefault();
-						submitRename();
-					}}
-				>
-					<!-- svelte-ignore a11y_autofocus -->
-					<input
-						autofocus
-						bind:value={renameValue}
-						class="w-full border-b border-stone-600 bg-transparent py-1 text-xl text-stone-100 focus:border-stone-400 focus:outline-none"
-						style="caret-color:#fafaf9"
-						onblur={submitRename}
-						onkeydown={(e) => {
-							if (e.key === 'Escape') renaming = false;
-						}}
-					/>
-				</form>
-			{:else}
-				<h1 class="flex items-center gap-2.5 text-xl text-stone-100">
-					<span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{folder.color}"></span>
-					{folder.name}
-				</h1>
-			{/if}
-
-			<div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-stone-500">
-				{#if stat}
-					<span>{stat}</span>
-					<span class="text-stone-700">·</span>
-				{/if}
-				<!-- The lifecycle. Three states and no taxonomy: the empty one is
-				     the default, and a folder never marked is an interest rather
-				     than a project. -->
-				<span class="flex items-center gap-1">
-					{#each STATES as s (s.value)}
-						<button
-							type="button"
-							class="rounded-full px-2 py-0.5 transition-colors {folder.state === s.value
-								? 'bg-stone-200 text-stone-900'
-								: 'text-stone-600 hover:text-stone-400'}"
-							onclick={() => act(patchFolder(id, { state: s.value }))}
-						>
-							{s.label}
-						</button>
-					{/each}
-				</span>
-				{#if shots.length > 1}
-					<span class="text-stone-700">·</span>
-					<button
-						type="button"
-						class="transition-colors hover:text-stone-300 {sheet ? 'text-stone-300' : ''}"
-						onclick={() => (sheet = !sheet)}
-					>
-						contact sheet {sheet ? '▾' : '▸'}
-					</button>
-				{/if}
-			</div>
-
-			<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-				{#each folder.tags as tag (tag)}
-					<button
-						type="button"
-						class="text-blue-400/80 transition-colors hover:text-red-400"
-						title="click to unassign"
-						onclick={() => act(patchFolder(id, { remove_tags: [tag] }))}
-					>
-						{`<${tag}>`}
-					</button>
-				{:else}
-					<span class="text-stone-500">no tags point here yet</span>
-				{/each}
-				<button
-					type="button"
-					class="ml-1 text-stone-500 transition-colors hover:text-stone-300"
-					onclick={() => (showAssign = !showAssign)}
-				>
-					{showAssign ? 'done' : '+ assign'}
-				</button>
-			</div>
-
-			{#if showAssign}
-				<div
-					class="flex flex-wrap gap-3 rounded-lg border border-stone-800 bg-stone-900/40 p-3 text-[11px]"
-				>
-					{#each unassigned as tag (tag.tag)}
-						<button
-							type="button"
-							class="text-blue-400 transition-colors hover:text-blue-200"
-							onclick={() => act(patchFolder(id, { add_tags: [tag.tag] }))}
-						>
-							{`<${tag.tag}>`}<span class="ml-1 text-stone-600">×{tag.count}</span>
-						</button>
-					{:else}
-						<span class="text-stone-500">no unassigned tags</span>
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-		{#if entries.length === 0}
-			<p class="text-[11px] text-stone-500">nothing here yet — capture with these tags to fill it.</p>
-		{:else if sheet}
-			<!-- Words off. Everything ever made in here, densest possible. -->
-			<div class="grid grid-cols-4 gap-1 sm:grid-cols-6">
-				{#each shots as shot, i (shot.entry.id + ':' + shot.ref)}
-					<MediaTile ref={shot.ref} onopen={() => (lightbox = { shots, index: i })} />
-				{/each}
-			</div>
-		{:else}
-			<div class="flex flex-col gap-8">
-				{#each groups as [day, list] (day)}
-					<DayBlock
-						{day}
-						label={dayLabel(day)}
-						entries={list}
-						onopen={(dayShots, index) => (lightbox = { shots: dayShots, index })}
-						ontoggle={onToggle}
-						onassign={(entry, x, y) => (menu = { x, y, entry })}
-					/>
-				{/each}
-			</div>
-		{/if}
-
-		<!-- The folder's sentiment counts. A reading, not a verdict. -->
-		{#if detail.sentiments.length > 0}
-			{@const max = Math.max(...detail.sentiments.map((s) => s.count))}
-			<div class="mt-4 flex flex-col gap-1.5 border-t border-stone-900 pt-4 text-[11px]">
-				{#each detail.sentiments as s (s.name)}
-					<div class="flex items-center gap-2" title="{s.count} entries here with \{s.name}">
-						<span class="w-24 shrink-0 truncate text-right" style="color:#fb7185"
-							>{`\\${s.name}`}</span
-						>
-						<div class="h-[6px] flex-1 overflow-hidden rounded-full bg-stone-800">
-							<div
-								class="h-full rounded-full transition-all duration-500"
-								style="width:{(s.count / max) * 100}%;background:#fb7185"
-							></div>
-						</div>
-						<span class="w-6 shrink-0 text-right text-stone-500 tabular-nums">{s.count}</span>
-					</div>
-				{/each}
-			</div>
-		{/if}
-	{/if}
-</main>
+</div>
 
 {#if lightbox}
 	{@const open = lightbox}
@@ -406,14 +606,14 @@
 	/>
 {/if}
 
-{#if menu}
+{#if menu && shelf}
 	{@const target = menu.entry}
 	<FolderAssignMenu
 		x={menu.x}
 		y={menu.y}
-		{folders}
+		folders={shelf.albums}
 		current={target.manual_folders[0] ?? null}
-		onselect={(folderId) => act(assignEntry(target.id, folderId))}
+		onselect={(target_id) => act(assignEntry(target.id, target_id))}
 		onclear={() => act(assignEntry(target.id, null))}
 		onclose={() => (menu = null)}
 	/>

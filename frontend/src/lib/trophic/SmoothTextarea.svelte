@@ -252,7 +252,7 @@
 	     thumb on mobile. Inverted on purpose, and the arrow keys are inverted
 	     to match; re-sorting this list silently breaks them. -->
 	<div
-		class="trophic-scrollbar-hide fixed z-50 max-h-[180px] w-fit overflow-y-auto rounded-sm border border-stone-700/70 bg-[#1b1613] py-1 shadow-lg shadow-black/40"
+		class="trophic-scrollbar-hide fixed z-50 max-h-[180px] w-fit overflow-y-auto rounded-[10px] bg-surface py-1 shadow-lg"
 		style="left:{Math.max(8, caretScreen.x - 8)}px;top:{caretScreen.y}px;
 		       transform:translateY(-100%) translateY(-6px)"
 	>
@@ -260,7 +260,7 @@
 			<button
 				type="button"
 				class="block w-full whitespace-nowrap px-3 py-1 text-left font-mono text-[12px] transition-colors {s.selected
-					? 'bg-stone-800/80'
+					? 'bg-neutral-200'
 					: ''}"
 				style="color:{s.color}"
 				onmousedown={(e) => {
@@ -276,24 +276,37 @@
 
 <style>
 	/* Shared text layout: the overlay and the textarea must agree glyph for
-	   glyph, or the measured caret drifts as a line fills up. */
+	   glyph, or the measured caret drifts as a line fills up. Every property
+	   here is on *both* layers for that reason, including the ones that look
+	   cosmetic — `letter-spacing` especially, which produces a drift small
+	   enough to argue about and large enough to see.
+
+	   The draft is Archivo at 22px rather than a mono at 18px. That is the
+	   redesign's largest single change to how the bar feels: the thought reads
+	   as prose while it is being written, and the mono is kept for the things
+	   that are actually machine-shaped — timestamps, file names, paths and the
+	   syntax keys. */
 	.smooth-layout {
-		font-family: var(--font-mono);
-		font-size: 18px;
-		line-height: 28px;
-		padding: 12px 40px 12px 0;
+		font-family: var(--font-sans);
+		font-size: 22px;
+		line-height: 32px;
+		letter-spacing: -0.012em;
+		/* These are the writing card's padding, not the textarea's: the card
+		   has none of its own, so that the overlay, the textarea and the caret
+		   all measure from the same origin. The right side is the reserve the
+		   paperclip sits in. */
+		padding: 24px 52px 18px 22px;
 		margin: 0;
 		border: 0;
 		box-sizing: border-box;
 		white-space: pre-wrap;
 		overflow-wrap: break-word;
 		word-break: normal;
-		letter-spacing: normal;
 		tab-size: 4;
-		color: #e7e5e4;
+		color: var(--color-ink);
 	}
 
 	textarea::placeholder {
-		color: #57534e;
+		color: var(--color-neutral-600);
 	}
 </style>

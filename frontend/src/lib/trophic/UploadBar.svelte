@@ -19,13 +19,13 @@
 </script>
 
 {#if uploads.count > 0}
-	<div class="sticky top-0 z-50 bg-[#14100c]">
-		<div class="flex items-center gap-2 px-6 py-1 text-[10px] tracking-wide text-stone-500">
+	<div class="sticky top-0 z-50">
+		<div class="flex items-center gap-2.5 px-6 py-1.5 text-[11px] text-neutral-700 tabular-nums">
 			<span>{label} · {pct}%</span>
-			<span class="h-px flex-1 bg-stone-800">
+			<span class="h-[3px] flex-1 overflow-hidden rounded-full bg-neutral-300">
 				<span
-					class="block h-full bg-amber-400 transition-all duration-300"
-					style="width:{pct}%"
+					class="block h-full rounded-full transition-all duration-300"
+					style="width:{pct}%;background:var(--gradient-accent)"
 				></span>
 			</span>
 		</div>

@@ -724,6 +724,266 @@ def dates(conn: sqlite3.Connection) -> dict[str, int]:
     return {r["day"]: r["n"] for r in rows}
 
 
+# ── The shelf: albums, scoped to a year ───────────────────────────────────
+#
+# An album is a folder read one year at a time. That split is the whole reason
+# the Log can promise a fixed-size instrument: whatever a project's age, its
+# spine holds at most twelve bars, so "the top of the tree" never has to grow
+# a scrollbar. Nothing below is stored — the year is a `LIKE 'YYYY-%'` on the
+# day key, and every count is recomputed on the read, exactly like membership.
+#
+# `year=None` means "no year filter", which is what the setting turns the whole
+# screen into when the user does not want the yearly restart.
+
+# The membership rule, spelled once: tagged in, or filed in by hand. Both halves
+# are parameterised by the same folder id, so callers pass it twice.
+_MEMBERSHIP = (
+    "SELECT entry_id FROM entry_tags WHERE tag IN "
+    "  (SELECT tag FROM folder_tags WHERE folder_id = ?) "
+    "UNION "
+    "SELECT entry_id FROM entry_folders WHERE folder_id = ?"
+)
+
+# The other side of it: an entry no folder claims. Not "has no tags" — a tag
+# nothing has been mapped to leaves its entry unfiled, which is exactly the
+# pile the shelf's dashed card is offering to sort out.
+_UNFILED = (
+    "SELECT id FROM entries WHERE id NOT IN ("
+    "  SELECT entry_id FROM entry_tags WHERE tag IN (SELECT tag FROM folder_tags)"
+    "  UNION SELECT entry_id FROM entry_folders"
+    ")"
+)
+
+
+def _year_clause(year: str | None) -> tuple[str, list]:
+    return (" AND day LIKE ?", [f"{year}-%"]) if year else ("", [])
+
+
+def years(conn: sqlite3.Connection) -> list[str]:
+    """Every year the log has anything in, newest first. The year rail."""
+    rows = conn.execute(
+        "SELECT DISTINCT substr(day, 1, 4) AS y FROM entries ORDER BY y DESC"
+    ).fetchall()
+    return [row["y"] for row in rows]
+
+
+def _volumes(rows: list[sqlite3.Row]) -> list[int]:
+    """Twelve entry counts, January first. The sparkline and the spine read
+    the same list — one is it lying down, the other standing up."""
+    out = [0] * 12
+    for row in rows:
+        out[int(row["day"][5:7]) - 1] += 1
+    return out
+
+
+def _month_range(volumes: list[int]) -> str:
+    """`Feb–May`, or `Feb` for a single month. Empty when nothing is in."""
+    live = [i for i, n in enumerate(volumes) if n]
+    if not live:
+        return ""
+    first, last = calendar.month_abbr[live[0] + 1], calendar.month_abbr[live[-1] + 1]
+    return first if first == last else f"{first}–{last}"
+
+
+def _runs(volumes: list[int]) -> list[tuple[int, int]]:
+    """Contiguous months with activity, as (first, last) zero-based indices."""
+    out: list[tuple[int, int]] = []
+    start: int | None = None
+    for i, n in enumerate(volumes):
+        if n and start is None:
+            start = i
+        elif not n and start is not None:
+            out.append((start, i - 1))
+            start = None
+    if start is not None:
+        out.append((start, 11))
+    return out
+
+
+def _chapter_name(rows: list[sqlite3.Row], first: int, last: int, owned: set[str]) -> str:
+    """What the app calls a run of months.
+
+    Named from the user's own words, never invented: the commonest `\\pattern`
+    or `<tag>` written inside the run, minus the tags that merely say which
+    album this is — those are true of every entry here and so distinguish
+    nothing. With no word to use, the month range is the name, which is honest
+    rather than clever.
+    """
+    counts: dict[str, int] = {}
+    for row in rows:
+        month = int(row["day"][5:7]) - 1
+        if not first <= month <= last:
+            continue
+        for word in json.loads(row["patterns"]) + json.loads(row["folders"]):
+            if word in owned:
+                continue
+            counts[word] = counts.get(word, 0) + 1
+    if not counts:
+        return _month_range([1 if first <= i <= last else 0 for i in range(12)])
+    # Commonest wins; ties break on the word so a reload cannot rename a
+    # chapter the user is looking at.
+    name = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    return name.replace("-", " ").capitalize()
+
+
+def chapters(rows: list[sqlite3.Row], owned: set[str] = frozenset()) -> list[dict]:
+    """Month runs, newest first. Derived on every read — see `_chapter_name`."""
+    volumes = _volumes(rows)
+    out = []
+    for first, last in reversed(_runs(volumes)):
+        window = [1 if first <= i <= last else 0 for i in range(12)]
+        out.append(
+            {
+                "name": _chapter_name(rows, first, last, owned),
+                "range": _month_range(window),
+                "first_month": first + 1,
+                "last_month": last + 1,
+                "entries": sum(volumes[first : last + 1]),
+            }
+        )
+    return out
+
+
+def _album_rows(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+) -> list[sqlite3.Row]:
+    """The (day, media, patterns, folders) of one album's entries in one year.
+    `folder_id=None` is the unfiled pile."""
+    clause, args = _year_clause(year)
+    if folder_id is None:
+        sql = f"SELECT day, media, patterns, folders FROM entries WHERE id IN ({_UNFILED})"
+    else:
+        sql = (
+            f"SELECT day, media, patterns, folders FROM entries "
+            f"WHERE id IN ({_MEMBERSHIP})"
+        )
+        args = [folder_id, folder_id] + args
+    return conn.execute(sql + clause, args).fetchall()
+
+
+def album_entries(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+) -> list[dict]:
+    """Everything in one album in one year, newest first."""
+    clause, args = _year_clause(year)
+    if folder_id is None:
+        sql = f"{SELECT_ENTRIES} WHERE id IN ({_UNFILED})"
+    else:
+        sql = f"{SELECT_ENTRIES} WHERE id IN ({_MEMBERSHIP})"
+        args = [folder_id, folder_id] + args
+    sql += clause + " ORDER BY ts DESC, id DESC"
+    return [_as_entry(row) for row in conn.execute(sql, args).fetchall()]
+
+
+def _lead_media(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None, limit: int = 3
+) -> list[str]:
+    """The newest few attachments in an album — the card's mosaic. A project is
+    recognised by the last thing made in it, so this reads from the top."""
+    clause, args = _year_clause(year)
+    if folder_id is None:
+        sql = f"SELECT media FROM entries WHERE id IN ({_UNFILED})"
+    else:
+        sql = f"SELECT media FROM entries WHERE id IN ({_MEMBERSHIP})"
+        args = [folder_id, folder_id] + args
+    sql += clause + " AND media != '[]' ORDER BY ts DESC, id DESC"
+    out: list[str] = []
+    for row in conn.execute(sql, args).fetchall():
+        out.extend(json.loads(row["media"]))
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
+def album(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+) -> dict | None:
+    """One album, one year: its entries, its twelve bars, its chapters.
+
+    The folder's own record comes back beside them unchanged — the album view
+    still renames, ships and deletes the *folder*, because a year is a way of
+    reading a project rather than a second kind of thing to own.
+    """
+    record = folder(conn, folder_id) if folder_id else None
+    if folder_id and record is None:
+        return None
+    rows = _album_rows(conn, folder_id, year)
+    owned = set(record["tags"]) if record else set()
+    return {
+        "folder": record,
+        "year": year,
+        "entries": album_entries(conn, folder_id, year),
+        "volumes": _volumes(rows),
+        "chapters": chapters(rows, owned),
+        "media_count": sum(len(json.loads(r["media"])) for r in rows),
+        "sentiments": folder_sentiments(conn, folder_id) if folder_id else [],
+    }
+
+
+def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
+    """The year shelf: which albums exist, how big each is, when each was busy.
+
+    Every album in the year, whether or not it has a lifecycle, plus the
+    unfiled pile and a one-line handover to the year below. Albums with nothing
+    in them this year are dropped rather than shown empty — an album is a year
+    of a project, and a year you did not touch it is not one of them.
+    """
+    available = years(conn)
+    albums = []
+    for record in folders(conn):
+        rows = _album_rows(conn, record["id"], year)
+        if not rows and record["state"] != "active":
+            continue
+        volumes = _volumes(rows)
+        albums.append(
+            {
+                **record,
+                # `entry_count` on the folder record is all-time; inside a year
+                # the album's own count is the one that means anything.
+                "entry_count": len(rows),
+                "all_time_count": record["entry_count"],
+                "media_count": sum(len(json.loads(r["media"])) for r in rows),
+                "volumes": volumes,
+                "months": _month_range(volumes),
+                "chapters": len(_runs(volumes)),
+                "lead": _lead_media(conn, record["id"], year),
+            }
+        )
+
+    # Busiest first: the shelf is read to find what you were doing, and what
+    # you were doing most is the best first guess.
+    albums.sort(key=lambda a: (-a["entry_count"], a["name"].lower()))
+
+    unfiled_rows = _album_rows(conn, None, year)
+    clause, args = _year_clause(year)
+    total = conn.execute(
+        f"SELECT count(*) AS n, "
+        f"coalesce(sum(json_array_length(media)), 0) AS m FROM entries "
+        f"WHERE 1=1{clause}",
+        args,
+    ).fetchone()
+
+    previous = None
+    if year and year in available:
+        older = [y for y in available if y < year]
+        if older:
+            before = older[0]
+            row = conn.execute(
+                "SELECT count(*) AS n FROM entries WHERE day LIKE ?", (f"{before}-%",)
+            ).fetchone()
+            previous = {"year": before, "entries": row["n"]}
+
+    return {
+        "year": year,
+        "years": available,
+        "albums": albums,
+        "unfiled": len(unfiled_rows),
+        "entries": total["n"],
+        "media": total["m"],
+        "previous": previous,
+    }
+
+
 def cumulative(conn: sqlite3.Connection, up_to: str) -> dict:
     """Everything the log draws below the entries, as of a chosen day.
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from backend.capture.api import router as capture_router
 from backend.capture.store import store as capture_store
 
-from . import config, edits, eventlog, media, storage, tools, watcher, xp
+from . import backup, config, edits, eventlog, media, storage, tools, watcher, xp
 from .config import ROOT
 from .media import MediaError
 from .models import DomainError
@@ -202,6 +202,24 @@ def storage_report() -> dict:
     tracking it: this is opened rarely and a stale number is worse than a slow
     one."""
     return storage.report()
+
+
+@app.get("/api/backup")
+def backup_status() -> dict:
+    """When the copy on the other disk was last made, and whether one is
+    running now. See `backup.py` for why this reads a stamp file rather than
+    measuring the destination."""
+    return backup.status()
+
+
+@app.post("/api/backup")
+def backup_now() -> dict:
+    """Start a run and return immediately; the screen polls the GET.
+
+    Every refusal `backup.sh` makes is still made — this starts the script, it
+    does not reimplement any part of it.
+    """
+    return backup.start()
 
 
 @app.get("/api/dashboard")

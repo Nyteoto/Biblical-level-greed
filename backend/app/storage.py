@@ -2,11 +2,19 @@
 
 Media dwarfs everything else and is the only part not in git, so the split that
 matters is "things a backup already covers" against "the one copy of my photos".
+
+Capture's log and index are named separately from the tech tree's because they
+are the ones the Settings screen is actually about now: capture is the app, and
+"delete this and it rebuilds" is a different promise from "delete this and your
+history is gone". The tech tree's three parts are folded into one line for the
+same reason — it is support, and its size is a footnote rather than a subject.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
+from ..capture.config import INDEX_PATH as CAPTURE_INDEX_PATH
+from ..capture.config import LOG_DIR as CAPTURE_LOG_DIR
 from .config import DATA_DIR, DOMAINS_DIR, INDEX_PATH, LOG_DIR
 
 
@@ -31,37 +39,42 @@ def _one(path: Path) -> tuple[int, int]:
     return path.stat().st_size, 1
 
 
+def _sum(*pairs: tuple[int, int]) -> tuple[int, int]:
+    return sum(p[0] for p in pairs), sum(p[1] for p in pairs)
+
+
 def report() -> dict:
     parts = []
 
     for key, label, hint, (size, files), recoverable in (
         (
             "media",
-            "Photos and video",
-            "Not in git. This is the only copy unless something else backs it up.",
+            "media",
+            "photos and clips at full quality, plus a display copy each. "
+            "This is the only copy unless something else backs it up.",
             _walk(DATA_DIR / "media"),
             False,
         ),
         (
-            "log",
-            "Event log",
-            "Append-only. Every session, completion and edit you have made.",
-            _walk(LOG_DIR),
+            "capture-log",
+            "capture log",
+            "append-only truth. Everything else here is derived from it.",
+            _walk(CAPTURE_LOG_DIR),
             False,
         ),
         (
-            "domains",
-            "Trees",
-            "The .toml files your board is read from.",
-            _walk(DOMAINS_DIR),
-            False,
-        ),
-        (
+            "capture-index",
             "index",
-            "Index",
-            "Derived from the log. Safe to delete; it rebuilds on the next start.",
-            _one(INDEX_PATH),
+            "delete it any time; the log rebuilds it on the next read",
+            _one(CAPTURE_INDEX_PATH),
             True,
+        ),
+        (
+            "tree",
+            "tech tree",
+            "its own log, its trees and its index — the support half of the app",
+            _sum(_walk(LOG_DIR), _walk(DOMAINS_DIR), _one(INDEX_PATH)),
+            False,
         ),
     ):
         parts.append(
@@ -84,8 +97,8 @@ def report() -> dict:
         parts.append(
             {
                 "key": "other",
-                "label": "Other",
-                "hint": "Everything else under data/.",
+                "label": "other",
+                "hint": "everything else under data/",
                 "bytes": other,
                 "files": max(total_files - sum(p["files"] for p in parts), 0),
                 "recoverable": False,

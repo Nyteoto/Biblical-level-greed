@@ -81,20 +81,17 @@
 	}
 }
 
-/* A folder card slides out to meet the pointer rather than lighting up. The
-   same 12px is reused as the tap feedback on touch, where there is no hover
-   to slide on — see the folder list. */
-.trophic .folder-card {
-	transition:
-		transform 200ms ease,
-		box-shadow 300ms ease;
-	box-shadow: 0 0 0 transparent;
-}
-
-@media (hover: hover) {
-	.trophic .folder-card:hover {
-		transform: translateX(12px);
-		box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.3);
+/* A day arriving at the top of the Log, and the lead photograph under it. The
+   entries stagger in from the left on their own; the plate they sit under
+   should not, or the whole screen slides. It fades in place instead. */
+@keyframes plate-fade-in {
+	from {
+		opacity: 0;
+		transform: scale(0.995);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
 	}
 }
 

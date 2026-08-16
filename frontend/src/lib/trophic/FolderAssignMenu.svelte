@@ -73,34 +73,34 @@
 
 <div
 	bind:this={menu}
-	class="fixed z-[120] flex max-w-[260px] min-w-[200px] flex-col rounded-lg border border-stone-700 bg-[#1b1613] py-1.5 shadow-2xl"
+	class="fixed z-[120] flex max-w-[260px] min-w-[200px] flex-col rounded-[14px] bg-surface py-2 shadow-lg"
 	style="left:{pos.x}px;top:{pos.y}px;animation:landing-fade-in 0.12s ease-out"
 >
-	<div class="border-b border-stone-800 px-2 pb-1.5">
-		<div class="px-1 pt-1 pb-1.5 text-[10px] tracking-[0.15em] text-stone-500 uppercase">
+	<div class="px-2.5 pb-2">
+		<div class="px-1 pt-0.5 pb-2 text-[10px] font-bold tracking-[0.2em] text-neutral-600 uppercase">
 			assign to folder
 		</div>
 		<input
 			bind:this={search}
 			bind:value={query}
 			placeholder="search…"
-			class="w-full rounded border border-stone-700 bg-stone-900 px-2 py-1 text-[11px] text-stone-300 focus:border-stone-500 focus:outline-none"
+			class="w-full rounded-lg bg-neutral-200 px-2.5 py-1.5 text-[12px] focus:outline-none"
 		/>
 	</div>
 
 	<div class="trophic-scrollbar-hide max-h-[220px] overflow-y-auto py-1">
 		{#if folders.length === 0}
-			<div class="px-3 py-2 text-[11px] text-stone-500">no folders yet.</div>
+			<div class="px-3 py-2 text-[12px] text-neutral-700">no folders yet.</div>
 		{:else if filtered.length === 0}
-			<div class="px-3 py-2 text-[11px] text-stone-500">no match.</div>
+			<div class="px-3 py-2 text-[12px] text-neutral-700">no match.</div>
 		{:else}
 			{#each filtered as f (f.id)}
 				{@const active = f.id === current}
 				<button
 					type="button"
-					class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors {active
-						? 'bg-stone-800 text-stone-100'
-						: 'text-stone-400 hover:bg-stone-800/60 hover:text-stone-200'}"
+					class="mx-1.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] transition-colors {active
+						? 'bg-neutral-200 font-semibold'
+						: 'hover:bg-neutral-200'}"
 					onclick={() => {
 						onselect(f.id);
 						onclose();
@@ -114,10 +114,10 @@
 	</div>
 
 	{#if current}
-		<div class="border-t border-stone-800 pt-1">
+		<div class="mt-1 px-1.5">
 			<button
 				type="button"
-				class="w-full px-3 py-1.5 text-left text-[11px] text-stone-500 transition-colors hover:bg-stone-800/60 hover:text-red-400"
+				class="w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-accent-700"
 				onclick={() => {
 					onclear();
 					onclose();

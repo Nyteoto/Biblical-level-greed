@@ -37,7 +37,7 @@
 
 <button
 	type="button"
-	class="group relative aspect-square w-full overflow-hidden rounded-sm bg-stone-900"
+	class="group lift lift-sm relative aspect-square w-full overflow-hidden rounded-[10px] bg-neutral-300 shadow-sm"
 	onclick={() => onopen?.()}
 	aria-label={video ? 'play clip' : 'open photo'}
 >
@@ -52,14 +52,11 @@
 		/>
 	{/if}
 	{#if video}
-		<!-- A gradient rather than a flat scrim: the badge has to stay legible
-		     over a bright poster without dimming the whole frame. -->
+		<!-- A white chip rather than a dark scrim. On the paper ground the badge
+		     has to read against a bright poster, and dimming half the frame to
+		     make room for one glyph is a heavier price than it is worth. -->
 		<span
-			class="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
-			style="background:linear-gradient(to bottom, transparent, rgba(0,0,0,0.45))"
-		></span>
-		<span
-			class="pointer-events-none absolute bottom-1.5 left-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/55 text-[8px] text-white"
+			class="pointer-events-none absolute bottom-1.5 left-1.5 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 		>
 			▶
 		</span>
