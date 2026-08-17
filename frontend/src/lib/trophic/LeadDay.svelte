@@ -95,7 +95,7 @@
 			<!-- The file's own name, in the mono. It is the one thing about a
 			     photograph the app knows and did not invent. -->
 			<span
-				class="absolute bottom-4 left-4 rounded-[7px] bg-white/[0.88] px-2 py-1 font-mono text-[11px] text-neutral-800"
+				class="absolute bottom-4 left-4 rounded-[7px] bg-ground/85 px-2 py-1 font-mono text-[11px] text-neutral-800"
 			>
 				{hero.ref.split('/').pop()}
 			</span>
@@ -105,7 +105,7 @@
 	{#if caption && caption.clean_text.trim()}
 		<div use:longpress={(x, y) => onassign?.(caption, x, y)}>
 			<p
-				class="max-w-[640px] text-[19px] leading-[1.5] tracking-[-0.01em]"
+				class="max-w-[640px] text-[19px] leading-[1.5] font-light tracking-[-0.01em]"
 				style="text-wrap:pretty"
 			>
 				<ColorizedText text={caption.clean_text} />
@@ -134,7 +134,7 @@
 						<!-- Never a `<video>` in a tile: a day with thirty clips would
 						     be thirty media pipelines. The poster and a badge. -->
 						<span
-							class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+							class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 						>
 							▶
 						</span>
@@ -169,7 +169,7 @@
 					{#if entry.todo_lines.length > 0}
 						<TodoEntryText {entry} ontoggle={(line) => ontoggle?.(entry, line)} />
 					{:else}
-						<p class="min-w-0 text-[17px] leading-[1.55]" style="overflow-wrap:anywhere">
+						<p class="min-w-0 text-[17px] leading-[1.55] font-light" style="overflow-wrap:anywhere">
 							<ColorizedText text={entry.clean_text} />
 						</p>
 					{/if}

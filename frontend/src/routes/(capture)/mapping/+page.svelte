@@ -23,7 +23,7 @@
 	 * window over to the platform mid-gesture.
 	 */
 	import TabPill from '$lib/trophic/TabPill.svelte';
-	import { SYNTAX_COLORS } from '$lib/trophic/colors';
+	import { SYNTAX_COLORS, phosphorize } from '$lib/trophic/colors';
 	import {
 		createFolder,
 		getFolders,
@@ -211,7 +211,7 @@
 						<div class="flex items-baseline gap-3 py-3">
 							<span
 								class="h-2 w-2 shrink-0 translate-y-[-2px] rounded-full"
-								style="background:{f.color}"
+								style="background:{phosphorize(f.color)}"
 							></span>
 							<a href="/folders/{f.id}" class="shrink-0 text-[14px] font-semibold">{f.name}</a>
 							<div class="flex flex-1 flex-wrap justify-end gap-x-3 gap-y-1">
@@ -219,7 +219,7 @@
 									<button
 										type="button"
 										class="font-mono text-[12px] transition-colors hover:text-accent-700"
-										style="color:{f.color}"
+										style="color:{phosphorize(f.color)}"
 										title="click to unmap — the entries stay, they just leave this folder"
 										onclick={() => unassign(tag, f.id)}
 									>

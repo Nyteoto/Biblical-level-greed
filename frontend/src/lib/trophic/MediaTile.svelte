@@ -41,7 +41,7 @@
 		     has to read against a bright poster, and dimming half the frame to
 		     make room for one glyph is a heavier price than it is worth. -->
 		<span
-			class="pointer-events-none absolute bottom-1.5 left-1.5 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+			class="pointer-events-none absolute bottom-1.5 left-1.5 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 		>
 			▶
 		</span>

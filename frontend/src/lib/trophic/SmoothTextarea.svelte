@@ -37,6 +37,7 @@
 		type BarState
 	} from './capture-bar';
 	import { loadStats, saveStats, type UsageStats } from './trie';
+	import { phosphorize } from './colors';
 	import type { Vocab } from './api';
 
 	let {
@@ -207,9 +208,9 @@
 		{#each bar.overlay as seg, i (i)}{#if seg.role === 'marker'}<span bind:this={marker}
 					>&#8203;</span
 				>{:else}<span
-					style="{seg.color ? `color:${seg.color};` : ''}{seg.animation
-						? `animation:${seg.animation}`
-						: ''}">{seg.text}</span
+					style="{seg.color
+						? `color:${phosphorize(seg.color)};${seg.role === 'token' ? 'font-weight:700;' : ''}`
+						: ''}{seg.animation ? `animation:${seg.animation}` : ''}">{seg.text}</span
 				>{/if}{/each}
 	</div>
 
@@ -268,7 +269,7 @@
 				class="block w-full whitespace-nowrap px-3 py-1 text-left font-mono text-[12px] transition-colors {s.selected
 					? 'bg-neutral-200'
 					: ''}"
-				style="color:{s.color}"
+				style="color:{phosphorize(s.color)}"
 				onmousedown={(e) => {
 					e.preventDefault();
 					onPick(i);

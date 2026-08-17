@@ -10,96 +10,170 @@
 @import '@fontsource-variable/jetbrains-mono';
 
 /*
- * The paper-light editorial ground, from the bound Modernist system.
+ * A green-phosphor monitor. This was a paper-light editorial ground until the
+ * whole app was re-lit as a CRT; the structure of the system did not move, only
+ * what each rung is worth.
  *
- * Two things here are deliberate deviations from Modernist and are on the
- * design brief rather than accidents: soft radii where the system says 0, and
- * **elevation instead of dividers**. There are no rules in this UI. Anything
- * that needs to be a group is a white card on the tinted ground, and anything
- * that needs to be above something else casts a shadow. If you find yourself
- * reaching for `border-b` to separate two rows, the answer is a card.
+ * Every value below was sampled out of the reference screenshot rather than
+ * invented. The two facts worth keeping in mind before editing any of them:
+ *
+ *   - **The phosphor is one hue, locked at 155.** All four rungs sit between
+ *     154.8 and 155.5 in OKLCH; what separates them is lightness and chroma.
+ *     A second hue anywhere in the chrome reads as a fault in the tube.
+ *   - **The ground is not a dark green.** #0a1116 is a cool blue-black at hue
+ *     240. Green type on a green-tinted ground reads as a colour wash; green
+ *     type on a blue-black ground reads as a monitor. Keep the two hues apart.
+ *
+ * The ramp maps rung-for-rung onto the paper one it replaces, at matched
+ * contrast — `neutral-700` was 5.83:1 on paper and is 5.88:1 here — so nothing
+ * that was legible before became illegible. Two rungs improved: 600 was under
+ * 4.5:1 and now clears it, and borders gained contrast.
+ *
+ * **Elevation survives as glow.** There are still no dividing rules in this UI.
+ * A dark shadow is invisible on a dark ground, so the `sm`/`md`/`lg` ladder is
+ * now a hairline plus a halo that brightens by one rung — which is what a real
+ * tube does when something is nearer the glass. Every `shadow-*` utility in the
+ * app kept working and kept meaning "raised"; none of them had to be touched.
  *
  * The neutral ramp below deliberately *overrides* Tailwind's own `neutral`
  * palette rather than sitting beside it under another name, so `text-neutral-700`
  * in a component is the same 700 the handoff table names. Nothing in the app
  * uses Tailwind's stock neutrals — the tech tree, which is the only older code
- * left, is on `stone`.
+ * left, is on `stone` and is deliberately not re-lit.
  */
 @theme {
-	--font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-sans: 'JetBrains Mono Variable', ui-monospace, 'Fira Code', monospace;
 	--font-mono: 'JetBrains Mono Variable', ui-monospace, 'Fira Code', monospace;
 
-	--color-ground: #f3f2f2;
-	--color-surface: #ffffff;
-	--color-ink: #201e1d;
+	--color-ground: #0a1116;
+	--color-surface: #0c1519;
+	--color-ink: #4fff9f;
 
-	--color-neutral-200: #eae7e7;
-	--color-neutral-300: #d7d3d3;
-	--color-neutral-400: #bab6b6;
+	--color-neutral-200: #12281e;
+	--color-neutral-300: #16382a;
+	--color-neutral-400: #1f583f;
 	/* 500 is a fill and a bar colour. Never small text: it does not clear the
 	   contrast line on this ground, which is why 600–800 exist. */
-	--color-neutral-500: #9b9797;
-	--color-neutral-600: #7d7979;
-	--color-neutral-700: #605d5d;
-	--color-neutral-800: #444141;
+	--color-neutral-500: #2d8f5a;
+	--color-neutral-600: #33a266;
+	--color-neutral-700: #3cbe77;
+	--color-neutral-800: #46d98b;
 
-	/* The accent is slate blue. It was the Modernist system's red-orange
-	   (#ec3013) and that colour was doing more than marking what is live —
-	   red is an alarm, and on a screen where the accent means "this month" and
-	   "this album" and "on", an alarm is the wrong word for every one of them.
-	   Rotated in OKLCH with the lightness of each rung held exactly, so the
-	   ladder — and every contrast figure that depends on it — is unchanged:
-	   `accent-700` still reads 5.9:1 on the paper ground. The one thing this
-	   moved besides itself is the `<pointer>` tag, which used to be the blue
-	   this now is; see `colors.ts`.
-
-	   Note the ramp is a deliberate deviation from the bound Modernist project
-	   now, not a copy of it. If that project is ever re-pulled, this is the
-	   difference to keep. */
-	--color-accent: #3586d9;
-	--color-accent-100: #f1f6fc;
-	--color-accent-300: #bfd7f3;
-	--color-accent-400: #90bbed;
-	--color-accent-500: #539ceb;
-	--color-accent-600: #307dcb;
-	/* The rung accent-coloured *text* uses. The lighter ones are for fills. */
-	--color-accent-700: #1f5fa0;
+	/* The accent is the lit phosphor itself. On paper this was a slate blue
+	   holding a lightness ladder; on a tube "accent" and "brightest" are the
+	   same idea, so the ladder runs from the ground up to peak emission rather
+	   than across a hue. `accent-700` stays the rung accent-coloured *text*
+	   uses — here that is the top of the ramp, not the bottom. */
+	--color-accent: #4fff9f;
+	--color-accent-100: #10241b;
+	--color-accent-300: #1f583f;
+	--color-accent-400: #2d8f5a;
+	--color-accent-500: #33a266;
+	--color-accent-600: #3cbe77;
+	/* The rung accent-coloured *text* uses. The dimmer ones are for fills. */
+	--color-accent-700: #4fff9f;
 
 	/* One step apart, and used as a ladder: a card at rest is `md`, lifted is
-	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two. */
-	--shadow-sm: 0 1px 2px rgba(45, 43, 43, 0.14);
-	--shadow-md: 0 3px 10px rgba(45, 43, 43, 0.16);
-	--shadow-lg: 0 12px 32px rgba(45, 43, 43, 0.22);
+	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two.
+	   Read these as emission, not as cast shadow — the ring is the edge of the
+	   lit area and the blur is the halo around it. */
+	--shadow-sm: 0 0 0 1px rgba(79, 255, 159, 0.1);
+	--shadow-md:
+		0 0 0 1px rgba(79, 255, 159, 0.17), 0 0 14px -2px rgba(79, 255, 159, 0.09);
+	--shadow-lg:
+		0 0 0 1px rgba(79, 255, 159, 0.3), 0 0 30px -4px rgba(79, 255, 159, 0.16);
 }
 
 :root {
 	/* The two gradients, as values rather than utilities: they are painted onto
 	   pills, bars and toggles that are otherwise unrelated, and repeating four
 	   colour stops at each site is how they drift apart. */
-	--gradient-ground: linear-gradient(178deg, #f7f6f6 0%, #f3f2f2 44%, #efeded 100%);
-	--gradient-accent: linear-gradient(140deg, #539ceb, #1f5fa0);
-	--gradient-spine: linear-gradient(180deg, #539ceb, #1f5fa0);
-	--gradient-spine-last: linear-gradient(180deg, #bfd7f3, #90bbed);
+	--gradient-ground: linear-gradient(178deg, #0b1419 0%, #0a1116 44%, #070d11 100%);
+	--gradient-accent: linear-gradient(140deg, #4fff9f, #3cbe77);
+	--gradient-spine: linear-gradient(180deg, #4fff9f, #2d8f5a);
+	--gradient-spine-last: linear-gradient(180deg, #1f583f, #2d8f5a);
 }
 
+/* The ground is painted on the shell element, not on `html` or `body`.
+   That looks like superstition and is not.
+
+   In WebKitGTK — the engine `desktop.py` actually ships, and the one every
+   screenshot of this app is taken through — the *canvas* background is not
+   captured: whether it comes from `html` or propagates up from `body`, an
+   offscreen snapshot comes back with it missing and everything else intact.
+   `background-attachment: fixed` on `body` has the same problem for the same
+   reason, since that background belongs to the scrolling layer.
+
+   None of it was visible for as long as the ground was near-white and the
+   missing background fell back to white. On a dark ground it is the entire
+   screen, and the app looks like it failed to load.
+
+   An ordinary element with an ordinary background always paints. The two rules
+   below stay as the fallback for real browsers, where all of this works. */
 html {
 	background: var(--color-ground);
-	color-scheme: light;
+	color-scheme: dark;
 }
 
 body {
 	-webkit-font-smoothing: antialiased;
-	background: var(--gradient-ground);
-	background-attachment: fixed;
-	color: var(--color-ink);
+	background: var(--color-ground);
+	color: var(--color-neutral-700);
 	font-family: var(--font-sans);
 }
 
-/* The accent gradient, wherever a thing is the live one: the active tab, the
-   active album, the primary button, an on toggle, this month's bar. */
+[data-shell-header] {
+	background: var(--gradient-ground);
+}
+
+/* Sharp corners, everywhere. A tube has none, and the softened rectangle was
+   the one thing in the old system that read as "app" rather than as "screen".
+   Written as one rule against the utility rather than as 76 hand edits: the
+   rule is unlayered and Tailwind's utilities are in `@layer utilities`, so this
+   wins whatever the specificity says (the same trick the focus ring below uses).
+
+   `rounded-full` is exempt on purpose. The only things wearing it are dots and
+   status indicators, which are circles by nature rather than softened
+   rectangles — the reference has them too. */
+.trophic [class*='rounded-']:not([class*='rounded-full']) {
+	border-radius: 0;
+}
+
+/* Wherever a thing is the live one: the active tab, the active album, the
+   primary button, an on toggle, this month's bar.
+   The fill is inset from the edge rather than flush with it — a hairline of
+   phosphor, a gap of ground, then the block. Done with two inset shadows rather
+   than a border and padding so it costs no layout: the first shadow is painted
+   on top of the second, so the 1px ring survives the 4px gap drawn under it. */
 .accent-fill {
-	background-image: var(--gradient-accent);
-	color: #fff;
+	background-color: var(--color-accent);
+	background-image: none;
+	color: #06120c;
+	box-shadow:
+		inset 0 0 0 1px var(--color-accent),
+		inset 0 0 0 4px var(--color-ground);
+}
+
+/* Because this owns `box-shadow`, it also wins over `shadow-*` and `lift-*` —
+   both of those are Tailwind utilities and this rule is unlayered. That is why
+   the two buttons that used to pair `accent-fill` with `shadow-md` no longer
+   do: a lit block does not also need a halo to say it is the live one, and a
+   utility that silently does nothing is worse than one that was deleted. */
+
+/* The fill without the inset ring, for a switch track. The ring reads as a
+   button's edge; on a 26px pill holding a 20px knob it reads as a fault. */
+.accent-fill-flat {
+	background-color: var(--color-accent);
+	background-image: none;
+	color: #06120c;
+}
+
+/* Anything that has left the tube: the lightbox portals itself onto `body` so
+   a full-size photograph is never curved, scanlined or tinted. The bloom is
+   inherited from `body`, so it has to be switched off explicitly. */
+.crt-exempt,
+.crt-exempt * {
+	text-shadow: none;
 }
 
 /* A card lifts by exactly one shadow step and rises at most a pixel. More than
@@ -163,6 +237,112 @@ textarea.smooth-layout:focus-visible,
 		linear-gradient(rgba(214, 178, 120, 0.035) 1px, transparent 1px),
 		linear-gradient(90deg, rgba(214, 178, 120, 0.035) 1px, transparent 1px);
 	background-size: 34px 34px;
+}
+
+/* -- the glass ------------------------------------------------------------
+   The monitor, as five layers that sit over the app and know nothing about it.
+
+   Everything here is `position: fixed` with `pointer-events: none`, painted
+   above the whole document. That is the point of the arrangement: content can
+   be rewritten, re-laid-out or replaced and none of it can disturb the
+   treatment, because the treatment is not attached to any of it.
+
+   The one effect that is NOT in here is the bloom. An overlay cannot know where
+   the glyphs are, so the halo around lit type has to come from `text-shadow` on
+   the text itself — but it is still one inherited rule at the root rather than a
+   per-component change. See `body` below.
+
+   Numbers are the reference's, taken down to the settled defaults: the
+   screenshot measures a 3.5px scanline period at 0.17 alpha and a 46% vignette,
+   which is heavier than anyone wants to read a journal through. */
+:root {
+	--crt-scan-alpha: 0.07;
+	--crt-scan-period: 3px;
+	--crt-vignette: 0.4;
+	--crt-grain: 0.02;
+	--crt-bloom: 1;
+}
+
+.crt {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 9000;
+}
+
+.crt-scan {
+	background: repeating-linear-gradient(
+		to bottom,
+		rgba(0, 0, 0, 0) 0,
+		rgba(0, 0, 0, 0) calc(var(--crt-scan-period) - 1px),
+		rgba(0, 0, 0, var(--crt-scan-alpha)) calc(var(--crt-scan-period) - 1px),
+		rgba(0, 0, 0, var(--crt-scan-alpha)) var(--crt-scan-period)
+	);
+}
+
+/* Centred slightly high: the reference's top corners stay brighter than its
+   bottom ones, which is what a tube with the gun behind the middle looks like. */
+.crt-vignette {
+	background: radial-gradient(
+		125% 105% at 50% 38%,
+		rgba(0, 0, 0, 0) 42%,
+		rgba(0, 0, 0, calc(var(--crt-vignette) * 0.45)) 74%,
+		rgba(0, 0, 0, var(--crt-vignette)) 100%
+	);
+}
+
+.crt-grain {
+	opacity: var(--crt-grain);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.crt-glow {
+	background: radial-gradient(
+		70% 55% at 50% 30%,
+		rgba(79, 255, 159, 0.045) 0%,
+		rgba(79, 255, 159, 0) 70%
+	);
+}
+
+/* The bloom, inherited from the root. Measured falloff on the reference: excess
+   over ground of 34 at the glyph edge, about 6 at 24px out, half-life ~8px —
+   which is a two-stop shadow at 8px and 22px. */
+body {
+	text-shadow:
+		0 0 calc(8px * var(--crt-bloom)) rgba(79, 255, 159, calc(0.26 * var(--crt-bloom))),
+		0 0 calc(22px * var(--crt-bloom)) rgba(79, 255, 159, calc(0.11 * var(--crt-bloom)));
+}
+
+/* -- the curve ------------------------------------------------------------
+   The barrel distortion, on a wrapper around the page content.
+
+   Two things about this were learned the hard way and are worth not
+   rediscovering:
+
+   - **The displacement map must use the full channel range.** The obvious
+     encoding — store the displacement in the R/G channels at its natural scale
+     — only reaches about 50 of the 255 available levels at a gentle curve, and
+     8-bit quantisation then turns every long straight line into a staircase.
+     `crt.ts` normalises the map so the corner sits at ±127 and lets
+     `feDisplacementMap`'s `scale` carry the magnitude instead. That is what
+     makes the curve smooth rather than segmented.
+   - **`feDisplacementMap` point-samples its source**, so 1px hairlines still
+     break up a little at the edges where the stretch is largest. That is
+     inherent to the primitive and cannot be tuned away; it halves on a 2x
+     display, where the filter runs on device pixels.
+
+   It wraps `main` and not the shell, because a filtered element becomes the
+   containing block for `position: fixed` descendants. The upload bar is
+   `sticky` and lives outside; the lightbox portals itself out (see
+   `portal.ts`), so full-size photographs are never curved or tinted. */
+.crt-screen {
+	filter: url(#crt-barrel);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.crt-flicker {
+		display: none;
+	}
 }
 
 ::-webkit-scrollbar {

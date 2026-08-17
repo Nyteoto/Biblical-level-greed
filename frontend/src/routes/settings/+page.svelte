@@ -37,6 +37,7 @@
 		type BackupStatus,
 		type StorageReport
 	} from '$lib/api';
+	import { phosphorize } from '$lib/trophic/colors';
 	import { getFolders, getUnassignedTags, reindex, type Folder } from '$lib/trophic/api';
 
 	let report = $state<StorageReport | null>(null);
@@ -213,7 +214,7 @@
 				</button>
 				<button
 					type="button"
-					class="accent-fill lift lift-md rounded-[11px] px-4 py-[11px] text-[13px] font-semibold shadow-md disabled:opacity-50"
+					class="accent-fill rounded-[11px] px-4 py-[11px] text-[13px] font-semibold disabled:opacity-50"
 					disabled={busy !== null || backup?.running}
 					onclick={() => act('backup', runBackup)}
 				>
@@ -254,7 +255,7 @@
 						>
 							<span
 								class="h-2 w-2 shrink-0 rounded-full"
-								style="background:{shipped ? 'var(--color-neutral-400)' : folder.color}"
+								style="background:{shipped ? 'var(--color-neutral-400)' : phosphorize(folder.color)}"
 							></span>
 							<span
 								class="min-w-0 flex-1 truncate text-[14px] {shipped
@@ -272,7 +273,7 @@
 							{:else}
 								<span
 									class="shrink-0 truncate font-mono text-[12px]"
-									style="color:{folder.color}"
+									style="color:{phosphorize(folder.color)}"
 								>
 									{folder.tags.map((t) => `<${t}>`).join(' ')}
 								</span>
@@ -324,7 +325,7 @@
 								aria-checked={row.on}
 								aria-label={row.label}
 								class="flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[3px] transition-colors {row.on
-									? 'accent-fill justify-end'
+									? 'accent-fill-flat justify-end'
 									: 'justify-start bg-neutral-300'}"
 								onclick={() => row.set(!row.on)}
 							>

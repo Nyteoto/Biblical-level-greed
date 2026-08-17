@@ -316,24 +316,33 @@ ADAPTERS.colorize = (i: { text: string }) => {
 // one-line-per-colour table is what proves that rather than asserts it.
 
 const THEME: Record<string, string[]> = {
-	// lib/colors.ts — the syntax hues, darkened for the paper ground.
-	'#007552': ['#3b82f6'], // folder — pine here, blue in the source
-	'#6b3fa0': ['#9333ea'], // time
-	'#b42342': ['#e11d48'], // pattern
-	'#1f5fa0': ['#d97706'], // directive — the accent, whatever the accent is
-	'#5b3fbe': ['#8b5cf6'], // todo
-	// The caret and its halo. Ink again rather than inverted ink — the ground
-	// came back to light, so this is nearly the source's own value.
-	'#201e1d': ['#18181b'],
-	// The refusal red the validation layer blinks a token in. It used to sit in
-	// the accent's own family; now that the accent is blue, red belongs to
-	// refusal alone, which is the better arrangement and was an accident.
-	'#c2352b': ['#ef4444']
+	// lib/colors.ts — the syntax hues, now collapsed onto one phosphor.
+	//
+	// This is the first time the table has been many-to-one, and it is the whole
+	// design rather than a shortcut: a single-phosphor tube has no hue to spend,
+	// so every token kind is the same lit green and the delimiters — `<>`, `{}`,
+	// `\`, `--` — carry the distinction they always carried. What tells a tag
+	// from prose on screen is weight, which is applied in `ColorizedText.svelte`
+	// and is deliberately not in `colorize.ts`: the corpus pins the colour of
+	// each segment, not how heavily this app chooses to set it.
+	'#4fff9f': [
+		'#3b82f6', // folder
+		'#9333ea', // time
+		'#e11d48', // pattern
+		'#d97706', // directive
+		'#8b5cf6', // todo
+		'#18181b' // ink — the caret, which is also peak emission here
+	],
+	// The refusal red the validation layer blinks a token in. It is the one
+	// colour `phosphorize()` refuses to fold into the ramp, for the same reason
+	// it is the one colour left in this table: a refusal that looks like output
+	// is not a refusal.
+	'#ff6a5a': ['#ef4444']
 };
 
 /** `rgba(r,g,b,a)` translations, alpha carried through unchanged. */
 const THEME_RGB: Record<string, string> = {
-	'32,30,29': '24,24,27' // ink — the caret and its halo
+	'79,255,159': '24,24,27' // ink — the caret and its halo
 };
 
 function translated(actual: string): string[] {
@@ -343,20 +352,29 @@ function translated(actual: string): string[] {
 	return [];
 }
 
-/** The unambiguous half of THEME, for translating colours embedded in a
- *  larger string — `colorize`'s rendered markup. The two greys that stand for
- *  more than one source colour are excluded: inside a string there is nothing
- *  to disambiguate them against, and guessing would hide a real difference. */
-const THEME_IN_TEXT = Object.entries(THEME)
-	.filter(([, sources]) => sources.length === 1)
-	.map(([port, sources]) => [port, sources[0]] as const);
+/** Source colour → this port's colour, for translating colours embedded in a
+ *  larger string — `colorize`'s rendered markup.
+ *
+ *  Note the direction, which is the reverse of what this used to do. The old
+ *  version rewrote the *actual* markup back into source colours and had to skip
+ *  any port colour standing for more than one source, because inside a string
+ *  there is nothing to disambiguate them against. Now that five source hues
+ *  collapse onto one phosphor, skipping the ambiguous ones would skip all of
+ *  them and the colorize fixtures would stop checking anything.
+ *
+ *  Going the other way has no such problem: every source colour has exactly one
+ *  port colour, so rewriting the *expected* fixture forward into what this port
+ *  should emit is a total function. Nothing is excluded and nothing is guessed. */
+const THEME_FORWARD = Object.entries(THEME).flatMap(([port, sources]) =>
+	sources.map((source) => [source, port] as const)
+);
 
-function translatedWithin(actual: string): string {
-	let out = actual;
-	for (const [port, source] of THEME_IN_TEXT) out = out.split(port).join(source);
+function translatedWithin(expected: string): string {
+	let out = expected;
+	for (const [source, port] of THEME_FORWARD) out = out.split(source).join(port);
 	// `rgba(…)` inside a larger value — the caret's box-shadow.
 	for (const [port, source] of Object.entries(THEME_RGB)) {
-		out = out.split(`rgba(${port},`).join(`rgba(${source},`);
+		out = out.split(`rgba(${source},`).join(`rgba(${port},`);
 	}
 	return out;
 }
@@ -368,7 +386,7 @@ function diff(actual: unknown, expected: unknown, path = ''): string[] {
 
 	if (typeof actual === 'string' && typeof expected === 'string' && actual !== expected) {
 		if (translated(actual).includes(expected)) return [];
-		if (translatedWithin(actual) === expected) return [];
+		if (translatedWithin(expected) === actual) return [];
 	}
 
 	if (typeof expected === 'number' && typeof actual === 'number') {

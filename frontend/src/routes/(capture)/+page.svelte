@@ -50,7 +50,7 @@
 		type Reminder,
 		type Vocab
 	} from '$lib/trophic/api';
-	import { UI_COLORS } from '$lib/trophic/colors';
+	import { UI_COLORS, phosphorize } from '$lib/trophic/colors';
 	import { deviceType } from '$lib/trophic/device.svelte';
 	import { attach, release, type Attachment } from '$lib/trophic/media';
 	import { tagForPin, withPinnedTag } from '$lib/trophic/pinned';
@@ -414,7 +414,7 @@
 			}}
 		>
 			{#if pinnedFolder}
-				<span class="h-2 w-2 rounded-full" style="background:{pinnedFolder.color}"></span>
+				<span class="h-2 w-2 rounded-full" style="background:{phosphorize(pinnedFolder.color)}"></span>
 				<span class="text-[13px] font-semibold">{pinnedFolder.name}</span>
 				<span class="text-[11px] text-neutral-700">
 					pinned ·
@@ -537,7 +537,7 @@
 							<video src={item.preview} muted playsinline class="h-full w-full object-cover"
 							></video>
 							<span
-								class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+								class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 							>
 								clip
 							</span>
@@ -545,7 +545,7 @@
 
 						<button
 							type="button"
-							class="absolute top-[5px] right-[5px] flex h-[19px] w-[19px] items-center justify-center rounded-full bg-white/90 text-[12px] leading-none text-neutral-800 shadow-sm transition-colors hover:text-accent"
+							class="absolute top-[5px] right-[5px] flex h-[19px] w-[19px] items-center justify-center rounded-full bg-ground/90 text-[12px] leading-none text-neutral-800 shadow-sm transition-colors hover:text-accent"
 							aria-label="remove"
 							onclick={() => drop(item.key)}>×</button
 						>

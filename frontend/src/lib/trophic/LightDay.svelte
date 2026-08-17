@@ -46,11 +46,11 @@
 				{i === 0 ? dayLabel(day.key) : ''}
 			</span>
 			{#if entry.todo_lines.length > 0}
-				<div class="min-w-0 flex-1 text-[16px] leading-[1.5]">
+				<div class="min-w-0 flex-1 text-[16px] leading-[1.5] font-light">
 					<TodoEntryText {entry} ontoggle={(line) => ontoggle?.(entry, line)} />
 				</div>
 			{:else}
-				<p class="min-w-0 flex-1 text-[16px] leading-[1.5]" style="overflow-wrap:anywhere">
+				<p class="min-w-0 flex-1 text-[16px] leading-[1.5] font-light" style="overflow-wrap:anywhere">
 					<ColorizedText text={entry.clean_text} />
 				</p>
 			{/if}
@@ -77,7 +77,7 @@
 					/>
 					{#if isVideo(shot.ref)}
 						<span
-							class="absolute bottom-1 left-1 rounded-[5px] bg-white/[0.88] px-[5px] py-[2px] font-mono text-[8px] text-neutral-800"
+							class="absolute bottom-1 left-1 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[8px] text-neutral-800"
 						>
 							▶
 						</span>

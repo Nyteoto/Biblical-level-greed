@@ -1,53 +1,61 @@
-// Trophic's palette, re-lit for the paper-light ground.
+// Trophic's palette, re-lit for the phosphor tube.
 //
-// The hue assignments were the product and had never moved until the shell's
-// accent turned blue and the folder tag had to give that hue up: a folder is
-// now pine, rose is still a sentiment, purple is still time. What moves with the shell is lightness.
-// The source chose these against white (`logic/colors.ts`: #3b82f6, #9333ea,
-// #e11d48, #d97706, #8b5cf6) and they are *nearly* right here — but the shell
-// is #f3f2f2 rather than #fff, the type is Archivo rather than a mono, and at
-// 17px inside running prose the originals sit on the contrast line rather than
-// over it. Each is taken down a rung or two of the same hue and given weight
-// 600, which is what makes a tag read as a tag in a paragraph without the
-// colour having to shout.
+// The hue assignments were the product for as long as this app had hues. They
+// do not survive a monochrome screen, and that is the point rather than a loss:
+// **every tag now reads the same way — lit phosphor, bold — and the syntax is
+// told apart by its delimiters, which is what they were always for.** A folder
+// is `<like this>`, time is `{like this}`, a pattern is `\like-this`, a
+// directive and a todo are `--like-this`. You already have to read the bracket;
+// asking the colour to repeat it was doing work the punctuation had done.
 //
-// This file went from the dark shell's 400-rung set to this one in a single
-// edit and nothing else changed, which is the property worth keeping: **if the
-// ground ever moves again, swap this file and nothing else.**
+// This replaced five hues with one axis. It is less to look at and much less to
+// maintain: there is no longer a question of what colour a new token kind gets.
+//
+// The file went from a dark shell's 400-rung set, to a paper-light set, to this
+// in three single edits and nothing else changed each time. That is the property
+// worth keeping: **if the ground ever moves again, swap this file and nothing
+// else.**
 //
 // One consequence to know about before editing: `scripts/verify-ui.ts` holds a
 // `THEME` table mapping every colour emitted here back to the source colour it
 // stands in for, and the corpus comparison translates through it and then
 // demands an exact match. Change a value here and that table changes with it,
 // or 700-odd fixtures start failing for a reason that has nothing to do with
-// behaviour.
+// behaviour. Note that the mapping is now many-to-one — several source hues
+// collapse onto one phosphor — which is why that file translates in the
+// source→port direction; see the comment there.
+
+/** Peak emission. The colour of anything the screen is actively saying. */
+const LIT = '#4fff9f';
 
 export const SYNTAX_COLORS = {
-	// Pine, not blue. A folder tag was #1e5fbf until the shell's accent became
-	// slate blue and took that colour for chrome — an inline tag and an active
-	// album cannot be the same colour when they sit two centimetres apart in
-	// the sidebar. Same lightness and chroma as the blue it replaces, rotated
-	// to a hue nothing else here uses.
-	folder: '#007552', // <pointer>
-	time: '#6b3fa0', // {time-link}
-	pattern: '#b42342', // \pattern
-	// The directive is the accent itself: it is the one token that acts on the
-	// app rather than describing the thought, and it only ever appears in the
-	// capture bar.
-	directive: '#1f5fa0', // --directive  (--color-accent-700)
-	todo: '#5b3fbe' // --todo
+	// All one colour, deliberately. See the note above: the delimiters carry the
+	// distinction, and on a single-phosphor tube a second hue is a fault rather
+	// than a category.
+	folder: LIT, // <pointer>
+	time: LIT, // {time-link}
+	pattern: LIT, // \pattern
+	directive: LIT, // --directive
+	todo: LIT // --todo
 } as const;
 
 export const UI_COLORS = {
-	ink: '#201e1d', // the text and the caret
-	// The caret's halo — the source's `rgba(24,24,27,0.2)`, which is ink at 20%
-	// and stays ink at 20% here because the ground came back to light.
-	inkGlow: 'rgba(32,30,29,0.2)',
-	muted: '#bab6b6', // neutral-400 — the resting indicator, checkbox borders
-	dim: '#605d5d', // neutral-700 — timestamps, labels
-	success: '#2f9e6d', // sent
-	error: '#c2352b' // refused
+	ink: LIT, // the text and the caret
+	// The caret's halo. Ink at 20% on paper; the same idea here, except that on
+	// a tube the halo is emission rather than shadow, so it is the lit colour.
+	inkGlow: 'rgba(79,255,159,0.2)',
+	muted: '#1f583f', // the resting indicator, checkbox borders
+	dim: '#33a266', // timestamps, labels
+	success: '#4fff9f', // sent — the tube has one good colour and this is it
+	error: '#ff6a5a' // refused
 } as const;
+
+// The one deliberate exception to the single hue, and it is worth stating why.
+// `error` is a refusal: the validation layer blinks a token in it when the app
+// will not accept what you typed. That is the only moment the screen contradicts
+// you, and it is the one thing that must not look like normal output. A real
+// amber/red phosphor terminal had exactly this problem and solved it the same
+// way — with the only other colour in the building.
 
 /** Which token kinds get colour when an entry is rendered read-only.
  *  Directives and todos are stripped from the stored text, so they never
@@ -57,3 +65,37 @@ export const TOKEN_COLORS: Record<string, string> = {
 	time: SYNTAX_COLORS.time,
 	pattern: SYNTAX_COLORS.pattern
 };
+
+/**
+ * Fold an arbitrary colour onto the phosphor ramp, by its luminance.
+ *
+ * Folders carry a colour of their own. It is assigned at creation by
+ * `next_color` — real, stored, user-visible data, pinned by its own corpus file
+ * — and it is not this file's to reassign. But a dozen folder hues on a green
+ * monitor is a dozen faults in the tube.
+ *
+ * So the data keeps its colour and the *screen* does not show it: anything that
+ * would paint a folder colour paints this instead, which preserves the relative
+ * lightness the palette encodes while spending no hue on it. Brighter folder
+ * colours stay brighter. Nothing else changes, and deleting this function would
+ * put the hues back rather than break anything.
+ */
+export function phosphorize(hex: string): string {
+	// The refusal red is the one colour that must survive this. It exists to
+	// contradict you, and a refusal folded onto the phosphor ramp would look
+	// exactly like ordinary output — which is the single worst thing it could do.
+	if (hex === UI_COLORS.error) return hex;
+
+	const match = /^#?([\da-f]{6})$/i.exec(hex.trim());
+	if (!match) return UI_COLORS.dim;
+
+	const n = parseInt(match[1], 16);
+	// Rec. 709 luma, on the raw sRGB values. Perceptual accuracy is not the goal
+	// — preserving the palette's own ordering is.
+	const luma =
+		(0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+
+	// Across the four rungs of the ramp, dimmest to lit.
+	const ramp = ['#2d8f5a', '#33a266', '#3cbe77', LIT];
+	return ramp[Math.min(ramp.length - 1, Math.max(0, Math.round(luma * (ramp.length - 1))))];
+}

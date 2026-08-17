@@ -23,6 +23,7 @@
 	import Sparkline from '$lib/trophic/Sparkline.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings } from '$lib/trophic/settings.svelte';
+	import { pixelate } from '$lib/trophic/pixelate';
 	import { getShelf, type Shelf } from '$lib/trophic/api';
 
 	let shelf = $state<Shelf | null>(null);
@@ -32,6 +33,12 @@
 
 	const thisYear = String(new Date().getFullYear());
 	let year = $state(thisYear);
+
+	// What the display numeral says. Named because it is read twice: once to
+	// draw, and once as the `{#key}` that redraws it — `pixelate` reads its
+	// element's text when the action is created, so the element has to be new
+	// when the year changes.
+	const shelfYear = $derived(logSettings.yearAlbums ? (shelf?.year ?? year) : 'All');
 
 	$effect(() => {
 		logSettings.hydrate();
@@ -137,7 +144,7 @@
 				<button
 					type="button"
 					class="rounded-[12px] px-3 py-2.5 text-[15px] transition-colors {on
-						? 'accent-fill font-extrabold shadow-md'
+						? 'accent-fill font-extrabold'
 						: 'font-semibold text-neutral-700 hover:text-ink'}"
 					onclick={() => {
 						logSettings.setYearAlbums(true);
@@ -166,9 +173,19 @@
 						Year shelf
 					</div>
 					<div class="mt-2 flex items-baseline gap-4">
-						<h1 class="text-[64px] leading-[0.9] font-extrabold tracking-[-0.035em]">
-							{logSettings.yearAlbums ? (shelf?.year ?? year) : 'All'}
-						</h1>
+						<!-- The one pixelated thing on the screen. `{#key}` because an action
+						     reads its element's text once, and the year changes under it.
+						     Tracking went from -0.035em to positive: the negative leading was
+						     tuned for Archivo's tight aperture, and mono numerals are wider —
+						     at 64px they collided. -->
+						{#key shelfYear}
+							<h1
+								use:pixelate={{ block: 3 }}
+								class="text-[64px] leading-[0.9] font-extrabold tracking-[0.02em]"
+							>
+								{shelfYear}
+							</h1>
+						{/key}
 						{#if shelf}
 							<span class="text-[14px] text-neutral-700 tabular-nums">
 								{shelf.albums.length}

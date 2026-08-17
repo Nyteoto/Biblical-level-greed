@@ -135,6 +135,27 @@ editing frontend source leaves the app serving stale UI until you run
   the corpus. A day is a sticky header, a contact sheet of its media, then its
   lines. Anything that reintroduces one-day-at-a-time navigation is going
   backwards.
+- **The monitor is a layer, not a style.** The scanlines, vignette, grain and
+  glow are five fixed `pointer-events: none` siblings in `+layout.svelte` that
+  know nothing about the app; the curve is one CSS filter on `main`. Content can
+  be rewritten freely without touching any of it, and that separation is the
+  whole point — do not push the effect down into components.
+  - The curve's displacement map **must** stay normalised (`crt.ts`). Storing
+    the offsets at their natural scale uses ~50 of 255 levels and quantises
+    every straight line into a visible staircase.
+  - A filter rasterises its subtree and becomes the containing block for
+    `fixed` descendants. That is why the upload bar is outside it, and why
+    `Lightbox.svelte` portals itself onto `body`: **a full-size photograph is
+    never curved, scanlined or tinted.** Thumbnails are.
+- **The ground is painted on `[data-shell-header]`, not on `html` or `body`.**
+  WebKitGTK — the engine `desktop.py` ships — drops the canvas background from
+  an offscreen snapshot. Harmless when the ground was near-white; on a dark
+  ground the app looks like it failed to load.
+- **One hue, and one exception.** Every syntax token is the same lit phosphor
+  and is told apart by its delimiter and its weight, not its colour; folder
+  colours are real stored data and are folded onto the ramp at render time by
+  `phosphorize()`. The single exception is the refusal red, which must never be
+  folded in — a refusal that looks like output is not a refusal.
 - **Membership is resolved, never stored, and the pin does not break that.**
   Pinning a folder appends its tag to the *raw line*, so a pinned capture is
   byte-identical to one you tagged yourself and survives a rebuild. Never add a

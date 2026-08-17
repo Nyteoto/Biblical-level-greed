@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { phosphorize } from './colors';
 	/**
 	 * The floating menu for filing an entry into a folder by hand.
 	 * Ported from `components/FolderAssignMenu.tsx`.
@@ -106,7 +107,7 @@
 						onclose();
 					}}
 				>
-					<span class="shrink-0" style="color:{f.color}">{active ? '●' : '○'}</span>
+					<span class="shrink-0" style="color:{phosphorize(f.color)}">{active ? '●' : '○'}</span>
 					<span class="truncate">{f.name}</span>
 				</button>
 			{/each}

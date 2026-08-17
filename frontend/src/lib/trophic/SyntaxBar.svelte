@@ -41,7 +41,7 @@
 					type="button"
 					class="min-w-[46px] rounded-[11px] py-[10px] text-center text-[16px] leading-none font-bold transition-[transform,background,box-shadow] duration-75 select-none"
 					style="color:{k.color};
-					       background:{pressed === k.label ? 'var(--color-neutral-200)' : '#fff'};
+					       background:{pressed === k.label ? 'var(--color-neutral-200)' : 'var(--color-surface)'};
 					       box-shadow:{pressed === k.label ? 'none' : 'var(--shadow-sm)'};
 					       transform:translateY({pressed === k.label ? 1 : 0}px);
 					       -webkit-tap-highlight-color:transparent;touch-action:manipulation"

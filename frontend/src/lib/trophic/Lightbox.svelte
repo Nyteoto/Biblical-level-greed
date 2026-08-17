@@ -22,6 +22,7 @@
 	 * at a time, opened deliberately, is exactly the case the Range-serving
 	 * backend is good at.
 	 */
+	import { portal } from './portal';
 	import { mediaUrl, mediaViewUrl } from './api';
 	import { isVideo, plateFallback, type Shot } from './media';
 
@@ -82,7 +83,8 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed inset-0 z-[200] flex flex-col bg-black/95 backdrop-blur-sm"
+		use:portal
+		class="crt-exempt fixed inset-0 z-[9500] flex flex-col bg-black/95 backdrop-blur-sm"
 		onclick={onclose}
 		ontouchstart={onTouchStart}
 		ontouchend={onTouchEnd}
