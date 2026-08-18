@@ -139,8 +139,4 @@
 			{/each}
 		</div>
 	{/if}
-
-	<p class="mt-auto px-[22px] pt-4 text-[11px] leading-[1.5] text-neutral-700">
-		Chapters are month runs the app named from your own tags.
-	</p>
 </aside>

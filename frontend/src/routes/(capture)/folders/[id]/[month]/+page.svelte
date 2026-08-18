@@ -91,7 +91,6 @@
 	const shots = $derived(days.flatMap((d) => d.media));
 	const lines = $derived(days.reduce((n, d) => n + d.entries.length, 0));
 
-	const name = $derived(album?.folder?.name ?? 'Unfiled');
 	/** Which months this album has anything in, for the arrows and the spine. */
 	const monthsWithSomething = $derived(
 		(album?.volumes ?? []).flatMap((n, i) => (n > 0 ? [i + 1] : []))
@@ -118,9 +117,6 @@
 		expanded = next;
 	}
 
-	const chapterHere = $derived(
-		album?.chapters.find((c) => c.last_month === Number(month.slice(5, 7))) ?? null
-	);
 	/** The contact strip is the month at a glance, not the whole contact sheet:
 	 *  twelve plates and a count, so the words are still above the fold. */
 	const STRIP = 12;
@@ -138,17 +134,6 @@
 					onclick={() => (collapsed = false)}>›</button
 				>
 			{/if}
-			<!-- True by construction: this screen is the month it names. -->
-			<!-- The month is the 44px heading below and nothing else. This said it
-			     a second time in 12px caps, which is the same noise the album view
-			     had — see the label-once rule in CLAUDE.md. -->
-			<a
-				href="/folders/{id}?year={year}"
-				class="lift lift-sm rounded-lg bg-surface px-[9px] py-1 text-[12px] text-neutral-700 shadow-sm"
-				title="the whole year"
-			>
-				{name}
-			</a>
 		</div>
 
 		<div class="flex items-center gap-2 text-[12px] text-neutral-700">
@@ -192,11 +177,6 @@
 				<div class="flex flex-col gap-[30px]">
 					<!-- The month, named, with what it holds. -->
 					<div class="flex items-baseline gap-4">
-						{#if chapterHere}
-							<span class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">
-								{chapterHere.name}
-							</span>
-						{/if}
 						<h1 class="text-[44px] leading-none font-extrabold tracking-[-0.035em]">
 							{monthLabel(month).split(' ')[0]}
 						</h1>
