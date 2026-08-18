@@ -45,13 +45,19 @@
 	import RichText from './RichText.svelte';
 	import { clean, isBlank } from './richtext';
 	import { holdable } from './holdable';
+	import Glyph from './Glyph.svelte';
 	import type { Folder } from './api';
 
 	let {
 		folder,
 		expanded = $bindable(false),
 		onsave,
-		onholdpicture
+		onholdpicture,
+		year = null,
+		group = '',
+		entries = 0,
+		media = 0,
+		sentiments = []
 	}: {
 		folder: Folder;
 		expanded?: boolean;
@@ -60,6 +66,15 @@
 		 *  removing it: a control that sits on screen forever to be used twice is
 		 *  the noise the hold gesture exists to delete. */
 		onholdpicture?: (x: number, y: number) => void;
+		/** The album's facts — this folder seen through the year on screen.
+		 *  Passed in rather than fetched: this card is a child of the page that
+		 *  already has them, and a second request for the same numbers would be
+		 *  able to disagree with the ones beside it. */
+		year?: string | null;
+		group?: string;
+		entries?: number;
+		media?: number;
+		sentiments?: { name: string; count: number }[];
 	} = $props();
 
 	let editing = $state(false);
@@ -80,6 +95,19 @@
 	const unwritten = $derived(picture.length > 0 && !written);
 
 	const label = $derived(exists ? `Overview of ${folder.name}` : 'Create Overview');
+
+	/** The day the folder was made, in the reader's own locale. Long-form on
+	 *  purpose: this is read once in a while, not scanned in a column. */
+	const created = $derived(
+		folder.created_ts
+			? new Date(folder.created_ts).toLocaleDateString(undefined, {
+					year: 'numeric',
+					month: 'long',
+					day: 'numeric'
+				})
+			: ''
+	);
+	const peak = $derived(Math.max(...sentiments.map((s) => s.count), 1));
 
 	function open() {
 		expanded = true;
@@ -194,6 +222,89 @@
 					{/if}
 
 					<div class="clear-both"></div>
+
+					<!-- The folder's own facts. Below the prose rather than beside
+					     it: the description is what you came to read, and a column
+					     of figures next to it would compete with the writing for
+					     the eye every time the card opened. -->
+					<dl
+						class="mt-7 flex flex-wrap items-baseline gap-x-9 gap-y-3 border-t border-neutral-300 pt-5 text-[12px]"
+					>
+						{#if year}
+							<div class="flex flex-col gap-1">
+								<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+									Group {year}
+								</dt>
+								<dd class={group ? '' : 'text-neutral-700'}>{group || 'none'}</dd>
+							</div>
+						{/if}
+						<div class="flex flex-col gap-1">
+							<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+								Created
+							</dt>
+							<dd>{created || '—'}</dd>
+						</div>
+						<div class="flex flex-col gap-1">
+							<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+								Entries
+							</dt>
+							<dd class="flex items-center gap-1.5 tabular-nums">
+								<Glyph kind="entries" count={entries} size={12} />
+								{entries.toLocaleString()}
+							</dd>
+						</div>
+						<div class="flex flex-col gap-1">
+							<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+								Media
+							</dt>
+							<dd class="flex items-center gap-1.5 tabular-nums">
+								<Glyph kind="media" count={media} size={12} />
+								{media.toLocaleString()}
+							</dd>
+						</div>
+						{#if folder.tags.length > 0}
+							<div class="flex min-w-0 flex-col gap-1">
+								<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+									Tags
+								</dt>
+								<dd class="flex flex-wrap gap-x-2.5 gap-y-1 font-mono">
+									{#each folder.tags as tag (tag)}
+										<span style="color:var(--color-accent-700)">{`<${tag}>`}</span>
+									{/each}
+								</dd>
+							</div>
+						{/if}
+					</dl>
+
+					{#if sentiments.length > 0}
+						<!-- The `\pattern` counts. Stored and drawn, never interpreted
+						     — a reading, not a verdict, which is why there is no
+						     sentence under them saying what they mean. -->
+						<div class="mt-6 flex max-w-[440px] flex-col gap-2">
+							<div class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+								Readings
+							</div>
+							{#each sentiments as s (s.name)}
+								<div class="flex items-center gap-3 text-[12px]">
+									<span
+										class="w-24 shrink-0 truncate text-right font-mono"
+										style="color:var(--color-accent-700)"
+									>
+										{`\\${s.name}`}
+									</span>
+									<div class="h-[7px] flex-1 overflow-hidden rounded-[4px] bg-neutral-200">
+										<div
+											class="h-full rounded-[4px]"
+											style="width:{(s.count / peak) * 100}%;background:var(--gradient-accent)"
+										></div>
+									</div>
+									<span class="w-8 shrink-0 text-right tabular-nums text-neutral-700">
+										{s.count}
+									</span>
+								</div>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>

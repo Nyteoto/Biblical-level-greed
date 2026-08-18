@@ -65,6 +65,7 @@
 	import { lastAlbum } from '$lib/trophic/lastalbum.svelte';
 	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
 	import OverviewCard from '$lib/trophic/OverviewCard.svelte';
+	import Glyph from '$lib/trophic/Glyph.svelte';
 	import HoldMenu from '$lib/trophic/HoldMenu.svelte';
 
 	const id = $derived(page.params.id!);
@@ -261,6 +262,31 @@
 			     now — see `FolderPanel` — so the name is in the sidebar where it
 			     already was, and there is one less control on this screen. -->
 		</div>
+
+		<!-- Words off: everything ever made in here, densest possible. This is
+		     the one view the deleted ruler could never give, and it lost its
+		     button by accident when the properties moved into `FolderPanel` —
+		     the view itself was never removed, only the way in.
+
+		     Only when there is something to see, and not while the overview has
+		     the column: the overview replaces the days, so a toggle that swapped
+		     what is underneath it would appear to do nothing. -->
+		{#if shots.length && !overviewOpen}
+			<div class="flex items-center gap-2 text-[12px] text-neutral-700">
+				<button
+					type="button"
+					aria-pressed={sheet}
+					class="flex items-center gap-2 rounded-lg px-[11px] py-1.5 transition-colors {sheet
+						? 'lift lift-sm bg-surface font-semibold text-ink shadow-sm'
+						: 'hover:text-ink'}"
+					onclick={() => (sheet = !sheet)}
+				>
+					<Glyph kind="media" count={shots.length} size={13} />
+					<span class="tabular-nums">{shots.length}</span>
+					<span>{sheet ? 'reading' : 'contact sheet'}</span>
+				</button>
+			</div>
+		{/if}
 	</div>
 
 	<div class="flex min-h-0 flex-1">
@@ -295,6 +321,11 @@
 							bind:expanded={overviewOpen}
 							onsave={(text) => act(patchFolder(owner.id, { overview: text }))}
 							onholdpicture={(x, y) => (heldPicture = { x, y })}
+							year={album.year}
+							group={album.group}
+							entries={album.entries.length}
+							media={album.media_count}
+							sentiments={album.sentiments}
 						/>
 					</div>
 				{/if}
