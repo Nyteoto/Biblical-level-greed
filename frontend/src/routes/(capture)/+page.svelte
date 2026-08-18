@@ -586,7 +586,6 @@
 						bind:value={draft}
 						{vocab}
 						{blinkIndices}
-						placeholder="what happened?"
 						onkeydown={handleKeyDown}
 						onpaste={handlePaste}
 					/>
