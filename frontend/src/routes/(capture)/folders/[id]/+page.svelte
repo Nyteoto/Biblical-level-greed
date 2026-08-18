@@ -45,7 +45,7 @@
 	import Segmented from '$lib/trophic/Segmented.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { todayKey } from '$lib/trophic/day';
-	import { foldQuiet, groupDays, isoWeek, monthLabel, stretchLabel, stretchTally } from '$lib/trophic/log';
+	import { albumWeek, foldQuiet, groupDays, stretchLabel, stretchTally } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import type { Shot } from '$lib/trophic/media';
 	import {
@@ -138,10 +138,6 @@
 	const previousYear = $derived(shelf?.previous?.year ?? null);
 
 	const name = $derived(album?.folder?.name ?? 'Unfiled');
-	/** The month the top of the column is in. The header is about where you
-	 *  are in the year, not about the album, so it reads off the lead day. */
-	const heading = $derived(lead ? monthLabel(lead.key) : '');
-
 	/** The spine and the chapter list open the month. They used to scroll the
 	 *  column to it, which was the tell that a month was not a thing you could
 	 *  be in — you could reach one, but the header went on naming the newest
@@ -235,8 +231,12 @@
 			     date in the largest type on the page. This label was not even a
 			     scroll indicator; it read off the lead day and never moved. The week
 			     number stays because nothing else prints it. -->
-			{#if lead}
-				<span class="text-[12px] text-neutral-700">week {isoWeek(lead.key)}</span>
+			<!-- The album's own week, not the calendar's. `days` is newest first,
+			     so the last of them is where this album starts. -->
+			{#if lead && days.length}
+				<span class="text-[12px] text-neutral-700">
+					week {albumWeek(days[days.length - 1].key, lead.key)}
+				</span>
 			{/if}
 
 			<!-- The album's name and everything you could do to it lived behind a

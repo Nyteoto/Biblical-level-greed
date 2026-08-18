@@ -167,6 +167,34 @@ export function isoWeek(key: string): number {
 	return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 86400000));
 }
 
+/**
+ * Which week of *this album* a day falls in, counting from 0.
+ *
+ * The header used to print `isoWeek`, which is the week of the calendar year —
+ * `week 34` in August, a number that says where the planet is rather than where
+ * the project is. Inside an album the only week worth counting is the album's
+ * own, so the first week of anything is week 0 and it ticks over on Mondays
+ * from there.
+ *
+ * Monday boundaries rather than rolling seven-day spans from the first entry:
+ * a week is a thing with edges everyone already shares, and a project whose
+ * weeks turn over on a Wednesday because that is when it started is a project
+ * you have to do arithmetic about. `isoWeek` stays as it is — it is checked by
+ * `verify-ui.ts` and it is still the right answer to a different question.
+ */
+export function albumWeek(first: string, key: string): number {
+	return Math.round((mondayOf(key) - mondayOf(first)) / (7 * 86400000));
+}
+
+/** Midnight UTC on the Monday of `key`'s week. */
+function mondayOf(key: string): number {
+	const [y, m, d] = key.split('-').map(Number);
+	const date = new Date(Date.UTC(y, m - 1, d));
+	const dow = (date.getUTCDay() + 6) % 7; // Monday = 0
+	date.setUTCDate(date.getUTCDate() - dow);
+	return date.getTime();
+}
+
 /** `AUGUST 2026`, upper-cased by the type rather than here so the string stays
  *  readable in a tooltip. */
 export function monthLabel(key: string): string {

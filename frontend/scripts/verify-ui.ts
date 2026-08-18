@@ -39,7 +39,7 @@ import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src
 import { enqueue, flush, pendingCount, STORAGE_KEY } from '../src/lib/trophic/retry-queue.ts';
 import { todayKey } from '../src/lib/trophic/day.ts';
 import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
-import { foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
+import { albumWeek, foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
 import type { Entry, Vocab } from '../src/lib/trophic/api.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -579,6 +579,23 @@ function localChecks(): string[] {
 	for (const [key, want] of weekCases) {
 		const got = isoWeek(key);
 		if (got !== want) failures.push(`  isoWeek(${key}) = ${got}, expected ${want}`);
+	}
+
+	// `albumWeek` counts an album's own weeks from 0, on Monday boundaries. The
+	// last case is the one worth pinning: it crosses a new year, where ISO week
+	// numbers reset and a subtraction of them would go negative.
+	const albumCases: [string, string, number][] = [
+		['2026-08-18', '2026-08-18', 0],
+		['2026-08-18', '2026-08-23', 0], // same Mon–Sun week
+		['2026-08-18', '2026-08-24', 1], // the next Monday
+		['2026-08-18', '2026-09-07', 3],
+		['2026-12-28', '2027-01-04', 1]
+	];
+	for (const [first, key, want] of albumCases) {
+		const got = albumWeek(first, key);
+		if (got !== want) {
+			failures.push(`  albumWeek(${first}, ${key}) = ${got}, expected ${want}`);
+		}
 	}
 
 	return failures;
