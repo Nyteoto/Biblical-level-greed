@@ -124,29 +124,33 @@
  * had not registered the press at all. On a touch screen that reads as a dropped
  * tap and you press it again.
  *
- * **It flashes the highlight, it does not add a halo.** The first version bloomed
- * a rim outside the control, which reads as "something is glowing here" rather
- * than as "this control just lit up". What a press should look like is the lit
- * state arriving for a moment — and arriving *again* on something already lit,
- * which is the harder half: an accent-coloured wash over an accent-filled button
- * is invisible.
+ * **The highlight goes out and comes back on.** That is the whole gesture, and
+ * it took two wrong turns to find: a halo bloomed outside the control reads as
+ * "something is glowing here", and a bright wash over it reads as glare. Neither
+ * is what a control does when you press it. What it does is blink — the solid
+ * lit box drops to nothing for a moment and then returns.
  *
- * So the wash is a lightness step *above* the accent rather than the accent
- * itself. Against the ground it reads as the control lighting up; against the
- * accent it reads as the same control flaring brighter. One rule, both states,
- * same hue — a rung past the top of the ramp, not a second colour. Pulled back
- * toward green from the first pale value, which washed out to something closer
- * to grey on the dark ground and read as a screen glitch rather than phosphor.
+ * Which is why the overlay is the **ground** and not the accent. It is a real
+ * lit thing being switched off, so the colour to paint is the colour of the
+ * screen behind it, and the animation is that colour going away again. A lit
+ * button loses its fill and gets it back; an unlit one loses its label and gets
+ * it back; a toggle whose state did not change still visibly answered. One rule,
+ * every control, and no second colour anywhere near it.
  *
  * On a pseudo-element, so the control's own `box-shadow` is untouched: these sit
  * on cards and pills that carry a resting shadow, and animating the real one
- * would make it vanish and come back. `border-radius: inherit` so the wash takes
- * the control's shape, including the app-wide square corners. */
+ * would make it vanish and come back. It covers the label as well as the fill —
+ * a pseudo-element paints above its parent's content — which is what makes the
+ * blink read on controls that have no fill to lose. `border-radius: inherit` so
+ * it takes the control's shape, including the app-wide square corners. */
 @keyframes tap-flash {
-	from {
-		opacity: 0.62;
+	0% {
+		opacity: 1;
 	}
-	to {
+	45% {
+		opacity: 1;
+	}
+	100% {
 		opacity: 0;
 	}
 }
@@ -157,8 +161,8 @@
 	inset: 0;
 	border-radius: inherit;
 	pointer-events: none;
-	background: #8dffc2;
-	animation: tap-flash 200ms ease-out forwards;
+	background: var(--color-ground);
+	animation: tap-flash 210ms ease-out forwards;
 }
 
 /* Only added when the control is `static`, because an absolutely positioned one
