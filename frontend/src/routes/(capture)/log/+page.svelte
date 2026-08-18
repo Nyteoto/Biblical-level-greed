@@ -25,7 +25,18 @@
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import { pixelate } from '$lib/trophic/pixelate';
-	import { createFolder, getShelf, patchFolder, type Shelf } from '$lib/trophic/api';
+	import {
+		createFolder,
+		deleteFolder,
+		getShelf,
+		getUnassignedTags,
+		patchFolder,
+		type Folder,
+		type Shelf,
+		type UnassignedTag
+	} from '$lib/trophic/api';
+	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
+	import { holdable } from '$lib/trophic/holdable';
 
 	let { data }: { data: { shelf?: Shelf; key?: string } } = $props();
 
@@ -41,6 +52,9 @@
 	/** The new-folder tile, which is a button until it is a name field. */
 	let creating = $state(false);
 	let newName = $state('');
+	/** Held a card: the same properties panel the album sidebar opens. */
+	let panel = $state<{ folder: Folder; x: number; y: number } | null>(null);
+	let unassigned = $state<UnassignedTag[]>([]);
 	let loading = $state(true);
 	let jump = $state('');
 
@@ -65,6 +79,9 @@
 		if (key === lastKey) return;
 		lastKey = key;
 		load(key);
+		getUnassignedTags()
+			.then((u) => (unassigned = u.tags))
+			.catch(() => {});
 	});
 
 	async function load(key: string) {
@@ -93,6 +110,31 @@
 	function refresh() {
 		lastKey = '';
 		load(logSettings.yearAlbums ? year : 'all');
+		// The loose tags travel with the shelf: the panel offers them for mapping,
+		// and they are the one thing on it not about a single folder.
+		getUnassignedTags()
+			.then((u) => (unassigned = u.tags))
+			.catch(() => {
+				/* the panel simply offers nothing to map */
+			});
+	}
+
+	async function act(work: Promise<unknown>) {
+		panel = null;
+		error = null;
+		try {
+			await work;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		}
+		refresh();
+	}
+
+	function removeFolder(id: string) {
+		// The folder, not what was written into it — the entries stay and their
+		// tags go back in the unassigned pool.
+		if (!confirm('Delete this folder? Its entries stay in the log.')) return;
+		act(deleteFolder(id));
 	}
 
 	async function submitNewFolder(event: SubmitEvent) {
@@ -280,6 +322,7 @@
 					{#each lead as album (album.id)}
 						<a
 							href={albumHref(album.id)}
+							use:holdable={(x, y) => (panel = { folder: album, x, y })}
 							class="lift lift-md flex flex-col gap-[13px] rounded-[16px] bg-surface p-4 shadow-md"
 						>
 							<Mosaic refs={album.lead} />
@@ -313,6 +356,7 @@
 					{#each quiet as album (album.id)}
 						<a
 							href={albumHref(album.id)}
+							use:holdable={(x, y) => (panel = { folder: album, x, y })}
 							class="lift lift-sm flex items-center gap-3.5 rounded-[16px] bg-surface p-4 shadow-sm"
 						>
 							<div class="h-[54px] w-[72px] shrink-0">
@@ -419,3 +463,16 @@
 		</div>
 	</div>
 </div>
+
+{#if panel}
+	{@const open = panel}
+	<FolderPanel
+		x={open.x}
+		y={open.y}
+		folder={open.folder}
+		{unassigned}
+		onpatch={(change) => act(patchFolder(open.folder.id, change))}
+		ondelete={() => removeFolder(open.folder.id)}
+		onclose={() => (panel = null)}
+	/>
+{/if}

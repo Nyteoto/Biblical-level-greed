@@ -58,10 +58,12 @@
 		toggleLine,
 		type AlbumView,
 		type Entry,
+		type Folder,
 		type Shelf,
 		type UnassignedTag
 	} from '$lib/trophic/api';
 	import { lastAlbum } from '$lib/trophic/lastalbum.svelte';
+	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
 
 	const id = $derived(page.params.id!);
 	/** `unfiled` is an album you can open like any other and is not a folder. */
@@ -77,9 +79,8 @@
 	let collapsed = $state(false);
 	let sheet = $state(false);
 	let showReadings = $state(false);
-	let options = $state(false);
-	let renaming = $state(false);
-	let renameValue = $state('');
+	/** The properties panel, opened by holding a folder in the sidebar. */
+	let panel = $state<{ folder: Folder; x: number; y: number } | null>(null);
 	/** Which quiet stretches the user has opened, by their first day. */
 	let expanded = $state<Set<string>>(new Set());
 
@@ -182,35 +183,28 @@
 		}
 	}
 
-	async function submitRename() {
-		const next = renameValue.trim();
-		renaming = false;
-		if (!next || !folderId || next === album?.folder?.name) return;
-		await act(patchFolder(folderId, { name: next }));
-	}
-
-	async function remove() {
+	async function remove(id: string) {
 		// The folder, not what was written into it — the entries stay and their
 		// tags go back in the unassigned pool. Worth saying out loud, because
 		// "delete" beside a wall of photographs reads worse than it is.
-		if (!folderId) return;
-		if (!confirm('Delete this album? Its entries stay in the log.')) return;
+		if (!confirm('Delete this folder? Its entries stay in the log.')) return;
+		panel = null;
 		try {
-			await deleteFolder(folderId);
-			await goto('/log');
+			await deleteFolder(id);
+			// Leaving the album you were reading is the only case that has to
+			// navigate; deleting another one just refreshes the shelf beside it.
+			if (id === folderId) await goto('/log?shelf');
+			else {
+				lastKey = '';
+				await refresh();
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
 	}
 
-	const STATES: { value: string; label: string }[] = [
-		{ value: '', label: 'open' },
-		{ value: 'active', label: 'running' },
-		{ value: 'shipped', label: 'shipped' }
-	];
 </script>
 
-<svelte:window onclick={() => (options = false)} />
 
 <div class="flex h-dvh flex-col">
 	<!-- ── Header ────────────────────────────────────────────────────────
@@ -234,158 +228,21 @@
 					onclick={() => (collapsed = false)}>›</button
 				>
 			{/if}
-			<span class="text-[12px] font-bold tracking-[0.22em] uppercase">{heading}</span>
+			<!-- The month and the year used to be printed here as `AUGUST 2026`,
+			     and both were already on screen twice over: the month in the spine
+			     down the right edge and in the chapter rows, the year at the top of
+			     the sidebar — and the first day heading in the column says the whole
+			     date in the largest type on the page. This label was not even a
+			     scroll indicator; it read off the lead day and never moved. The week
+			     number stays because nothing else prints it. -->
 			{#if lead}
 				<span class="text-[12px] text-neutral-700">week {isoWeek(lead.key)}</span>
 			{/if}
 
-			<div class="relative">
-				<button
-					type="button"
-					class="lift lift-sm rounded-lg bg-surface px-[9px] py-1 text-[12px] text-neutral-700 shadow-sm"
-					title="rename, ship or delete this album"
-					onclick={(e) => {
-						e.stopPropagation();
-						options = !options;
-					}}
-				>
-					{name}
-				</button>
-
-				<!-- Everything that changes the *folder* rather than the view.
-				     Behind the name because the name is what it is about, and
-				     because the redesign gave these no home of their own —
-				     dropping them would have quietly removed working features. -->
-				{#if options && album?.folder}
-					{@const folder = album.folder}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="absolute top-full left-0 z-50 mt-2 flex w-[290px] flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-lg"
-						style="animation:landing-fade-in 0.15s ease-out"
-						onclick={(e) => e.stopPropagation()}
-					>
-						{#if renaming}
-							<form
-								onsubmit={(e) => {
-									e.preventDefault();
-									submitRename();
-								}}
-							>
-								<!-- svelte-ignore a11y_autofocus -->
-								<input
-									autofocus
-									bind:value={renameValue}
-									class="w-full rounded-lg bg-neutral-200 px-3 py-2 text-[14px]"
-									onkeydown={(e) => {
-										if (e.key === 'Escape') renaming = false;
-									}}
-								/>
-							</form>
-						{:else}
-							<button
-								type="button"
-								class="text-left text-[14px] font-semibold"
-								onclick={() => {
-									renameValue = folder.name;
-									renaming = true;
-								}}
-							>
-								{folder.name}
-								<span class="ml-2 text-[12px] font-normal text-neutral-700">rename</span>
-							</button>
-						{/if}
-
-						<!-- The lifecycle. Three states and no taxonomy: the empty
-						     one is the default, and a folder never marked is an
-						     interest rather than a project. -->
-						<Segmented
-							options={STATES}
-							value={folder.state}
-							onpick={(state) => act(patchFolder(folder.id, { state }))}
-							label="this album's state"
-						/>
-
-						<div class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[12px]">
-							{#each folder.tags as tag (tag)}
-								<button
-									type="button"
-									class="font-mono transition-colors hover:text-accent-700"
-									style="color:var(--color-accent-700)"
-									title="click to unmap"
-									onclick={() => act(patchFolder(folder.id, { remove_tags: [tag] }))}
-								>
-									{`<${tag}>`}
-								</button>
-							{:else}
-								<span class="text-neutral-700">no tags point here yet</span>
-							{/each}
-						</div>
-
-						{#if unassigned.length > 0}
-							<div class="flex flex-wrap gap-2 rounded-[10px] bg-neutral-200 p-2.5 text-[12px]">
-								{#each unassigned.slice(0, 8) as tag (tag.tag)}
-									<button
-										type="button"
-										class="font-mono transition-colors hover:opacity-70"
-										style="color:var(--color-neutral-800)"
-										title="point this tag here"
-										onclick={() => act(patchFolder(folder.id, { add_tags: [tag.tag] }))}
-									>
-										{`<${tag.tag}>`}<span class="ml-1 text-neutral-700">×{tag.count}</span>
-									</button>
-								{/each}
-							</div>
-						{/if}
-
-						<button
-							type="button"
-							class="self-start text-[12px] font-semibold text-accent-700"
-							onclick={remove}
-						>
-							Delete this album
-						</button>
-					</div>
-				{/if}
-			</div>
-		</div>
-
-		<!-- Two views of the same album, and the button you came for. A view
-		     that is *on* becomes a white pill: everywhere else in this app an
-		     active thing is a surface, and darkening the label was doing the
-		     same job as the hover state two pixels away from it. -->
-		<div class="flex items-center gap-2 text-[12px] text-neutral-700">
-			{#if shots.length > 1}
-				<button
-					type="button"
-					aria-pressed={sheet}
-					class="rounded-lg px-[11px] py-1.5 transition-colors {sheet
-						? 'lift lift-sm bg-surface font-semibold text-ink shadow-sm'
-						: 'hover:text-ink'}"
-					onclick={() => (sheet = !sheet)}
-				>
-					Contact sheet
-				</button>
-			{/if}
-			{#if album && album.sentiments.length > 0}
-				<button
-					type="button"
-					aria-pressed={showReadings}
-					class="rounded-lg px-[11px] py-1.5 transition-colors {showReadings
-						? 'lift lift-sm bg-surface font-semibold text-ink shadow-sm'
-						: 'hover:text-ink'}"
-					onclick={() => (showReadings = !showReadings)}
-				>
-					Readings
-				</button>
-			{/if}
-			<button
-				type="button"
-				class="lift lift-sm rounded-lg bg-surface px-[11px] py-1.5 font-semibold text-ink shadow-sm"
-				onclick={toTop}
-			>
-				Today ↑
-			</button>
+			<!-- The album's name and everything you could do to it lived behind a
+			     button here. Both card surfaces answer a hold with the same panel
+			     now — see `FolderPanel` — so the name is in the sidebar where it
+			     already was, and there is one less control on this screen. -->
 		</div>
 	</div>
 
@@ -401,6 +258,7 @@
 			{folderId}
 			{year}
 			oncollapse={() => (collapsed = true)}
+			onhold={(f, x, y) => (panel = { folder: f, x, y })}
 		/>
 	{/if}
 
@@ -538,5 +396,21 @@
 		onselect={(target_id) => act(assignEntry(target.id, target_id))}
 		onclear={() => act(assignEntry(target.id, null))}
 		onclose={() => (menu = null)}
+	/>
+{/if}
+
+{#if panel}
+	{@const open = panel}
+	<FolderPanel
+		x={open.x}
+		y={open.y}
+		folder={open.folder}
+		{unassigned}
+		onpatch={(change) => {
+			panel = null;
+			act(patchFolder(open.folder.id, change));
+		}}
+		ondelete={() => remove(open.folder.id)}
+		onclose={() => (panel = null)}
 	/>
 {/if}

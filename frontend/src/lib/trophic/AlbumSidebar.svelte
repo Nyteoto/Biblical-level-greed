@@ -9,7 +9,8 @@
 	 * the sidebar is the same object on both screens instead of two lists that
 	 * happen to look alike.
 	 */
-	import type { AlbumView, Shelf } from './api';
+	import type { AlbumView, Folder, Shelf } from './api';
+	import { holdable } from './holdable';
 
 	let {
 		shelf,
@@ -17,7 +18,8 @@
 		folderId,
 		year,
 		month = null,
-		oncollapse
+		oncollapse,
+		onhold
 	}: {
 		shelf: Shelf | null;
 		album: AlbumView | null;
@@ -26,6 +28,9 @@
 		/** `YYYY-MM` when a month is being read, so its chapter can mark itself. */
 		month?: string | null;
 		oncollapse?: () => void;
+		/** Hold a row to open its properties. The row is the folder as far as
+		 *  the reader is concerned, so it is the thing that answers. */
+		onhold?: (folder: Folder, x: number, y: number) => void;
 	} = $props();
 
 	const albumHref = (target: string | null) => `/folders/${target ?? 'unfiled'}?year=${year}`;
@@ -58,6 +63,7 @@
 			{@const on = a.id === folderId}
 			<a
 				href={albumHref(a.id)}
+				use:holdable={(x, y) => onhold?.(a, x, y)}
 				class="flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] transition-colors {on
 					? 'accent-fill'
 					: 'hover:bg-neutral-200'}"
