@@ -33,12 +33,17 @@
 	 * same idea: collapsed, this is a label and a way in, and a second control on
 	 * it would make a one-line bar into a toolbar.
 	 *
-	 * On the editor: the source's markdown editor (Milkdown Crepe) went with the
-	 * notes system this app removed, so there is no rich text to reuse. This is a
-	 * plain field in the app's own type, which is also the honest match for what
-	 * an overview is — a paragraph or two, not a document.
+	 * The picture does not get a column of its own. A 132px square beside a full
+	 * width of prose left most of that column empty and pushed the text into a
+	 * narrow strip; it floats now, and the writing runs around it the way a
+	 * plate does on a page. It is the folder's face, not a panel.
+	 *
+	 * The editor is `RichText` — see it for why this app grew one rather than
+	 * bringing back Milkdown, which left with the notes system.
 	 */
 	import { mediaViewUrl, mediaUrl } from './api';
+	import RichText from './RichText.svelte';
+	import { clean, isBlank } from './richtext';
 	import type { Folder } from './api';
 
 	let {
@@ -58,11 +63,14 @@
 
 	const text = $derived(folder.overview ?? '');
 	const picture = $derived(folder.overview_media ?? '');
+	/** An editor left empty still reports `<br>`, so emptiness is measured by
+	 *  what a reader would see rather than by string length. */
+	const written = $derived(!isBlank(text));
 	/** Written, or given a picture — either makes the overview a thing that
 	 *  exists. `exists` is what turns the call to action into a title. */
-	const exists = $derived(text.length > 0 || picture.length > 0);
+	const exists = $derived(written || picture.length > 0);
 	/** A picture and no words: the state the `!` is for. */
-	const unwritten = $derived(picture.length > 0 && text.length === 0);
+	const unwritten = $derived(picture.length > 0 && !written);
 
 	const label = $derived(exists ? `Overview of ${folder.name}` : 'Create Overview');
 
@@ -81,7 +89,8 @@
 
 	function save() {
 		editing = false;
-		if (draft !== text) onsave(draft);
+		const kept = isBlank(draft) ? '' : clean(draft);
+		if (kept !== text) onsave(kept);
 	}
 </script>
 
@@ -130,59 +139,54 @@
 		<!-- The body. `min-h-0` and its own scroll, because this is standing in
 		     for the day column and inherits the column's job of being the one
 		     thing on the screen that scrolls. -->
-		<div class="mt-[18px] flex min-h-0 flex-1 gap-[22px] overflow-y-auto pb-10">
-			<div class="shrink-0">
-				{#if picture}
-					<a
-						href={mediaUrl(picture)}
-						target="_blank"
-						rel="noreferrer"
-						class="block h-[132px] w-[132px] overflow-hidden rounded-[14px] bg-neutral-200 shadow-md"
-					>
-						<img src={mediaViewUrl(picture)} alt="" class="h-full w-full object-cover" />
-					</a>
-					{#if onclearmedia && !editing}
+		<div class="mt-[18px] flex min-h-0 flex-1 flex-col overflow-y-auto pb-10">
+			{#if editing}
+				<RichText bind:html={draft} placeholder="What is this project, and what is it for?" />
+			{:else}
+				<div class="min-h-0 flex-1">
+					{#if picture}
+						<!-- Floated, so the prose closes around it instead of starting
+						     after it. `shape-outside` is not worth it on a square. -->
+						<a
+							href={mediaUrl(picture)}
+							target="_blank"
+							rel="noreferrer"
+							class="float-left mr-[18px] mb-3 block h-[104px] w-[104px] overflow-hidden rounded-[14px] bg-neutral-200 shadow-md"
+						>
+							<img src={mediaViewUrl(picture)} alt="" class="h-full w-full object-cover" />
+						</a>
+					{:else}
+						<div
+							class="float-left mr-[18px] mb-3 flex h-[104px] w-[104px] flex-col items-center justify-center gap-1 rounded-[14px] border-[1.5px] border-dashed border-neutral-400 px-2 text-center"
+						>
+							<span class="text-[16px] text-neutral-600">▢</span>
+							<span class="text-[10px] leading-[1.3] text-neutral-700">hold a photograph</span>
+						</div>
+					{/if}
+
+					{#if written}
+						<div class="prose-overview text-[14px] leading-[1.7]">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+							{@html text}
+						</div>
+					{:else}
+						<p class="text-[13px] text-neutral-700">
+							Nothing written yet. Edit to describe what this is.
+						</p>
+					{/if}
+
+					<div class="clear-both"></div>
+					{#if picture && onclearmedia}
 						<button
 							type="button"
-							class="mt-2 text-[11px] text-neutral-700 transition-colors hover:text-ink"
+							class="mt-3 text-[11px] text-neutral-700 transition-colors hover:text-ink"
 							onclick={onclearmedia}
 						>
 							remove picture
 						</button>
 					{/if}
-				{:else}
-					<!-- The placeholder says how to fill it, because there is no
-					     control here that does: the picture is set by holding one in
-					     the log or the contact sheet. -->
-					<div
-						class="flex h-[132px] w-[132px] flex-col items-center justify-center gap-1.5 rounded-[14px] border-[1.5px] border-dashed border-neutral-400 px-3 text-center"
-					>
-						<span class="text-[18px] text-neutral-600">▢</span>
-						<span class="text-[10px] leading-[1.35] text-neutral-700">
-							hold a photograph to set one
-						</span>
-					</div>
-				{/if}
-			</div>
-
-			<div class="min-w-0 flex-1">
-				{#if editing}
-					<!-- svelte-ignore a11y_autofocus -->
-					<textarea
-						autofocus
-						bind:value={draft}
-						placeholder="What is this project, and what is it for?"
-						aria-label="overview"
-						class="h-full min-h-[220px] w-full resize-none rounded-[14px] bg-surface p-4 text-[14px] leading-[1.6] shadow-md placeholder:text-neutral-700"
-					></textarea>
-				{:else if text}
-					<p class="text-[14px] leading-[1.7] whitespace-pre-wrap">{text}</p>
-				{:else}
-					<p class="text-[13px] text-neutral-700">
-						Nothing written yet. Edit to describe what this is.
-					</p>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>

@@ -180,6 +180,62 @@
 	}
 }
 
+/* The overview's prose, in the editor and in the card, from one rule so the
+   two cannot look different. Tailwind's preflight flattens headings and lists
+   to nothing, which is right everywhere else in this app — the only rendered
+   markup it has is here. */
+.prose-overview h2 {
+	font-size: 17px;
+	font-weight: 800;
+	letter-spacing: -0.01em;
+	margin: 1.1em 0 0.35em;
+}
+.prose-overview h2:first-child {
+	margin-top: 0;
+}
+.prose-overview h3 {
+	font-size: 15px;
+	font-weight: 700;
+	margin: 1em 0 0.3em;
+}
+.prose-overview p {
+	margin: 0 0 0.75em;
+}
+.prose-overview p:last-child {
+	margin-bottom: 0;
+}
+.prose-overview ul,
+.prose-overview ol {
+	margin: 0 0 0.75em;
+	padding-left: 1.4em;
+}
+.prose-overview ul {
+	list-style: disc;
+}
+.prose-overview ol {
+	list-style: decimal;
+}
+.prose-overview li {
+	margin: 0.15em 0;
+}
+.prose-overview blockquote {
+	margin: 0 0 0.75em;
+	padding-left: 0.9em;
+	/* A quote is set off by a hairline of phosphor rather than by a rule: the
+	   design has no dividing lines, and this is the edge of a lit area. */
+	box-shadow: inset 2px 0 0 var(--color-neutral-400);
+	color: var(--color-neutral-800);
+}
+.prose-overview strong,
+.prose-overview b {
+	font-weight: 800;
+	color: var(--color-ink);
+}
+.prose-overview em,
+.prose-overview i {
+	font-style: italic;
+}
+
 .trophic-scrollbar-hide::-webkit-scrollbar {
 	display: none;
 }

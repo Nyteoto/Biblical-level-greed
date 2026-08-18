@@ -386,12 +386,12 @@
 						     way out of it is Settings → Folders & tags. -->
 						<a
 							href={albumHref(null)}
-							class="flex items-center gap-3 rounded-[16px] border-[1.5px] border-dashed border-neutral-400 p-4 text-neutral-700 transition-colors hover:border-neutral-600 hover:text-ink"
+							class="flex h-fit w-fit items-center gap-3 self-start rounded-[12px] border border-dashed border-neutral-400 px-3 py-2 text-neutral-700 transition-colors hover:border-neutral-600 hover:text-ink"
 						>
-							<span class="text-[15px] font-semibold">
+							<span class="text-[13px]">
 								Unfiled{logSettings.yearAlbums ? ' this year' : ''}
 							</span>
-							<span class="ml-auto text-[13px] tabular-nums">{shelf.unfiled}</span>
+							<span class="text-[12px] tabular-nums">{shelf.unfiled}</span>
 						</a>
 					{/if}
 

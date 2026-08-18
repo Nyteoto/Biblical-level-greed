@@ -138,7 +138,9 @@
 				>
 			{/if}
 			<!-- True by construction: this screen is the month it names. -->
-			<span class="text-[12px] font-bold tracking-[0.22em] uppercase">{monthLabel(month)}</span>
+			<!-- The month is the 44px heading below and nothing else. This said it
+			     a second time in 12px caps, which is the same noise the album view
+			     had — see the label-once rule in CLAUDE.md. -->
 			<a
 				href="/folders/{id}?year={year}"
 				class="lift lift-sm rounded-lg bg-surface px-[9px] py-1 text-[12px] text-neutral-700 shadow-sm"
