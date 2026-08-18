@@ -27,6 +27,59 @@
 	});
 
 
+	/**
+	 * Press feedback, for everything, from one place.
+	 *
+	 * A per-component `pressed` flag is how the syntax keys already do this, and
+	 * doing that everywhere else would be forty copies of the same three lines —
+	 * so this listens once, at the document, and the styling is one class in
+	 * `trophic.css`. Components stay unaware of it, which is the same separation
+	 * the glass has.
+	 *
+	 * `pointerdown` and not `click`: the point is to answer the finger, and a
+	 * click arrives on release. It also fires for presses that do nothing at all
+	 * — a tab you are already on, a disabled-looking control, a link mid-fetch —
+	 * which is the whole request. A control that ignores you and a control that
+	 * has nothing to do look identical otherwise.
+	 *
+	 * Capture phase, so a component calling `stopPropagation` on its own
+	 * handler — the lightbox does, on everything that is not the backdrop —
+	 * cannot silently opt out of being responsive.
+	 */
+	const PRESSABLE = 'button, a[href], [role="button"], [role="switch"], summary';
+
+	$effect(() => {
+		function press(event: PointerEvent) {
+			const from = event.target as Element | null;
+			// `label` is not in the selector because most labels are not pressable;
+			// the one kind that is wraps its own input, which is how the capture
+			// bar's attach button is built.
+			const el = (from?.closest?.(PRESSABLE) ??
+				from?.closest?.('label:has(input)')) as HTMLElement | null;
+			if (!el) return;
+
+			// Restart rather than ignore a second press inside the first flash:
+			// a control tapped twice should answer twice. Removing the class and
+			// reading a layout property forces the animation to begin again.
+			el.classList.remove('tap-flash', 'tap-flash-anchor');
+			void el.offsetWidth;
+			if (getComputedStyle(el).position === 'static') el.classList.add('tap-flash-anchor');
+			el.classList.add('tap-flash');
+		}
+
+		function done(event: AnimationEvent) {
+			if (event.animationName !== 'tap-flash') return;
+			(event.target as HTMLElement).classList?.remove('tap-flash', 'tap-flash-anchor');
+		}
+
+		document.addEventListener('pointerdown', press, true);
+		document.addEventListener('animationend', done, true);
+		return () => {
+			document.removeEventListener('pointerdown', press, true);
+			document.removeEventListener('animationend', done, true);
+		};
+	});
+
 	// The shell is now almost nothing: a ground, an upload bar, and the page.
 	//
 	// The tab bar that used to live here is gone, and so is the XP meter beside
