@@ -208,6 +208,54 @@ def test_albums_come_back_busiest_first(capture_store):
     assert [a["name"] for a in capture_store.shelf("2026")["albums"]] == ["busy", "quiet"]
 
 
+# ── Where the newest line is ──────────────────────────────────────────────
+
+
+def test_latest_is_the_newest_album_not_the_biggest(capture_store):
+    """`Opens on: latest day` reads `shelf["latest"]`, and this is why it
+    cannot read `albums[0]` instead: that list is sorted busiest-first, which is
+    the right order to read the shelf in and the wrong answer to "where was I".
+    A big old project would win it every time."""
+    capture_store.create_folder("busy", ["busy"])
+    capture_store.create_folder("quiet", ["quiet"])
+    write(capture_store, "2026-03-02", "a <busy>")
+    write(capture_store, "2026-03-03", "b <busy>")
+    write(capture_store, "2026-06-01", "c <quiet>")
+    capture_store.reindex()
+
+    shelf = capture_store.shelf("2026")
+    assert [a["name"] for a in shelf["albums"]] == ["busy", "quiet"]
+
+    quiet = next(a for a in shelf["albums"] if a["name"] == "quiet")
+    assert shelf["latest"]["folder"] == quiet["id"]
+    assert shelf["latest"]["day"] == "2026-06-01"
+
+
+def test_latest_points_at_the_unfiled_pile_when_that_is_newest(capture_store):
+    """Someone who has never made a folder has an empty `albums` list, which is
+    what made this setting do nothing at all rather than something imperfect.
+    Unfiled is a destination."""
+    write(capture_store, "2026-03-02", "no tags at all")
+    write(capture_store, "2026-03-03", "still nothing")
+    capture_store.reindex()
+
+    shelf = capture_store.shelf("2026")
+    assert shelf["albums"] == []
+    assert shelf["unfiled"] == 2
+    assert shelf["latest"] == {
+        "folder": None,
+        "day": "2026-03-03",
+        "ts": shelf["latest"]["ts"],
+    }
+
+
+def test_latest_is_none_for_a_year_with_nothing_in_it(capture_store):
+    write(capture_store, "2025-03-02", "last year")
+    capture_store.reindex()
+
+    assert capture_store.shelf("2026")["latest"] is None
+
+
 # ── Still disposable ──────────────────────────────────────────────────────
 
 

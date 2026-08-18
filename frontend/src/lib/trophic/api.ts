@@ -102,6 +102,10 @@ export interface Shelf {
 	entries: number;
 	media: number;
 	previous: { year: string; entries: number } | null;
+	/** Where the newest line in this year is, for `Opens on: latest day`.
+	 *  `folder` is null when that line is unfiled, which is not a special case:
+	 *  the unfiled pile is an album you can be taken back to like any other. */
+	latest: { folder: string | null; day: string; ts: string } | null;
 }
 
 export interface AlbumView {

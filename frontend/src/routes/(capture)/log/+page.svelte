@@ -74,15 +74,26 @@
 		loading = false;
 	}
 
-	/** `Opens on: latest day` — go straight into the album written in most
-	 *  recently rather than stopping at the index. Right for someone deep in
-	 *  one project, wrong for someone with six, which is why it is a setting. */
+	/** `Opens on: latest day` — go straight to where the newest line is rather
+	 *  than stopping at the index. Right for someone deep in one project, wrong
+	 *  for someone with six, which is why it is a setting.
+	 *
+	 *  It reads `shelf.latest` and not `shelf.albums[0]`, and both halves of
+	 *  that mattered. The shelf is sorted **by size**, so the first album is the
+	 *  biggest and not the newest — the setting took you to the same album every
+	 *  time, whatever you had actually just written. And an album list is empty
+	 *  for anyone who has never made a folder, so `albums[0]` was `undefined` and
+	 *  the setting did nothing whatsoever. Unfiled is a destination here. */
 	let jumped = false;
 	$effect(() => {
 		if (jumped || logSettings.openOn !== 'latest' || !shelf) return;
 		jumped = true;
-		const first = shelf.albums[0];
-		if (first) goto(`/folders/${first.id}?year=${shelf.year ?? 'all'}`, { replaceState: true });
+		const latest = shelf.latest;
+		if (latest) {
+			goto(`/folders/${latest.folder ?? 'unfiled'}?year=${shelf.year ?? 'all'}`, {
+				replaceState: true
+			});
+		}
 	});
 
 	const albumHref = (id: string | null) =>

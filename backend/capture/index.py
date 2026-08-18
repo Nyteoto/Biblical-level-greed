@@ -854,14 +854,22 @@ def chapters(rows: list[sqlite3.Row], owned: set[str] = frozenset()) -> list[dic
 def _album_rows(
     conn: sqlite3.Connection, folder_id: str | None, year: str | None
 ) -> list[sqlite3.Row]:
-    """The (day, media, patterns, folders) of one album's entries in one year.
-    `folder_id=None` is the unfiled pile."""
+    """The (ts, day, media, patterns, folders) of one album's entries in one
+    year. `folder_id=None` is the unfiled pile.
+
+    `ts` is here only so `shelf()` can say which album was written in last. Day
+    would nearly do, and ties on the same day would then fall to whatever order
+    the folders happen to come back in — which is the kind of arbitrary that
+    reads as a broken setting rather than as a coin toss."""
     clause, args = _year_clause(year)
     if folder_id is None:
-        sql = f"SELECT day, media, patterns, folders FROM entries WHERE id IN ({_UNFILED})"
+        sql = (
+            f"SELECT ts, day, media, patterns, folders FROM entries "
+            f"WHERE id IN ({_UNFILED})"
+        )
     else:
         sql = (
-            f"SELECT day, media, patterns, folders FROM entries "
+            f"SELECT ts, day, media, patterns, folders FROM entries "
             f"WHERE id IN ({_MEMBERSHIP})"
         )
         args = [folder_id, folder_id] + args
@@ -937,6 +945,22 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
     """
     available = years(conn)
     albums = []
+    # Where the most recent line in this year actually landed. Tracked here
+    # rather than read off `albums[0]` by the caller, because the shelf is
+    # sorted by size — which is the right order to *read* it in and the wrong
+    # answer to "take me back to where I was". `Opens on: latest day` asked the
+    # sorted list that question for a while and got the biggest album every
+    # time, which is a setting that appears to do nothing.
+    latest: dict | None = None
+
+    def _mark(folder_id: str | None, rows: list[sqlite3.Row]) -> None:
+        nonlocal latest
+        if not rows:
+            return
+        newest = max(rows, key=lambda r: r["ts"])
+        if latest is None or newest["ts"] > latest["ts"]:
+            latest = {"folder": folder_id, "day": newest["day"], "ts": newest["ts"]}
+
     for record in folders(conn):
         rows = _album_rows(conn, record["id"], year)
         if not rows and record["state"] != "active":
@@ -956,12 +980,18 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
                 "lead": _lead_media(conn, record["id"], year),
             }
         )
+        _mark(record["id"], rows)
 
     # Busiest first: the shelf is read to find what you were doing, and what
     # you were doing most is the best first guess.
     albums.sort(key=lambda a: (-a["entry_count"], a["name"].lower()))
 
     unfiled_rows = _album_rows(conn, None, year)
+    # The unfiled pile is a place you can be taken back to like any other. It
+    # was not one before, so a shelf with nothing filed in it made the setting
+    # do nothing at all rather than something imperfect.
+    _mark(None, unfiled_rows)
+
     clause, args = _year_clause(year)
     total = conn.execute(
         f"SELECT count(*) AS n, "
@@ -988,6 +1018,9 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
         "entries": total["n"],
         "media": total["m"],
         "previous": previous,
+        # `{folder, day, ts}` of the newest line in this year, or None for a
+        # year with nothing in it. `folder` is None when that line is unfiled.
+        "latest": latest,
     }
 
 
