@@ -20,22 +20,12 @@
 	 * migrated. Membership is resolved, never stored; this panel only ever moves
 	 * the pointer.
 	 *
-	 * It clamps into the viewport after mounting, because it opens under a
-	 * finger and a finger is often near an edge — the same reason
-	 * `FolderAssignMenu` does.
-	 *
-	 * **The click that opened it must not close it.** This appears at 500ms with
-	 * the finger still down, so the release fires a click straight onto the
-	 * backdrop that just appeared underneath it and the panel vanished before
-	 * anything could be chosen. Exactly one click is swallowed, and only within a
-	 * short window of opening — the same shape as the rule `long_press.json`
-	 * pins for the gesture, including the reason for the window: a flag left set
-	 * eats the user's next real tap.
-	 *
-	 * Leaving is three ways, because one of them being "tap somewhere else" is
-	 * not a way out you can see: Escape, the × in the corner, or the backdrop.
+	 * The backdrop, the position and the rule that a hold's own release must not
+	 * dismiss what it opened all live in `HoldMenu` — there are two of these
+	 * panels now and those rules are subtle enough that a second copy would drift.
 	 */
 	import { phosphorize } from './colors';
+	import HoldMenu from './HoldMenu.svelte';
 	import Segmented from './Segmented.svelte';
 	import type { Folder, UnassignedTag } from './api';
 
@@ -62,72 +52,9 @@
 		onclose: () => void;
 	} = $props();
 
-	let panel = $state<HTMLDivElement | null>(null);
-	// Capturing the initial position is the intent: it opens where the hold
-	// was, and a new hold is a new instance of this component.
-	// svelte-ignore state_referenced_locally
-	let pos = $state({ x, y });
-
 	let renaming = $state(false);
 	let renameValue = $state('');
 
-	/**
-	 * The panel opens at 500ms with the finger still down, so the release fires
-	 * a click that this panel must not treat as a decision. It is *armed* by
-	 * that click rather than closed by it, and the click is stopped in the
-	 * capture phase so it reaches nothing inside either — a release is not a
-	 * choice of anything, and letting it through would let the finger land on
-	 * whichever option happened to be under it.
-	 *
-	 * Arming on the click and not on a timer, because the first attempt used a
-	 * window after opening and the release landed on the *panel*, which stops
-	 * propagation — so the budget went unspent and the user's next real click
-	 * was eaten instead. The timer is still here as a floor, for the touch case
-	 * where a long press may produce no click at all: after 600ms the panel is
-	 * armed regardless, so nothing can be swallowed indefinitely.
-	 */
-	let armed = $state(false);
-
-	$effect(() => {
-		const arm = (event: MouseEvent) => {
-			if (armed) return;
-			armed = true;
-			event.stopPropagation();
-			event.preventDefault();
-		};
-		window.addEventListener('click', arm, true);
-		const floor = setTimeout(() => (armed = true), 600);
-		return () => {
-			window.removeEventListener('click', arm, true);
-			clearTimeout(floor);
-		};
-	});
-
-	function backdrop() {
-		if (armed) onclose();
-	}
-
-	function onkeydown(event: KeyboardEvent) {
-		if (event.key !== 'Escape') return;
-		event.preventDefault();
-		if (renaming) renaming = false;
-		else onclose();
-	}
-
-	// Clamped from the props, never from `pos`. Reading the value this effect
-	// also writes makes it re-trigger itself, and Svelte answers a self-feeding
-	// effect by tearing the component's reactivity down — which presented as a
-	// panel that rendered correctly and then ignored Escape, the backdrop and its
-	// own close button equally. `FolderAssignMenu` reads `x`/`y` for this reason.
-	$effect(() => {
-		const el = panel;
-		if (!el) return;
-		const box = el.getBoundingClientRect();
-		const margin = 12;
-		const nx = Math.min(x, window.innerWidth - box.width - margin);
-		const ny = Math.min(y, window.innerHeight - box.height - margin);
-		pos = { x: Math.max(margin, nx), y: Math.max(margin, ny) };
-	});
 
 	const STATES = [
 		{ value: '', label: 'open' },
@@ -143,26 +70,7 @@
 	}
 </script>
 
-<svelte:window {onkeydown} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	class="fixed inset-0 z-[9700]"
-	onclick={backdrop}
-	oncontextmenu={(e) => {
-		e.preventDefault();
-		onclose();
-	}}
->
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		bind:this={panel}
-		class="absolute flex w-[290px] flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-lg"
-		style="left:{pos.x}px; top:{pos.y}px; animation:landing-fade-in 0.15s ease-out"
-		onclick={(e) => e.stopPropagation()}
-	>
+<HoldMenu {x} {y} {onclose}>
 		{#if renaming}
 			<form
 				onsubmit={(e) => {
@@ -257,12 +165,11 @@
 			</div>
 		{/if}
 
-		<button
-			type="button"
-			class="self-start text-[12px] font-semibold text-accent-700"
-			onclick={ondelete}
-		>
-			Delete this folder
-		</button>
-	</div>
-</div>
+	<button
+		type="button"
+		class="self-start text-[12px] font-semibold text-accent-700"
+		onclick={ondelete}
+	>
+		Delete this folder
+	</button>
+</HoldMenu>

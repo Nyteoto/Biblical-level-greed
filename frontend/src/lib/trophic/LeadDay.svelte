@@ -24,6 +24,7 @@
 	import TodoEntryText from './TodoEntryText.svelte';
 	import { longpress } from './longpress';
 	import { mediaViewUrl } from './api';
+	import { holdable } from './holdable';
 	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
 	import type { Day } from './log';
@@ -33,12 +34,17 @@
 		day,
 		today = false,
 		onopen,
+		onholdmedia,
 		ontoggle,
 		onassign
 	}: {
 		day: Day;
 		today?: boolean;
 		onopen?: (shots: Shot[], index: number) => void;
+		/** Hold a photograph for what can be done *with* it — the album's
+		 *  overview picture. The day's own media answers this as readily as the
+		 *  contact sheet's, because they are the same photographs. */
+		onholdmedia?: (ref: string, x: number, y: number) => void;
 		ontoggle?: (entry: Entry, line: number) => void;
 		onassign?: (entry: Entry, x: number, y: number) => void;
 	} = $props();
@@ -83,6 +89,7 @@
 			type="button"
 			class="lift lift-md relative block h-[250px] w-full overflow-hidden rounded-[16px] bg-neutral-300 shadow-lg"
 			style="animation:plate-fade-in 400ms ease-out both"
+			use:holdable={(x, y) => onholdmedia?.(hero.ref, x, y)}
 			onclick={() => onopen?.(shots, 0)}
 			aria-label="open the newest"
 		>
@@ -119,6 +126,7 @@
 				<button
 					type="button"
 					class="lift lift-sm relative h-[70px] w-[96px] shrink-0 overflow-hidden rounded-[11px] bg-neutral-300 shadow-sm"
+					use:holdable={(x, y) => onholdmedia?.(shot.ref, x, y)}
 					onclick={() => onopen?.(shots, i + 1)}
 					aria-label={isVideo(shot.ref) ? 'play clip' : 'open photo'}
 				>

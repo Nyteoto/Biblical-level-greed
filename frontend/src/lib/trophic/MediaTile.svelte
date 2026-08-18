@@ -15,9 +15,17 @@
 	 * to show until it is opened.
 	 */
 	import { mediaViewUrl } from './api';
+	import { holdable } from './holdable';
 	import { isVideo, plateFallback } from './media';
 
-	let { ref, onopen }: { ref: string; onopen?: () => void } = $props();
+	let {
+		ref,
+		onopen,
+		/** Hold a tile for what can be done with the picture rather than to it —
+		 *  see the album's overview. Tiles without a handler simply do not claim
+		 *  the gesture, and the ring says so. */
+		onhold
+	}: { ref: string; onopen?: () => void; onhold?: (x: number, y: number) => void } = $props();
 
 	const video = $derived(isVideo(ref));
 </script>
@@ -25,6 +33,7 @@
 <button
 	type="button"
 	class="group lift lift-sm relative aspect-square w-full overflow-hidden rounded-[10px] bg-neutral-300 shadow-sm"
+	use:holdable={(x, y) => onhold?.(x, y)}
 	onclick={() => onopen?.()}
 	aria-label={video ? 'play clip' : 'open photo'}
 >

@@ -65,6 +65,7 @@
 	import { lastAlbum } from '$lib/trophic/lastalbum.svelte';
 	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
 	import OverviewCard from '$lib/trophic/OverviewCard.svelte';
+	import HoldMenu from '$lib/trophic/HoldMenu.svelte';
 
 	const id = $derived(page.params.id!);
 	/** `unfiled` is an album you can open like any other and is not a folder. */
@@ -85,6 +86,10 @@
 	/** Whether the overview has taken the day column's place. Reset when the
 	 *  album changes: it is a property of reading *this* folder, not a mode. */
 	let overviewOpen = $state(false);
+	/** A held photograph, and what can be done with it. One option today; it is
+	 *  a menu rather than a direct action because "hold to silently change
+	 *  something" is not a gesture anyone should have to discover twice. */
+	let heldMedia = $state<{ ref: string; x: number; y: number } | null>(null);
 	$effect(() => {
 		void id;
 		void year;
@@ -305,7 +310,11 @@
 					     the thing the ruler this replaced could never do. -->
 					<div class="grid grid-cols-6 gap-1.5">
 						{#each shots as shot, i (shot.entry.id + ':' + shot.ref)}
-							<MediaTile ref={shot.ref} onopen={() => (lightbox = { shots, index: i })} />
+							<MediaTile
+								ref={shot.ref}
+								onopen={() => (lightbox = { shots, index: i })}
+								onhold={(x, y) => (heldMedia = { ref: shot.ref, x, y })}
+							/>
 						{/each}
 					</div>
 				{:else}
@@ -317,6 +326,7 @@
 								onopen={(s, index) => (lightbox = { shots: s, index })}
 								ontoggle={onToggle}
 								onassign={(entry, x, y) => (menu = { x, y, entry })}
+								onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
 							/>
 						{/if}
 
@@ -443,4 +453,30 @@
 		ondelete={() => remove(open.folder.id)}
 		onclose={() => (panel = null)}
 	/>
+{/if}
+
+{#if heldMedia && album?.folder}
+	{@const held = heldMedia}
+	{@const owner = album.folder}
+	<HoldMenu x={held.x} y={held.y} width={250} onclose={() => (heldMedia = null)}>
+		<button
+			type="button"
+			class="text-left text-[13px] font-semibold"
+			onclick={() => {
+				// The request first, the teardown second. Clearing `heldMedia`
+				// destroys the block this handler is declared in, and its `@const`
+				// bindings with it — reading `owner` afterwards is reading a scope
+				// that is already gone, and the call quietly never happened.
+				// Setting the picture on a folder with no overview creates one,
+				// empty — the `!` on the card's bar is what says so afterwards.
+				act(patchFolder(owner.id, { overview_media: held.ref }));
+				heldMedia = null;
+			}}
+		>
+			Set as overview profile
+			<span class="mt-0.5 block text-[11px] font-normal text-neutral-700">
+				the picture that stands for {owner.name}
+			</span>
+		</button>
+	</HoldMenu>
 {/if}
