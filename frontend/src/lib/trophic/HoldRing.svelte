@@ -23,7 +23,11 @@
 	 * fraction of the hold elapsed. Delaying the animation instead of just its
 	 * opacity would make the ring lie about how much longer to wait.
 	 *
-	 * Nothing underneath is required. The gesture is the app's, not a widget's,
+	 * It is 104px across with a 5px stroke, and both numbers are about a fingertip
+ * rather than about taste: at 56px the finger making the gesture covered the
+ * thing describing it, which is the one thing this ring cannot afford to do.
+ *
+ * Nothing underneath is required. The gesture is the app's, not a widget's,
 	 * so it spawns over dead ground too — and when it completes on dead ground
 	 * it says so, with an `×` above the ring rather than in it, because the
 	 * middle is under a fingertip.
@@ -151,10 +155,10 @@
 		};
 	});
 
-	/** 2πr for r=25. The fill's duration comes from `LONG_PRESS_DELAY` through a
+	/** 2πr for r=46. The fill's duration comes from `LONG_PRESS_DELAY` through a
 	 *  custom property rather than being written into the stylesheet, so the ring
 	 *  cannot say one thing while the state machine waits for another. */
-	const CIRCUMFERENCE = 157.08;
+	const CIRCUMFERENCE = 289.03;
 </script>
 
 {#if ring}
@@ -169,18 +173,25 @@
 			style="left:{ring.x}px; top:{ring.y}px; --hold-ms:{LONG_PRESS_DELAY}ms; --hold-appear:{APPEAR_MS}ms"
 			aria-hidden="true"
 		>
-			<svg width="56" height="56" viewBox="0 0 56 56">
-				<circle cx="28" cy="28" r="25" fill="none" stroke="rgba(79,255,159,0.14)" stroke-width="2.5" />
+			<svg width="104" height="104" viewBox="0 0 104 104">
+				<circle
+					cx="52"
+					cy="52"
+					r="46"
+					fill="none"
+					stroke="rgba(79, 255, 159, 0.16)"
+					stroke-width="5"
+				/>
 				<!-- Rotated a quarter turn so the path's own start — three
 				     o'clock, clockwise — begins at six instead. -->
 				<circle
 					class="hold-arc"
-					cx="28"
-					cy="28"
-					r="25"
+					cx="52"
+					cy="52"
+					r="46"
 					fill="none"
 					stroke="var(--color-accent)"
-					stroke-width="2.5"
+					stroke-width="5"
 					stroke-linecap="round"
 					stroke-dasharray={CIRCUMFERENCE}
 					stroke-dashoffset={ring.dead ? 0 : CIRCUMFERENCE}
@@ -199,9 +210,9 @@
 	.hold-ring {
 		position: fixed;
 		z-index: 9600;
-		width: 56px;
-		height: 56px;
-		margin: -28px 0 0 -28px;
+		width: 104px;
+		height: 104px;
+		margin: -52px 0 0 -52px;
 		pointer-events: none;
 		opacity: 0;
 		animation: hold-appear 120ms ease-out var(--hold-appear, 130ms) forwards;
@@ -211,7 +222,7 @@
 	   in is the fraction of the hold already spent. */
 	.hold-arc {
 		transform: rotate(90deg);
-		transform-origin: 28px 28px;
+		transform-origin: 52px 52px;
 		animation: hold-fill var(--hold-ms, 500ms) linear forwards;
 	}
 
@@ -228,7 +239,7 @@
 		bottom: 100%;
 		left: 50%;
 		transform: translate(-50%, -4px);
-		font-size: 15px;
+		font-size: 19px;
 		line-height: 1;
 		color: var(--color-accent);
 		animation: hold-leave 620ms ease-out forwards;
