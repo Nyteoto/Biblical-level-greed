@@ -17,6 +17,7 @@
 	import TodoEntryText from './TodoEntryText.svelte';
 	import { longpress } from './longpress';
 	import { mediaViewUrl } from './api';
+	import { holdable } from './holdable';
 	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
 	import type { Day } from './log';
@@ -26,12 +27,19 @@
 		day,
 		onopen,
 		ontoggle,
-		onassign
+		onassign,
+		onholdmedia
 	}: {
 		day: Day;
 		onopen?: (shots: Shot[], index: number) => void;
 		ontoggle?: (entry: Entry, line: number) => void;
 		onassign?: (entry: Entry, x: number, y: number) => void;
+		/** Hold a photograph for what can be done *with* it — the album's
+		 *  overview picture. A quiet day's ribbon is where most of the log's
+		 *  photographs actually are: only the newest day is a `LeadDay`, so
+		 *  wiring the hero and not this left the gesture working on one day in
+		 *  the year and dead on the rest. */
+		onholdmedia?: (ref: string, x: number, y: number) => void;
 	} = $props();
 
 	const time = (entry: Entry) =>
@@ -64,6 +72,7 @@
 				<button
 					type="button"
 					class="lift lift-sm relative h-[52px] w-[72px] shrink-0 overflow-hidden rounded-[10px] bg-neutral-300 shadow-sm"
+					use:holdable={(x, y) => onholdmedia?.(shot.ref, x, y)}
 					onclick={() => onopen?.(day.media, i)}
 					aria-label={isVideo(shot.ref) ? 'play clip' : 'open photo'}
 				>

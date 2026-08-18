@@ -338,6 +338,7 @@
 										onopen={(s, index) => (lightbox = { shots: s, index })}
 										ontoggle={onToggle}
 										onassign={(entry, x, y) => (menu = { x, y, entry })}
+										onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
 									/>
 								{:else if expanded.has(row.days[0].key)}
 									{#each row.days as day (day.key)}
@@ -346,6 +347,7 @@
 											onopen={(s, index) => (lightbox = { shots: s, index })}
 											ontoggle={onToggle}
 											onassign={(entry, x, y) => (menu = { x, y, entry })}
+										onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
 										/>
 									{/each}
 									<button
