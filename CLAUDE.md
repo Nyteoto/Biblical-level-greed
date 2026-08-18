@@ -154,6 +154,13 @@ editing frontend source leaves the app serving stale UI until you run
     sits outside `main`. The filter that originally forced both is gone; the
     reason that remains is z-order — **a full-size photograph is never
     scanlined or tinted.** Thumbnails are.
+- **A thing is labelled once, in the most legible place.** The album view grew
+  three month labels (the header's `AUGUST 2026`, the chapter row's `Aug`, the
+  month spine's `AUG`) and two year labels (that same header, and the sidebar's
+  `2026`). None of them was wrong; together they are noise, and the user does not
+  want that anywhere in this app. When a fact is already on screen, the second
+  place that states it is the one to delete — pick the space where it reads best
+  and strip the rest.
 - **The ground is painted on `[data-shell-header]`, not on `html` or `body`.**
   WebKitGTK — the engine `desktop.py` ships — drops the canvas background from
   an offscreen snapshot. Harmless when the ground was near-white; on a dark
