@@ -38,11 +38,14 @@
 	 */
 	import { EXPECTED_API } from '$lib/api';
 	import { getEntries } from './api';
-	import { bootLines, bootSegments, type BootLine } from './boot';
+	import { bootLine, bootPool, bootSegments, type BootLine } from './boot';
 
-	const BOOT_MS = 1200;
+	const BOOT_MS = 3200;
 	const STRIKE_MS = 520;
-	const ROWS = 5;
+	/** How many lines stand on screen at once. The log rolls: a new one arrives
+	 *  every few hundred milliseconds and the oldest leaves, which is what fills
+	 *  three seconds without the screen going still. */
+	const ROWS = 6;
 
 	const KEY = 'launched';
 
@@ -62,45 +65,66 @@
 		}
 		running = true;
 
-		// The lines start with what is knowable without asking anyone — module
-		// names — and the user's own media is spliced in if the log answers in
-		// time. It usually does; it is localhost. If it does not, the boot reads
-		// exactly as well, which is the requirement for putting a fetch here at
-		// all.
-		lines = bootLines([], ROWS);
+		// The names start with what is knowable without asking anyone — this
+		// repo's own parts — and the user's media is folded into the pool when
+		// the log answers. It usually does; it is localhost. If it never does,
+		// the boot reads exactly as well, which is the condition for putting a
+		// fetch here at all.
+		let pool = bootPool([]);
+		lines = Array.from({ length: 3 }, () => bootLine(pool));
 		getEntries({ limit: 12 })
 			.then((r) => {
 				const refs = r.entries.flatMap((e) => e.media ?? []);
-				if (refs.length && running) lines = bootLines(refs, ROWS);
+				if (refs.length) pool = bootPool(refs);
 			})
 			.catch(() => {
-				/* modules alone */
+				/* this repo's parts alone */
 			});
 
 		const timers: ReturnType<typeof setTimeout>[] = [];
+		const intervals: ReturnType<typeof setInterval>[] = [];
+
+		// The roll. One more line, the oldest off the top.
+		intervals.push(
+			setInterval(() => {
+				lines = [...lines, bootLine(pool)].slice(-ROWS);
+			}, 300)
+		);
 
 		// The bar, in lumps. Each stop lands at its own moment and then nothing
 		// happens for a while, which is what makes the next one look like
 		// something completing.
 		const stops = bootSegments();
 		stops.forEach((stop, i) => {
-			const at = Math.round((BOOT_MS * (i + 1)) / stops.length - 40 - Math.random() * 90);
-			timers.push(setTimeout(() => (fill = stop), Math.max(60, at)));
+			const at = Math.round((BOOT_MS * (i + 1)) / stops.length - 80 - Math.random() * 220);
+			timers.push(setTimeout(() => (fill = stop), Math.max(80, at)));
 		});
 
-		// Flicker: a handful of random dips, each a couple of frames long. Not a
-		// loop — a tube settling does it less as it warms, so the dips are drawn
-		// from the first two thirds of the boot.
-		const dips = 3 + Math.floor(Math.random() * 4);
+		// The flicker, and the reason it is here rather than in a keyframe: CSS
+		// cannot roll dice, and a fixed flicker is a rhythm — which is the one
+		// thing a failing tube does not have.
+		//
+		// Set and cleared with no transition, on purpose. The first attempt eased
+		// it over 40ms while the dips themselves were 30ms long, so the opacity
+		// never arrived anywhere before being sent back and the effect was
+		// invisible. A tube does not ease; it drops and returns.
+		const dips = 10 + Math.floor(Math.random() * 8);
 		for (let i = 0; i < dips; i++) {
-			const at = Math.random() * BOOT_MS * 0.66;
-			const depth = 0.35 + Math.random() * 0.45;
+			const at = 80 + Math.random() * (BOOT_MS - 240);
+			// Mostly quick brown-outs, occasionally a surge — a run that only ever
+			// dims reads as a pulse rather than as an unsteady supply.
+			const surge = Math.random() < 0.25;
+			const depth = surge ? 1.35 + Math.random() * 0.35 : 0.12 + Math.random() * 0.35;
+			const held = 45 + Math.random() * 90;
 			timers.push(setTimeout(() => (flicker = depth), at));
-			timers.push(setTimeout(() => (flicker = 1), at + 30 + Math.random() * 70));
+			timers.push(setTimeout(() => (flicker = 1), at + held));
 		}
 
 		timers.push(setTimeout(() => (running = false), BOOT_MS + STRIKE_MS));
-		return () => timers.forEach(clearTimeout);
+		return () => {
+			timers.forEach(clearTimeout);
+			intervals.forEach(clearInterval);
+		};
 	});
 </script>
 
@@ -110,15 +134,22 @@
 		style="--boot:{BOOT_MS}ms; --strike:{STRIKE_MS}ms; --total:{BOOT_MS + STRIKE_MS}ms"
 		aria-hidden="true"
 	>
-		<div class="warmup-boot" style="opacity:{flicker}">
+		<!-- `opacity` carries a brown-out and `brightness` a surge: opacity cannot
+		     exceed 1, and a tube that only ever dims reads as a fade rather than
+		     as an unsteady supply. -->
+		<div
+			class="warmup-boot"
+			style="opacity:{Math.min(1, flicker)}; filter:brightness({Math.max(1, flicker)})"
+		>
 			<span class="warmup-mark">TROPHIC</span>
 			<span class="warmup-sub">P.G.S version {EXPECTED_API}</span>
 
 			<ul class="warmup-lines">
-				{#each lines as line, i (line.part)}
-					<!-- Keyed on the name, so a line replaced when the media arrives
-					     re-runs its own reveal rather than snapping into place. -->
-					<li style="animation-delay:{60 + i * 110}ms">
+				{#each lines as line (line.id)}
+					<!-- Keyed on an id, not the name: the log rolls, and over three
+					     seconds the same file can legitimately come round twice. Each
+					     arrival is a new element and plays its own reveal. -->
+					<li>
 						<span class="warmup-part">{line.part}</span>
 						<span class="warmup-dots"></span>
 						<span class="warmup-state">{line.state}</span>
@@ -156,9 +187,8 @@
 		display: flex;
 		width: min(340px, 74vw);
 		flex-direction: column;
-		/* The flicker is an inline opacity; this is the only thing that moves it
-		   otherwise, and it is fast enough that a dip mid-fade still reads. */
-		transition: opacity 40ms linear;
+		/* No transition. The flicker is set and cleared outright — easing it is
+		   exactly what made the first version invisible. */
 		animation: warmup-boot-out 160ms ease-in forwards;
 		animation-delay: calc(var(--boot) - 160ms);
 	}

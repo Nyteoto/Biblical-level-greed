@@ -52,27 +52,26 @@ const PARTS = [
  *  to be — these are the verbs this codebase actually uses about itself. */
 const STATES = ['ok', 'read', 'folded', 'replayed', 'derived', 'mounted', 'cached', 'warm'];
 
-export type BootLine = { part: string; state: string };
+export type BootLine = { id: number; part: string; state: string };
+
+let seq = 0;
 
 function pick<T>(from: T[], rng: () => number): T {
 	return from[Math.floor(rng() * from.length)];
 }
 
-/** A shuffled run of lines, media mixed in wherever the log gave us any. */
-export function bootLines(media: string[], count: number, rng: () => number = Math.random): BootLine[] {
-	// Media first in the pool but not first on screen: the shuffle is what puts
-	// a photograph between two modules, which is what makes it read as one
-	// system rather than two lists.
-	const pool = [...PARTS, ...media.map((ref) => ref.split('/').pop() ?? ref)];
-	const out: BootLine[] = [];
-	const seen = new Set<string>();
-	while (out.length < count && seen.size < pool.length) {
-		const part = pick(pool, rng);
-		if (seen.has(part)) continue;
-		seen.add(part);
-		out.push({ part, state: pick(STATES, rng) });
-	}
-	return out;
+/** Everything a boot can name: this repo's parts, plus the user's own media. */
+export function bootPool(media: string[]): string[] {
+	// Media mixed into the same pool rather than kept as its own group: the
+	// shuffle is what puts a photograph between two modules, which is what makes
+	// it read as one system waking up rather than two lists.
+	return [...PARTS, ...media.map((ref) => ref.split('/').pop() ?? ref)];
+}
+
+/** One more line for the roll. Carries an id because the list scrolls and the
+ *  same name may legitimately come round twice in a long boot. */
+export function bootLine(pool: string[], rng: () => number = Math.random): BootLine {
+	return { id: ++seq, part: pick(pool, rng), state: pick(STATES, rng) };
 }
 
 /**
