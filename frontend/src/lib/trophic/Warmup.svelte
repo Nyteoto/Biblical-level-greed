@@ -5,54 +5,52 @@
 	 * ## How the app knows it was restarted
 	 *
 	 * `sessionStorage`. It is emptied when the tab or the installed app is
-	 * actually closed and reopened — including the case that prompted this,
-	 * clearing the app off the multitasking screen and tapping it again — and it
-	 * survives everything that is *not* a restart: client-side navigation between
-	 * screens, the Log bouncing you into an album, backgrounding the app and
-	 * coming back. That is precisely the line this wants to be on, and
-	 * `lastAlbum` reads the same signal for the same reason.
+	 * actually closed and reopened — including clearing the app off the
+	 * multitasking screen and tapping it again — and it survives everything that
+	 * is *not* a restart: navigation between screens, the Log bouncing you into
+	 * an album, backgrounding and coming back. `lastAlbum` reads the same signal
+	 * for the same reason.
 	 *
-	 * Two things it deliberately does not do. It does not fire when the app is
-	 * merely backgrounded — `visibilitychange` would, and a splash every time you
-	 * check a message is an app that thinks its own launch is an event you wanted
-	 * to attend. And it does not fire on a manual reload, because a reload keeps
-	 * the session; `performance.getEntriesByType` reports the navigation type and
-	 * would be the thing to read if that ever needs to change.
+	 * It deliberately does not fire on backgrounding — `visibilitychange` would,
+	 * and a splash every time you check a message is an app that thinks its own
+	 * launch is an event you wanted to attend — nor on a manual reload, which
+	 * keeps the session.
 	 *
-	 * ## Two beats, and what each is for
+	 * ## Two beats
 	 *
-	 * **The boot screen** is theatre and is meant to be. Nothing is loading — the
-	 * shell is static files off localhost — so this is not a progress indicator
-	 * and would be a lie if it claimed to be one. It is the machine introducing
-	 * itself, which is a thing a green tube is entitled to do, and it is why the
-	 * lines name the parts this app actually has rather than inventing a number
-	 * to count up. Theatre may be theatrical; it may not be false.
+	 * **The boot screen** is theatre and is built to be honest about it. Nothing
+	 * is loading, so a bar claiming to measure work would be a lie about work
+	 * that is not happening. What it reads out instead is *true*: real module
+	 * names from this repo and real media filenames from the log, shuffled fresh
+	 * every launch. Filenames only — `CLAUDE.md` allows listing them and forbids
+	 * opening them, and nothing here opens anything.
 	 *
-	 * **The strike** is the transition out of it: a CRT lands a bright horizontal
-	 * line and the picture opens from it. That beat is doing real work — it is
-	 * what makes the app *arrive* rather than replace the boot screen — so it is
-	 * the one that must not be cut.
+	 * Three things are randomised per boot so no two launches read alike: which
+	 * lines appear and in what order, where the bar's segments land, and when the
+	 * tube flickers. The flicker is driven from JS rather than a keyframe because
+	 * CSS cannot roll dice — a fixed flicker animation is a rhythm, and a rhythm
+	 * is the one thing a failing tube does not have.
 	 *
-	 * Together they are under two seconds, which is the budget for something you
-	 * see every time you open the app and cannot skip. The numbers live in one
-	 * place below and the stylesheet reads them, so the two halves cannot drift.
+	 * **The strike** is the transition out: a CRT lands a bright line and the
+	 * picture opens from it. It is the beat doing real work — it makes the app
+	 * *arrive* rather than replace the boot screen — and it is deliberately
+	 * shorter than the boot, because it is the part you are waiting through.
 	 */
-	const BOOT_MS = 1200;
-	const STRIKE_MS = 780;
+	import { EXPECTED_API } from '$lib/api';
+	import { getEntries } from './api';
+	import { bootLines, bootSegments, type BootLine } from './boot';
 
-	/** The parts of the app, named honestly. `ok` is a claim about existence,
-	 *  not about health — nothing here is checked, and nothing here pretends to
-	 *  have been. */
-	const LINES: [string, string][] = [
-		['log', 'ok'],
-		['index', 'ok'],
-		['media', 'ok'],
-		['tube', 'warm']
-	];
+	const BOOT_MS = 1200;
+	const STRIKE_MS = 520;
+	const ROWS = 5;
 
 	const KEY = 'launched';
 
 	let running = $state(false);
+	let lines = $state<BootLine[]>([]);
+	let fill = $state(0);
+	/** The tube's own unsteadiness. 1 is a healthy screen. */
+	let flicker = $state(1);
 
 	$effect(() => {
 		try {
@@ -63,8 +61,46 @@
 			// The failure mode of a warm-up is that you see a warm-up.
 		}
 		running = true;
-		const done = setTimeout(() => (running = false), BOOT_MS + STRIKE_MS);
-		return () => clearTimeout(done);
+
+		// The lines start with what is knowable without asking anyone — module
+		// names — and the user's own media is spliced in if the log answers in
+		// time. It usually does; it is localhost. If it does not, the boot reads
+		// exactly as well, which is the requirement for putting a fetch here at
+		// all.
+		lines = bootLines([], ROWS);
+		getEntries({ limit: 12 })
+			.then((r) => {
+				const refs = r.entries.flatMap((e) => e.media ?? []);
+				if (refs.length && running) lines = bootLines(refs, ROWS);
+			})
+			.catch(() => {
+				/* modules alone */
+			});
+
+		const timers: ReturnType<typeof setTimeout>[] = [];
+
+		// The bar, in lumps. Each stop lands at its own moment and then nothing
+		// happens for a while, which is what makes the next one look like
+		// something completing.
+		const stops = bootSegments();
+		stops.forEach((stop, i) => {
+			const at = Math.round((BOOT_MS * (i + 1)) / stops.length - 40 - Math.random() * 90);
+			timers.push(setTimeout(() => (fill = stop), Math.max(60, at)));
+		});
+
+		// Flicker: a handful of random dips, each a couple of frames long. Not a
+		// loop — a tube settling does it less as it warms, so the dips are drawn
+		// from the first two thirds of the boot.
+		const dips = 3 + Math.floor(Math.random() * 4);
+		for (let i = 0; i < dips; i++) {
+			const at = Math.random() * BOOT_MS * 0.66;
+			const depth = 0.35 + Math.random() * 0.45;
+			timers.push(setTimeout(() => (flicker = depth), at));
+			timers.push(setTimeout(() => (flicker = 1), at + 30 + Math.random() * 70));
+		}
+
+		timers.push(setTimeout(() => (running = false), BOOT_MS + STRIKE_MS));
+		return () => timers.forEach(clearTimeout);
 	});
 </script>
 
@@ -74,23 +110,27 @@
 		style="--boot:{BOOT_MS}ms; --strike:{STRIKE_MS}ms; --total:{BOOT_MS + STRIKE_MS}ms"
 		aria-hidden="true"
 	>
-		<div class="warmup-boot">
+		<div class="warmup-boot" style="opacity:{flicker}">
 			<span class="warmup-mark">TROPHIC</span>
-			<span class="warmup-sub">capture system</span>
+			<span class="warmup-sub">P.G.S version {EXPECTED_API}</span>
 
 			<ul class="warmup-lines">
-				{#each LINES as [part, state], i (part)}
-					<!-- Staggered by index rather than by a timer: four elements, four
-					     delays, and nothing to tear down if the app is closed mid-boot. -->
-					<li style="animation-delay:{120 + i * 150}ms">
-						<span class="warmup-part">{part}</span>
+				{#each lines as line, i (line.part)}
+					<!-- Keyed on the name, so a line replaced when the media arrives
+					     re-runs its own reveal rather than snapping into place. -->
+					<li style="animation-delay:{60 + i * 110}ms">
+						<span class="warmup-part">{line.part}</span>
 						<span class="warmup-dots"></span>
-						<span class="warmup-state">{state}</span>
+						<span class="warmup-state">{line.state}</span>
 					</li>
 				{/each}
 			</ul>
 
-			<span class="warmup-bar"></span>
+			<span class="warmup-bar">
+				<!-- No transition: a segment is a jump, and easing one would put the
+				     ramp back that the segments exist to remove. -->
+				<span class="warmup-bar-fill" style="transform:scaleX({fill})"></span>
+			</span>
 		</div>
 
 		<span class="warmup-line"></span>
@@ -114,12 +154,13 @@
 
 	.warmup-boot {
 		display: flex;
-		width: min(320px, 72vw);
+		width: min(340px, 74vw);
 		flex-direction: column;
-		/* Out before the strike, so the line lands on an empty screen rather than
-		   over the top of the words. */
-		animation: warmup-boot-out 180ms ease-in forwards;
-		animation-delay: calc(var(--boot) - 180ms);
+		/* The flicker is an inline opacity; this is the only thing that moves it
+		   otherwise, and it is fast enough that a dip mid-fade still reads. */
+		transition: opacity 40ms linear;
+		animation: warmup-boot-out 160ms ease-in forwards;
+		animation-delay: calc(var(--boot) - 160ms);
 	}
 
 	.warmup-mark {
@@ -151,10 +192,14 @@
 		align-items: baseline;
 		gap: 8px;
 		opacity: 0;
-		animation: warmup-in 160ms ease-out forwards;
+		animation: warmup-in 140ms ease-out forwards;
 	}
 
 	.warmup-part {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 62%;
 		color: var(--color-neutral-700);
 	}
 
@@ -176,21 +221,26 @@
 		color: var(--color-accent);
 	}
 
-	/* Fills across the boot, and is the only thing here shaped like progress.
-	   It measures the animation, which is the one thing it can measure honestly. */
 	.warmup-bar {
+		display: block;
 		height: 2px;
+		overflow: hidden;
 		border-radius: 2px;
-		background: var(--color-accent);
+		background: var(--color-neutral-300);
+	}
+
+	.warmup-bar-fill {
+		display: block;
+		height: 100%;
+		width: 100%;
 		transform-origin: left;
 		transform: scaleX(0);
+		background: var(--color-accent);
 		box-shadow: 0 0 10px rgba(79, 255, 159, 0.4);
-		animation: warmup-fill var(--boot) ease-out forwards;
 	}
 
 	/* The strike. Out from the centre as a hairline, then the picture opens from
-	   it: the line scales up and fades as the ground beneath it goes.
-	   `transform` and `opacity` only, so the whole thing composites. */
+	   it. `transform` and `opacity` only, so the whole thing composites. */
 	.warmup-line {
 		position: absolute;
 		width: 62%;
@@ -210,12 +260,6 @@
 		}
 	}
 
-	@keyframes warmup-fill {
-		to {
-			transform: scaleX(1);
-		}
-	}
-
 	@keyframes warmup-boot-out {
 		to {
 			opacity: 0;
@@ -227,11 +271,11 @@
 			transform: scaleX(0) scaleY(1);
 			opacity: 1;
 		}
-		22% {
+		26% {
 			transform: scaleX(1) scaleY(1);
 			opacity: 1;
 		}
-		55% {
+		58% {
 			transform: scaleX(1) scaleY(60);
 			opacity: 0.22;
 		}
@@ -241,11 +285,11 @@
 		}
 	}
 
-	/* Opaque through the boot and most of the strike, then gone. The percentages
-	   are of the total, which is why they are not round numbers. */
+	/* Opaque through the boot and most of the strike, then gone. The percentage
+	   is of the total, which is why it is not a round number. */
 	@keyframes warmup-clear {
 		0%,
-		78% {
+		82% {
 			opacity: 1;
 		}
 		100% {
@@ -253,11 +297,9 @@
 		}
 	}
 
-	/* Reduced motion gets the beat without the geometry: the screen is covered,
-	   the machine says its name, then it is not. */
+	/* Reduced motion gets the beat without the geometry or the flicker. */
 	@media (prefers-reduced-motion: reduce) {
-		.warmup-line,
-		.warmup-bar {
+		.warmup-line {
 			display: none;
 		}
 		.warmup-boot {
