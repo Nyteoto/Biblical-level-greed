@@ -23,6 +23,17 @@
 	 * It clamps into the viewport after mounting, because it opens under a
 	 * finger and a finger is often near an edge — the same reason
 	 * `FolderAssignMenu` does.
+	 *
+	 * **The click that opened it must not close it.** This appears at 500ms with
+	 * the finger still down, so the release fires a click straight onto the
+	 * backdrop that just appeared underneath it and the panel vanished before
+	 * anything could be chosen. Exactly one click is swallowed, and only within a
+	 * short window of opening — the same shape as the rule `long_press.json`
+	 * pins for the gesture, including the reason for the window: a flag left set
+	 * eats the user's next real tap.
+	 *
+	 * Leaving is three ways, because one of them being "tap somewhere else" is
+	 * not a way out you can see: Escape, the × in the corner, or the backdrop.
 	 */
 	import { phosphorize } from './colors';
 	import Segmented from './Segmented.svelte';
@@ -60,13 +71,61 @@
 	let renaming = $state(false);
 	let renameValue = $state('');
 
+	/**
+	 * The panel opens at 500ms with the finger still down, so the release fires
+	 * a click that this panel must not treat as a decision. It is *armed* by
+	 * that click rather than closed by it, and the click is stopped in the
+	 * capture phase so it reaches nothing inside either — a release is not a
+	 * choice of anything, and letting it through would let the finger land on
+	 * whichever option happened to be under it.
+	 *
+	 * Arming on the click and not on a timer, because the first attempt used a
+	 * window after opening and the release landed on the *panel*, which stops
+	 * propagation — so the budget went unspent and the user's next real click
+	 * was eaten instead. The timer is still here as a floor, for the touch case
+	 * where a long press may produce no click at all: after 600ms the panel is
+	 * armed regardless, so nothing can be swallowed indefinitely.
+	 */
+	let armed = $state(false);
+
+	$effect(() => {
+		const arm = (event: MouseEvent) => {
+			if (armed) return;
+			armed = true;
+			event.stopPropagation();
+			event.preventDefault();
+		};
+		window.addEventListener('click', arm, true);
+		const floor = setTimeout(() => (armed = true), 600);
+		return () => {
+			window.removeEventListener('click', arm, true);
+			clearTimeout(floor);
+		};
+	});
+
+	function backdrop() {
+		if (armed) onclose();
+	}
+
+	function onkeydown(event: KeyboardEvent) {
+		if (event.key !== 'Escape') return;
+		event.preventDefault();
+		if (renaming) renaming = false;
+		else onclose();
+	}
+
+	// Clamped from the props, never from `pos`. Reading the value this effect
+	// also writes makes it re-trigger itself, and Svelte answers a self-feeding
+	// effect by tearing the component's reactivity down — which presented as a
+	// panel that rendered correctly and then ignored Escape, the backdrop and its
+	// own close button equally. `FolderAssignMenu` reads `x`/`y` for this reason.
 	$effect(() => {
 		const el = panel;
 		if (!el) return;
 		const box = el.getBoundingClientRect();
 		const margin = 12;
-		const nx = Math.min(pos.x, window.innerWidth - box.width - margin);
-		const ny = Math.min(pos.y, window.innerHeight - box.height - margin);
+		const nx = Math.min(x, window.innerWidth - box.width - margin);
+		const ny = Math.min(y, window.innerHeight - box.height - margin);
 		pos = { x: Math.max(margin, nx), y: Math.max(margin, ny) };
 	});
 
@@ -84,11 +143,13 @@
 	}
 </script>
 
+<svelte:window {onkeydown} />
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="fixed inset-0 z-[9700]"
-	onclick={onclose}
+	onclick={backdrop}
 	oncontextmenu={(e) => {
 		e.preventDefault();
 		onclose();
@@ -121,21 +182,33 @@
 				/>
 			</form>
 		{:else}
-			<button
-				type="button"
-				class="flex items-baseline gap-2 text-left text-[14px] font-semibold"
-				onclick={() => {
-					renameValue = folder.name;
-					renaming = true;
-				}}
-			>
-				<span
-					class="h-2 w-2 shrink-0 self-center rounded-full"
-					style="background:{phosphorize(folder.color)}"
-				></span>
-				{folder.name}
-				<span class="text-[12px] font-normal text-neutral-700">rename</span>
-			</button>
+			<div class="flex items-center gap-2">
+				<button
+					type="button"
+					class="flex min-w-0 flex-1 items-baseline gap-2 text-left text-[14px] font-semibold"
+					onclick={() => {
+						renameValue = folder.name;
+						renaming = true;
+					}}
+				>
+					<span
+						class="h-2 w-2 shrink-0 self-center rounded-full"
+						style="background:{phosphorize(folder.color)}"
+					></span>
+					<span class="truncate">{folder.name}</span>
+					<span class="shrink-0 text-[12px] font-normal text-neutral-700">rename</span>
+				</button>
+				<!-- The way out you can see. Tapping the backdrop works too, but a
+				     panel whose only exit is "somewhere else" does not look closable. -->
+				<button
+					type="button"
+					class="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[15px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-ink"
+					aria-label="close"
+					onclick={onclose}
+				>
+					✕
+				</button>
+			</div>
 		{/if}
 
 		<!-- Three states and no taxonomy: the empty one is the default, and a
