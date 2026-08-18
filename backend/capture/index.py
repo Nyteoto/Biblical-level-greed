@@ -52,6 +52,7 @@ TABLES = (
     "folders",
     "folder_tags",
     "entry_folders",
+    "folder_groups",
 )
 
 SCHEMA = """
@@ -112,6 +113,21 @@ CREATE TABLE IF NOT EXISTS folders (
     overview       TEXT NOT NULL DEFAULT '',
     overview_media TEXT NOT NULL DEFAULT ''
 );
+
+-- A folder's group, per year. The primary key is the pair because that is
+-- exactly the fact: a folder has one group *in a year*, and the same folder in
+-- another year is free to sit somewhere else. `seq` is the fold counter at the
+-- moment the group was first named in that year, and it is what orders the
+-- groups on the shelf — first named, first drawn — so the order survives a
+-- rebuild without anyone recording it.
+CREATE TABLE IF NOT EXISTS folder_groups (
+    folder_id TEXT NOT NULL,
+    year      TEXT NOT NULL,
+    name      TEXT NOT NULL,
+    seq       INTEGER NOT NULL,
+    PRIMARY KEY (folder_id, year)
+);
+CREATE INDEX IF NOT EXISTS folder_groups_by_year ON folder_groups (year);
 
 -- `tag` is the primary key, not a pair: one tag belongs to at most one
 -- folder. The source spells the same rule `@@unique([userId, tagName])`.
@@ -268,8 +284,11 @@ def fold(events: list[dict]) -> dict:
     folders: dict[str, dict] = {}
     tag_to_folder: dict[str, str] = {}
     manual: dict[str, set[str]] = {}
+    # (folder, year) -> (group name, the seq that group was first named at)
+    groups: dict[tuple[str, str], str] = {}
+    group_seq: dict[tuple[str, str], int] = {}
 
-    for event in events:
+    for seq, event in enumerate(events):
         kind = event["kind"]
         subject = event["id"]
 
@@ -317,8 +336,21 @@ def fold(events: list[dict]) -> dict:
                 # media ref. One entry, or none to clear it.
                 refs = event.get("media") or []
                 folders[subject]["overview_media"] = refs[0] if refs else ""
+        elif kind == eventlog.SET_GROUP:
+            year = event.get("year") or ""
+            name = event.get("text", "")
+            if subject in folders and year:
+                if name:
+                    groups[(subject, year)] = name
+                    # First naming wins the ordering slot. Moving another
+                    # folder into an existing group must not jump that group to
+                    # the end of the shelf.
+                    group_seq.setdefault((year, name), seq)
+                else:
+                    groups.pop((subject, year), None)
         elif kind == eventlog.DELETE_FOLDER:
             folders.pop(subject, None)
+            groups = {k: v for k, v in groups.items() if k[0] != subject}
             # Cascade, the same one Prisma declares on FolderTag and the same
             # one the source gets from `onDelete: Cascade`. A mapping to a
             # folder that no longer exists would make its tag look claimed.
@@ -358,6 +390,8 @@ def fold(events: list[dict]) -> dict:
         "folders": folders,
         "tag_to_folder": tag_to_folder,
         "manual": manual,
+        "groups": groups,
+        "group_seq": group_seq,
     }
 
 
@@ -419,6 +453,14 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
         conn.executemany(
             "INSERT INTO folder_tags (tag, folder_id) VALUES (?, ?)",
             list(state["tag_to_folder"].items()),
+        )
+        conn.executemany(
+            "INSERT INTO folder_groups (folder_id, year, name, seq) "
+            "VALUES (?, ?, ?, ?)",
+            [
+                (fid, year, name, state["group_seq"].get((year, name), 0))
+                for (fid, year), name in state["groups"].items()
+            ],
         )
         conn.executemany(
             "INSERT INTO entry_folders (entry_id, folder_id) VALUES (?, ?)",
@@ -542,11 +584,47 @@ def set_folder_state(conn: sqlite3.Connection, folder_id: str, state: str) -> No
         conn.execute("UPDATE folders SET state = ? WHERE id = ?", (state, folder_id))
 
 
+def set_folder_group(
+    conn: sqlite3.Connection, folder_id: str, year: str, name: str
+) -> None:
+    """Mirror of the `set-group` branch of `fold`. Empty name un-groups.
+
+    The `seq` a new group lands on is one past the highest in that year, which
+    is what `fold` would give it too: the fold numbers by event position, and
+    this event is the newest one there is.
+    """
+    with conn:
+        if not name:
+            conn.execute(
+                "DELETE FROM folder_groups WHERE folder_id = ? AND year = ?",
+                (folder_id, year),
+            )
+            return
+        row = conn.execute(
+            "SELECT seq FROM folder_groups WHERE year = ? AND name = ? LIMIT 1",
+            (year, name),
+        ).fetchone()
+        if row is None:
+            top = conn.execute(
+                "SELECT coalesce(max(seq), -1) AS s FROM folder_groups"
+            ).fetchone()
+            seq = top["s"] + 1
+        else:
+            seq = row["seq"]
+        conn.execute(
+            "INSERT INTO folder_groups (folder_id, year, name, seq) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT (folder_id, year) "
+            "DO UPDATE SET name = excluded.name, seq = excluded.seq",
+            (folder_id, year, name, seq),
+        )
+
+
 def drop_folder(conn: sqlite3.Connection, folder_id: str) -> None:
     with conn:
         conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
         conn.execute("DELETE FROM folder_tags WHERE folder_id = ?", (folder_id,))
         conn.execute("DELETE FROM entry_folders WHERE folder_id = ?", (folder_id,))
+        conn.execute("DELETE FROM folder_groups WHERE folder_id = ?", (folder_id,))
 
 
 def map_tag(conn: sqlite3.Connection, tag: str, folder_id: str) -> None:
@@ -972,7 +1050,32 @@ def album(
         "chapters": chapters(rows, owned),
         "media_count": sum(len(json.loads(r["media"])) for r in rows),
         "sentiments": folder_sentiments(conn, folder_id) if folder_id else [],
+        # The group is a fact about this folder *in this year*, so it belongs
+        # to the album rather than to the folder record beside it.
+        "group": groups_for(conn, year)[0].get(folder_id or "", ""),
     }
+
+
+def groups_for(conn: sqlite3.Connection, year: str | None) -> tuple[dict, list]:
+    """`(folder id -> group name, group names in shelf order)` for one year.
+
+    `year` of None is the all-years shelf, and it has no groups at all: a group
+    is an arrangement *of a year*, so asking which group a folder is in across
+    every year at once has no answer that is not a guess. The all view gets the
+    plain grid, which is what it was before groups existed.
+    """
+    if year is None:
+        return {}, []
+    rows = conn.execute(
+        "SELECT folder_id, name, seq FROM folder_groups WHERE year = ? "
+        "ORDER BY seq, name",
+        (year,),
+    ).fetchall()
+    names: list[str] = []
+    for row in rows:
+        if row["name"] not in names:
+            names.append(row["name"])
+    return {r["folder_id"]: r["name"] for r in rows}, names
 
 
 def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
@@ -984,6 +1087,7 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
     of a project, and a year you did not touch it is not one of them.
     """
     available = years(conn)
+    in_group, group_names = groups_for(conn, year)
     albums = []
     # Where the most recent line in this year actually landed. Tracked here
     # rather than read off `albums[0]` by the caller, because the shelf is
@@ -1018,6 +1122,9 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
                 "months": _month_range(volumes),
                 "chapters": len(_runs(volumes)),
                 "lead": _lead_media(conn, record["id"], year),
+                # Empty for a folder in the loose grid above the groups, which
+                # is where a folder starts and where most of them stay.
+                "group": in_group.get(record["id"], ""),
             }
         )
         _mark(record["id"], rows)
@@ -1054,6 +1161,8 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
         "year": year,
         "years": available,
         "albums": albums,
+        # In shelf order, so the client draws the sections without sorting.
+        "groups": group_names,
         "unfiled": len(unfiled_rows),
         "entries": total["n"],
         "media": total["m"],

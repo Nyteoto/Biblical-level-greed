@@ -9,6 +9,7 @@ because `conftest.py` sets that variable before either app is imported.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 # Repo root is two levels up from backend/capture/.
@@ -29,6 +30,16 @@ MAX_RAW_LEN = 2000
 # The source's folder-name cap, kept for the same reason it exists there: a
 # folder name is read at a glance in a list, and one that wraps is not.
 MAX_NAME_LEN = 60
+
+# A shelf group's name. Shorter than a folder's, because it is drawn as a
+# heading over a row of cards rather than inside one, and a heading that wraps
+# costs more room than the cards it is labelling.
+GROUP_NAME_MAX = 32
+
+# A year, as the shelf and the group events spell it. Here rather than in
+# `api.py` because `store.py` validates it too, and the request layer is not
+# allowed to be the only thing that knows the shape of a stored field.
+YEAR_RE = re.compile(r"^\d{4}$")
 
 # Where a folder is in its life. The empty one is the default and means "no
 # lifecycle" — an interest you keep rather than a project you finish. Kept

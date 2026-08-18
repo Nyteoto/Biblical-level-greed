@@ -85,6 +85,9 @@ export interface Album extends Folder {
 	chapters: number;
 	/** The newest few attachments — the card's mosaic. */
 	lead: string[];
+	/** The group heading this card sits under this year, or "" for the loose
+	 *  grid above them. Cosmetic — it files nothing and gates nothing. */
+	group: string;
 }
 
 /** A contiguous run of months inside one album-year, named from the user's own
@@ -102,6 +105,10 @@ export interface Shelf {
 	/** Every year the log has anything in, newest first. The year rail. */
 	years: string[];
 	albums: Album[];
+	/** The year's group headings, in shelf order — first named, first drawn.
+	 *  Empty on the all-years shelf, which has no groups at all: a group is an
+	 *  arrangement *of a year*. */
+	groups: string[];
 	unfiled: number;
 	entries: number;
 	media: number;
@@ -122,6 +129,9 @@ export interface AlbumView {
 	chapters: Chapter[];
 	media_count: number;
 	sentiments: { name: string; count: number }[];
+	/** Which shelf group this folder sits in *this year*, or "" for the loose
+	 *  grid. Per-year, so the same folder can be filed differently next year. */
+	group: string;
 }
 
 export interface Reminder {
@@ -249,6 +259,16 @@ export const patchFolder = (
 		overview_media?: string;
 	}
 ) => call<{ folder: Folder }>(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify(change) });
+
+/** Put a folder under a named heading on one year's shelf, or take it out of
+ *  one with an empty `name`. Answers with the whole shelf, because one move
+ *  can create a heading or empty the last one out of existence and a
+ *  folder-shaped reply would say neither. */
+export const setFolderGroup = (id: string, year: string, name: string) =>
+	call<Shelf & { version: number }>(`/folders/${id}/group`, {
+		method: 'PUT',
+		body: JSON.stringify({ year, name })
+	});
 
 export const deleteFolder = (id: string) => call<{ ok: boolean }>(`/folders/${id}`, { method: 'DELETE' });
 

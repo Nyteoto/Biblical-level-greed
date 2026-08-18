@@ -93,6 +93,22 @@ SET_STATE = "set-state"
 SET_OVERVIEW = "set-overview"
 SET_OVERVIEW_MEDIA = "set-overview-media"
 
+# Which named group a folder sits in on the year shelf, in `text`, for the year
+# in `year`. Empty `text` puts it back in the loose grid above the groups.
+#
+# The `year` field is the whole point and the reason this is not part of
+# `set-state`: a folder's group is a *per-year* fact. A thing that was Field
+# work in 2025 and Archive in 2026 is one folder with two groupings, not a
+# folder that changed its mind, and there is no year in which the pairing is
+# wrong. Nothing else in this log is keyed by year, so nothing else could carry
+# it.
+#
+# There is no `create-group` and no `delete-group`. A group exists exactly
+# while some folder in that year names it, which means it cannot be created
+# empty and cannot be left behind empty — the two states a separate group
+# object would have to be taught to handle.
+SET_GROUP = "set-group"
+
 KINDS = {
     CAPTURE,
     CHECK,
@@ -109,6 +125,7 @@ KINDS = {
     SET_STATE,
     SET_OVERVIEW,
     SET_OVERVIEW_MEDIA,
+    SET_GROUP,
 }
 
 
@@ -135,6 +152,7 @@ def append(
     folder: str | None = None,
     ts: str | None = None,
     media: list[str] | None = None,
+    year: str | None = None,
 ) -> dict:
     """Write one event. Never rewrites or deletes an existing line.
 
@@ -168,6 +186,8 @@ def append(
         event["color"] = color
     if folder is not None:
         event["folder"] = folder
+    if year is not None:
+        event["year"] = year
     if media:
         # Paths under data/media, not the files. A reference is a fact about
         # the entry in the same way the raw line is — it cannot be derived

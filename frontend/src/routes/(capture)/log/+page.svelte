@@ -21,7 +21,6 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Mosaic from '$lib/trophic/Mosaic.svelte';
-	import Sparkline from '$lib/trophic/Sparkline.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import { pixelate } from '$lib/trophic/pixelate';
@@ -31,11 +30,14 @@
 		getShelf,
 		getUnassignedTags,
 		patchFolder,
+		setFolderGroup,
+		type Album,
 		type Folder,
 		type Shelf,
 		type UnassignedTag
 	} from '$lib/trophic/api';
 	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
+	import { collapsedGroups } from '$lib/trophic/collapsed.svelte';
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import { holdable } from '$lib/trophic/holdable';
 
@@ -170,18 +172,35 @@
 	const albumHref = (id: string | null) =>
 		`/folders/${id ?? 'unfiled'}?year=${shelf?.year ?? 'all'}`;
 
-	/** Which month counts as live. Only in the year we are actually in — in
-	 *  2025 read from 2026, nothing is happening and the whole row is history. */
-	const liveMonth = $derived(
-		shelf?.year === thisYear || shelf?.year === null ? new Date().getMonth() : -1
+	const folded = collapsedGroups();
+
+	/** The shelf in two parts: what has no group, then the named groups in the
+	 *  order the backend gives them. Ungrouped stays on top and keeps the plain
+	 *  grid, so a shelf nobody has arranged looks exactly as it did before
+	 *  groups existed — nothing is gained by making you scroll past an empty
+	 *  ceremonial heading to reach your folders.
+	 */
+	const ungrouped = $derived(shelf?.albums.filter((a) => !a.group) ?? []);
+	const sections = $derived(
+		(shelf?.groups ?? []).map((name) => ({
+			name,
+			albums: shelf?.albums.filter((a) => a.group === name) ?? []
+		}))
 	);
 
 	/** Big cards for what is running, one-line strips for what is not. The
 	 *  split is by size rather than by state: an album with three entries in it
-	 *  does not earn a mosaic even if the folder is marked active. */
+	 *  does not earn a mosaic even if the folder is marked active.
+	 *
+	 *  Applied per section rather than across the shelf. A group is a shelf of
+	 *  its own once you have made one, and ranking its cards against another
+	 *  group's would mean a group of small folders never got a mosaic at all.
+	 */
 	const LEAD = 3;
-	const lead = $derived(shelf?.albums.slice(0, LEAD) ?? []);
-	const quiet = $derived(shelf?.albums.slice(LEAD) ?? []);
+	const split = (albums: Album[]) => ({
+		lead: albums.slice(0, LEAD),
+		quiet: albums.slice(LEAD)
+	});
 
 	const STATE_WORD: Record<string, string> = { active: 'running', shipped: 'shipped' };
 
@@ -329,76 +348,82 @@
 			{:else if shelf && shelf.albums.length === 0 && shelf.unfiled === 0}
 				<p class="text-[13px] text-neutral-700">capture something and it will be here.</p>
 			{:else if shelf}
-				<div class="grid grid-cols-3 gap-[22px]">
-					<!-- Running albums: a mosaic, a name, twelve months and a tally.
-					     Everything on this card is a derived read. -->
-					{#each lead as album (album.id)}
-						<a
-							href={albumHref(album.id)}
-							use:holdable={(x, y) => (panel = { folder: album, x, y })}
-							class="lift lift-md flex flex-col gap-[13px] rounded-[16px] bg-surface p-4 shadow-md"
-						>
-							<Mosaic refs={album.lead} />
-							<div class="flex items-baseline justify-between gap-2.5">
-								<span class="truncate text-[20px] font-bold tracking-[-0.015em]">
-									{album.name}
-								</span>
+				{#snippet cards(list: Album[])}
+					{@const part = split(list)}
+						<!-- Running albums: a mosaic, a name and a tally. Everything on this
+						     card is a derived read. -->
+						{#each part.lead as album (album.id)}
+							<a
+								href={albumHref(album.id)}
+								use:holdable={(x, y) => (panel = { folder: album, x, y })}
+								class="lift lift-md flex flex-col gap-[13px] rounded-[16px] bg-surface p-4 shadow-md"
+							>
+								<Mosaic refs={album.lead} />
+								<div class="flex items-baseline justify-between gap-2.5">
+									<span class="truncate text-[20px] font-bold tracking-[-0.015em]">
+										{album.name}
+									</span>
+									{#if STATE_WORD[album.state]}
+										<span
+											class="shrink-0 rounded-md bg-accent-100 px-[7px] py-[3px] text-[10px] font-bold tracking-[0.1em] text-accent-700 uppercase"
+										>
+											{STATE_WORD[album.state]}
+										</span>
+									{/if}
+								</div>
+								<div
+									class="flex items-baseline justify-between text-[12px] text-neutral-700 tabular-nums"
+								>
+									<span class="flex items-center gap-3">
+										<span class="flex items-center gap-1.5">
+											<Glyph kind="entries" count={album.entry_count} size={12} />
+											{album.entry_count}
+										</span>
+										{#if album.media_count}
+											<span class="flex items-center gap-1.5">
+												<Glyph kind="media" count={album.media_count} size={12} />
+												{album.media_count}
+											</span>
+										{/if}
+									</span>
+									<span>{album.chapters} {album.chapters === 1 ? 'chapter' : 'chapters'}</span>
+								</div>
+							</a>
+						{/each}
+
+						<!-- Everything else: one row each. Same information, less of it. -->
+						{#each part.quiet as album (album.id)}
+							<a
+								href={albumHref(album.id)}
+								use:holdable={(x, y) => (panel = { folder: album, x, y })}
+								class="lift lift-sm flex items-center gap-3.5 rounded-[16px] bg-surface p-4 shadow-sm"
+							>
+								<div class="h-[54px] w-[72px] shrink-0">
+									<Mosaic refs={album.lead} single />
+								</div>
+								<div class="min-w-0 flex-1">
+									<div class="truncate text-[17px] font-bold tracking-[-0.01em]">{album.name}</div>
+									<div class="mt-[3px] flex items-center gap-1.5 text-[12px] text-neutral-700">
+										<Glyph kind="entries" count={album.entry_count} size={12} />
+										<span class="tabular-nums">{album.entry_count}</span>
+										{#if album.months}<span class="ml-1.5">{album.months}</span>{/if}
+									</div>
+								</div>
 								{#if STATE_WORD[album.state]}
 									<span
-										class="shrink-0 rounded-md bg-accent-100 px-[7px] py-[3px] text-[10px] font-bold tracking-[0.1em] text-accent-700 uppercase"
+										class="shrink-0 text-[10px] font-bold tracking-[0.1em] text-neutral-700 uppercase"
 									>
 										{STATE_WORD[album.state]}
 									</span>
 								{/if}
-							</div>
-							<Sparkline volumes={album.volumes} live={liveMonth} />
-							<div
-								class="flex items-baseline justify-between text-[12px] text-neutral-700 tabular-nums"
-							>
-								<span class="flex items-center gap-3">
-									<span class="flex items-center gap-1.5">
-										<Glyph kind="entries" count={album.entry_count} size={12} />
-										{album.entry_count}
-									</span>
-									{#if album.media_count}
-										<span class="flex items-center gap-1.5">
-											<Glyph kind="media" count={album.media_count} size={12} />
-											{album.media_count}
-										</span>
-									{/if}
-								</span>
-								<span>{album.chapters} {album.chapters === 1 ? 'chapter' : 'chapters'}</span>
-							</div>
-						</a>
-					{/each}
+							</a>
+						{/each}
+				{/snippet}
 
-					<!-- Everything else: one row each. Same information, less of it. -->
-					{#each quiet as album (album.id)}
-						<a
-							href={albumHref(album.id)}
-							use:holdable={(x, y) => (panel = { folder: album, x, y })}
-							class="lift lift-sm flex items-center gap-3.5 rounded-[16px] bg-surface p-4 shadow-sm"
-						>
-							<div class="h-[54px] w-[72px] shrink-0">
-								<Mosaic refs={album.lead} single />
-							</div>
-							<div class="min-w-0 flex-1">
-								<div class="truncate text-[17px] font-bold tracking-[-0.01em]">{album.name}</div>
-								<div class="mt-[3px] flex items-center gap-1.5 text-[12px] text-neutral-700">
-									<Glyph kind="entries" count={album.entry_count} size={12} />
-									<span class="tabular-nums">{album.entry_count}</span>
-									{#if album.months}<span class="ml-1.5">{album.months}</span>{/if}
-								</div>
-							</div>
-							{#if STATE_WORD[album.state]}
-								<span
-									class="shrink-0 text-[10px] font-bold tracking-[0.1em] text-neutral-700 uppercase"
-								>
-									{STATE_WORD[album.state]}
-								</span>
-							{/if}
-						</a>
-					{/each}
+				<!-- Ungrouped first, in the plain grid. A shelf nobody has arranged
+				     looks exactly as it did before groups existed. -->
+				<div class="grid grid-cols-3 gap-[22px]">
+					{@render cards(ungrouped)}
 
 					{#if shelf.unfiled > 0}
 						<!-- The pile nothing has claimed. Dashed and unfilled because it
@@ -461,6 +486,46 @@
 					{/if}
 				</div>
 
+				<!-- Then the named groups, in the order they were first named. A
+				     heading is a button over its own grid: the whole row is the
+				     hit area, because a chevron alone is a 12px target for a
+				     gesture you make constantly. -->
+				{#each sections as section (section.name)}
+					{@const shut = folded.isShut(shelf.year, section.name)}
+					<div class="mt-[34px] flex flex-col gap-[18px]">
+						<button
+							type="button"
+							class="group/head flex w-full items-center gap-2.5 text-left"
+							aria-expanded={!shut}
+							onclick={() => folded.toggle(shelf?.year ?? null, section.name)}
+						>
+							<span
+								class="inline-block text-[13px] leading-none text-neutral-600 transition-transform duration-150 group-hover/head:text-ink {shut
+									? ''
+									: 'rotate-90'}"
+							>
+								▶
+							</span>
+							<span
+								class="text-[11px] font-bold tracking-[0.22em] text-neutral-700 uppercase transition-colors group-hover/head:text-ink"
+							>
+								{section.name}
+							</span>
+							<!-- The count is what a folded group still has to say. -->
+							<span class="flex items-center gap-1.5 text-[12px] text-neutral-700 tabular-nums">
+								<Glyph kind="album" count={section.albums.length} size={12} />
+								{section.albums.length}
+							</span>
+							<span class="h-px flex-1 bg-neutral-300"></span>
+						</button>
+						{#if !shut}
+							<div class="grid grid-cols-3 gap-[22px]">
+								{@render cards(section.albums)}
+							</div>
+						{/if}
+					</div>
+				{/each}
+
 				<!-- The year below, pinned to the foot, half off the bottom edge:
 				     the shelf hands back rather than ending. -->
 				{#if shelf.previous}
@@ -494,5 +559,10 @@
 		onpatch={(change) => act(patchFolder(open.folder.id, change))}
 		ondelete={() => removeFolder(open.folder.id)}
 		onclose={() => (panel = null)}
+		year={logSettings.yearAlbums ? (shelf?.year ?? null) : null}
+		group={shelf?.albums.find((a) => a.id === open.folder.id)?.group ?? ''}
+		groups={shelf?.groups ?? []}
+		ongroup={(name) =>
+			act(setFolderGroup(open.folder.id, shelf?.year ?? '', name))}
 	/>
 {/if}

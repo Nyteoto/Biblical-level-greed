@@ -16,6 +16,7 @@ import re
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from .config import YEAR_RE
 from .store import CaptureError, store
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
@@ -258,7 +259,6 @@ def list_dates() -> dict:
     return {"dates": store.dates(), "version": store.version}
 
 
-YEAR_RE = re.compile(r"^\d{4}$")
 
 
 def _year(value: str | None) -> str | None:
@@ -269,6 +269,28 @@ def _year(value: str | None) -> str | None:
     if not YEAR_RE.match(value):
         raise HTTPException(400, "year must be YYYY or 'all'")
     return value
+
+
+class GroupIn(BaseModel):
+    """`year` is required and `name` may be empty — an empty name is the way
+    out of a group, and there is no other one."""
+
+    year: str
+    name: str = ""
+
+
+@router.put("/folders/{folder_id}/group")
+def set_folder_group(folder_id: str, body: GroupIn) -> dict:
+    """Put a folder under a named heading on one year's shelf.
+
+    Returns the whole shelf rather than the folder: the caller is looking at
+    the shelf, one move can create a heading or empty one out of existence, and
+    a folder-shaped answer would not say either.
+    """
+    try:
+        return {**store.set_folder_group(folder_id, body.year, body.name), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
 
 
 @router.get("/shelf")

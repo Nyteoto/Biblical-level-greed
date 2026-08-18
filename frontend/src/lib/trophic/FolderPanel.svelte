@@ -20,7 +20,14 @@
 	 * migrated. Membership is resolved, never stored; this panel only ever moves
 	 * the pointer.
 	 *
-	 * The backdrop, the position and the rule that a hold's own release must not
+	 * The group control is here for the third time on the same argument, with one
+ * difference worth stating: a group is a fact about the folder *in one year*,
+ * so this control only appears when a year is actually selected. On the
+ * all-years shelf there is no year for a choice to be about, and offering the
+ * control there would make the user pick a group that gets written to a year
+ * they cannot see.
+ *
+ * The backdrop, the position and the rule that a hold's own release must not
 	 * dismiss what it opened all live in `HoldMenu` — there are two of these
 	 * panels now and those rules are subtle enough that a second copy would drift.
 	 */
@@ -36,7 +43,11 @@
 		unassigned = [],
 		onpatch,
 		ondelete,
-		onclose
+		onclose,
+		year = null,
+		group = '',
+		groups = [],
+		ongroup
 	}: {
 		x: number;
 		y: number;
@@ -50,10 +61,32 @@
 		}) => void;
 		ondelete: () => void;
 		onclose: () => void;
+		/** The shelf year this panel was opened over, or null on the all-years
+		 *  shelf. Null hides the group control entirely — see the header. */
+		year?: string | null;
+		/** The folder's group in that year, and every group the year already
+		 *  has. Both empty is the ordinary starting state. */
+		group?: string;
+		groups?: string[];
+		ongroup?: (name: string) => void;
 	} = $props();
 
 	let renaming = $state(false);
 	let renameValue = $state('');
+	/** Naming a new group. Separate from `renaming` because both can be open
+	 *  over the same panel and they are not the same edit. */
+	let naming = $state(false);
+	let nameValue = $state('');
+
+	const canGroup = $derived(Boolean(ongroup && year && year !== 'all'));
+
+	function submitGroup() {
+		const next = nameValue.trim();
+		naming = false;
+		nameValue = '';
+		if (!next || next === group) return;
+		ongroup?.(next);
+	}
 
 
 	const STATES = [
@@ -127,6 +160,73 @@
 			onpick={(state) => onpatch({ state })}
 			label="this folder's state"
 		/>
+
+		{#if canGroup}
+			<!-- Where this card sits on the shelf, this year. Cosmetic: it files
+			     nothing and gates nothing, which is why it is a row of chips
+			     rather than anything that looks like a decision. -->
+			<div class="flex flex-col gap-2">
+				<div class="flex items-baseline gap-2 text-[12px] text-neutral-700">
+					<span class="font-semibold">Group</span>
+					<span class="tabular-nums">{year}</span>
+				</div>
+				{#if naming}
+					<form
+						onsubmit={(e) => {
+							e.preventDefault();
+							submitGroup();
+						}}
+					>
+						<!-- svelte-ignore a11y_autofocus -->
+						<input
+							autofocus
+							bind:value={nameValue}
+							maxlength="32"
+							aria-label="new group name"
+							placeholder="name the group"
+							class="w-full rounded-lg bg-neutral-200 px-3 py-2 text-[14px]"
+							onkeydown={(e) => {
+								if (e.key === 'Escape') naming = false;
+							}}
+						/>
+					</form>
+				{:else}
+					<div class="flex flex-wrap gap-1.5 text-[12px]">
+						<button
+							type="button"
+							class="rounded-lg px-2.5 py-1 transition-colors {group
+								? 'text-neutral-700 hover:bg-neutral-200'
+								: 'bg-neutral-200 font-semibold text-ink'}"
+							onclick={() => ongroup?.('')}
+						>
+							none
+						</button>
+						{#each groups as name (name)}
+							<button
+								type="button"
+								class="max-w-[140px] truncate rounded-lg px-2.5 py-1 transition-colors {name ===
+								group
+									? 'bg-neutral-200 font-semibold text-ink'
+									: 'text-neutral-700 hover:bg-neutral-200'}"
+								onclick={() => ongroup?.(name)}
+							>
+								{name}
+							</button>
+						{/each}
+						<button
+							type="button"
+							class="rounded-lg px-2.5 py-1 text-accent-700 transition-colors hover:bg-neutral-200"
+							onclick={() => {
+								nameValue = '';
+								naming = true;
+							}}
+						>
+							+ new
+						</button>
+					</div>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- What points here. The mapping *is* the folder, so it is shown as the
 		     definition rather than as a summary, and each tag is a button that

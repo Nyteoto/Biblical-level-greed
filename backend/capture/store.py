@@ -22,7 +22,13 @@ from backend.app import media as blobs
 from backend.app.timeutil import day_key, now
 
 from . import colors, eventlog, index, parser
-from .config import FOLDER_STATES, MAX_NAME_LEN, MAX_RAW_LEN
+from .config import (
+    FOLDER_STATES,
+    GROUP_NAME_MAX,
+    MAX_NAME_LEN,
+    MAX_RAW_LEN,
+    YEAR_RE,
+)
 from .import_csv import compose_line, flex_parse_time, parse_import_csv
 
 
@@ -395,6 +401,34 @@ class Store:
             index.set_folder_state(self.conn, folder_id, state)
             self.version += 1
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
+
+    def set_folder_group(self, folder_id: str, year: str, name: str) -> dict:
+        """Put a folder in a named group on one year's shelf, or take it out.
+
+        The group is purely an arrangement of the shelf: it files nothing,
+        gates nothing, and is not a second kind of membership. A folder's
+        entries are found through its tags in every year, whether or not the
+        card sits under a heading — which is what makes it safe for the same
+        folder to be grouped one way in 2025 and another way in 2026.
+
+        An empty `name` returns it to the loose grid. Naming a group nothing
+        else uses is how a group is created; there is no separate object to
+        make first, and none left behind when the last folder leaves.
+        """
+        name = " ".join(name.split())
+        if len(name) > GROUP_NAME_MAX:
+            raise CaptureError(f"group name is longer than {GROUP_NAME_MAX} characters")
+        if not YEAR_RE.match(year):
+            raise CaptureError(f"not a year: {year!r}")
+
+        with self._lock:
+            folder = index.folder(self.conn, folder_id)
+            if folder is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            eventlog.append(eventlog.SET_GROUP, folder_id, text=name, year=year)
+            index.set_folder_group(self.conn, folder_id, year, name)
+            self.version += 1
+            return index.shelf(self.conn, year)
 
     def delete_folder(self, folder_id: str) -> None:
         """Forget a folder, its tag mappings and its manual filings.

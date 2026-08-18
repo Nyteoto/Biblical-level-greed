@@ -480,6 +480,13 @@ def test_every_folder_route_is_reachable(client):
         ).status_code
         == 200
     )
+    assert (
+        client.put(
+            f"/api/capture/folders/{folder_id}/group",
+            json={"year": "2026", "name": "Field"},
+        ).status_code
+        == 200
+    )
     assert client.delete(f"/api/capture/folders/{folder_id}").status_code == 200
 
 
@@ -533,3 +540,235 @@ def test_assigning_and_unassigning_over_the_wire(client):
     )
     assert cleared.json()["entry"]["manual_folders"] == []
     assert client.patch(f"/api/capture/entries/{entry_id}", json={}).status_code == 400
+
+
+# ── Shelf groups ──────────────────────────────────────────────────────────
+#
+# A group is an arrangement of one year's shelf and nothing else. The tests
+# that matter are the ones pinning that it stays cosmetic: it must not move a
+# single entry, and the same folder must be free to sit somewhere else next
+# year. Everything here goes through the index-is-disposable check as well,
+# because `set_folder_group` writes the table twice — once as a targeted
+# mirror, once by replay — and the two drifting apart is the failure this
+# whole design is supposed to make impossible.
+
+
+def test_a_folder_starts_in_no_group(capture_store):
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+
+    album = next(a for a in capture_store.shelf(year)["albums"] if a["id"] == folder["id"])
+    assert album["group"] == ""
+    assert capture_store.shelf(year)["groups"] == []
+
+
+def test_naming_a_group_creates_it(capture_store):
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+
+    shelf = capture_store.set_folder_group(folder["id"], year, "Field")
+
+    assert shelf["groups"] == ["Field"]
+    assert next(a for a in shelf["albums"] if a["id"] == folder["id"])["group"] == "Field"
+
+
+def test_the_last_folder_out_takes_the_group_with_it(capture_store):
+    """There is no `delete-group` because there is nothing to delete. A group
+    exists exactly while something names it."""
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+
+    capture_store.set_folder_group(folder["id"], year, "Field")
+    shelf = capture_store.set_folder_group(folder["id"], year, "")
+
+    assert shelf["groups"] == []
+    assert next(a for a in shelf["albums"] if a["id"] == folder["id"])["group"] == ""
+
+
+def test_a_folder_is_grouped_per_year_not_once(capture_store):
+    """The whole reason `set-group` carries a year. Grouping the 2026 shelf
+    must say nothing about how 2025's was arranged."""
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+
+    capture_store.set_folder_group(folder["id"], "2025", "Field")
+    capture_store.set_folder_group(folder["id"], "2026", "Archive")
+
+    assert capture_store.shelf("2025")["groups"] == ["Field"]
+    assert capture_store.shelf("2026")["groups"] == ["Archive"]
+    assert (
+        capture_store.album(folder["id"], "2025")["group"] == "Field"
+    )
+    assert (
+        capture_store.album(folder["id"], "2026")["group"] == "Archive"
+    )
+
+
+def test_the_all_years_shelf_has_no_groups(capture_store):
+    """A group is an arrangement of a year, so across every year at once there
+    is no answer that is not a guess. The all view keeps the plain grid."""
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(folder["id"], year, "Field")
+
+    everything = capture_store.shelf(None)
+    assert everything["groups"] == []
+    assert all(a["group"] == "" for a in everything["albums"])
+
+
+def test_grouping_moves_no_entry(capture_store):
+    """The cosmetic guarantee, stated as a test: membership is still resolved
+    from tags, and a heading over a card cannot become a second kind of it."""
+    capture_store.capture("first light <garden>")
+    capture_store.capture("nothing filed here")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+
+    before = capture_store.album(folder["id"], year)["entries"]
+    capture_store.set_folder_group(folder["id"], year, "Field")
+
+    assert capture_store.album(folder["id"], year)["entries"] == before
+    assert capture_store.shelf(year)["unfiled"] == 1
+
+
+def test_groups_keep_the_order_they_were_first_named_in(capture_store):
+    capture_store.capture("a <one>")
+    capture_store.capture("b <two>")
+    capture_store.capture("c <three>")
+    one = capture_store.create_folder("One", ["one"])
+    two = capture_store.create_folder("Two", ["two"])
+    three = capture_store.create_folder("Three", ["three"])
+    year = capture_store.shelf(None)["years"][0]
+
+    capture_store.set_folder_group(two["id"], year, "Second")
+    capture_store.set_folder_group(one["id"], year, "First")
+    # Joining an existing group must not move that group to the end.
+    capture_store.set_folder_group(three["id"], year, "Second")
+
+    assert capture_store.shelf(year)["groups"] == ["Second", "First"]
+
+
+def test_a_group_is_last_wins_like_every_other_fold(capture_store):
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+
+    for name in ("Field", "Archive", "Field"):
+        capture_store.set_folder_group(folder["id"], year, name)
+
+    assert capture_store.shelf(year)["groups"] == ["Field"]
+    assert log_kinds().count("set-group") == 3  # nothing was rewritten
+
+
+def test_a_group_survives_the_index_being_deleted(capture_store):
+    capture_store.capture("a <one>")
+    capture_store.capture("b <two>")
+    one = capture_store.create_folder("One", ["one"])
+    two = capture_store.create_folder("Two", ["two"])
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(two["id"], year, "Second")
+    capture_store.set_folder_group(one["id"], year, "First")
+
+    assert_index_is_disposable(capture_store)
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        # Order included: `seq` is what carries it, and a replay that numbered
+        # the groups differently would reshuffle the shelf on every restart.
+        assert fresh.shelf(year)["groups"] == capture_store.shelf(year)["groups"]
+        assert [(a["id"], a["group"]) for a in fresh.shelf(year)["albums"]] == [
+            (a["id"], a["group"]) for a in capture_store.shelf(year)["albums"]
+        ]
+    finally:
+        fresh.close()
+
+
+def test_deleting_a_folder_takes_its_grouping_with_it(capture_store):
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(folder["id"], year, "Field")
+
+    capture_store.delete_folder(folder["id"])
+
+    assert capture_store.shelf(year)["groups"] == []
+    assert_index_is_disposable(capture_store)
+
+
+def test_a_group_for_a_deleted_folder_is_dropped_not_resurrected(capture_store):
+    folder = capture_store.create_folder("Garden")
+    capture_store.delete_folder(folder["id"])
+
+    path = eventlog.log_path_for("2099-01-01")
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "ts": "2099-01-01T00:00:00+00:00",
+                    "day": "2099-01-01",
+                    "kind": "set-group",
+                    "id": folder["id"],
+                    "year": "2099",
+                    "text": "Field",
+                }
+            )
+            + "\n"
+        )
+
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.folders() == []
+        assert fresh.shelf("2099")["groups"] == []
+    finally:
+        fresh.close()
+
+
+def test_a_group_name_is_tidied_and_capped(capture_store):
+    from backend.capture.config import GROUP_NAME_MAX
+
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    year = capture_store.shelf(None)["years"][0]
+
+    capture_store.set_folder_group(folder["id"], year, "  Field   work  ")
+    assert capture_store.shelf(year)["groups"] == ["Field work"]
+
+    with pytest.raises(CaptureError):
+        capture_store.set_folder_group(folder["id"], year, "x" * (GROUP_NAME_MAX + 1))
+
+
+def test_grouping_refuses_a_year_that_is_not_one(capture_store):
+    folder = capture_store.create_folder("Garden")
+    with pytest.raises(CaptureError):
+        capture_store.set_folder_group(folder["id"], "all", "Field")
+
+
+def test_grouping_an_absent_folder_is_refused(capture_store):
+    with pytest.raises(CaptureError):
+        capture_store.set_folder_group("nope", "2026", "Field")
+
+
+def test_the_group_travels_over_the_wire(client):
+    client.post("/api/capture/entries", json={"raw_text": "first light <garden>"})
+    folder_id = client.post(
+        "/api/capture/folders", json={"name": "Garden", "tags": ["garden"]}
+    ).json()["folder"]["id"]
+    year = client.get("/api/capture/shelf").json()["years"][0]
+
+    grouped = client.put(
+        f"/api/capture/folders/{folder_id}/group",
+        json={"year": year, "name": "Field"},
+    )
+    assert grouped.status_code == 200, grouped.text
+    # The shelf comes back, because one move can create a heading or empty one
+    # out of existence and a folder-shaped answer would say neither.
+    assert grouped.json()["groups"] == ["Field"]
+
+    refused = client.put(
+        f"/api/capture/folders/{folder_id}/group",
+        json={"year": "all", "name": "Field"},
+    )
+    assert refused.status_code == 400
