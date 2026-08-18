@@ -1,12 +1,16 @@
-<!-- The capture bar's indicator notch, condensed until it survives a tab
-     strip. Same fractions as the PNGs — see `scripts/icon.py` in the commit that
-     drew them: a straight top edge with a tab dropping from the middle, wider at
-     the top than the bottom, and wider than the source's so it reads at 16px. -->
+<!-- The capture bar's indicator notch. Same fractions as the PNGs —
+     see `scripts/icon.py`, which draws both. The shoulders are curves because
+     that is what makes the tab look drawn out of the line rather than stuck
+     onto it. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" fill="#0a1116"/>
   <g filter="url(#glow)">
-    <path fill="#4fff9f"
-          d="M8.3,25.6 H55.7 V30.4 H43.8 L40.6,41.3 H23.4 L20.2,30.4 H8.3 Z"/>
+    <path fill="#4fff9f" d="M8.32,25.6 H55.68 V30.4
+      H43.84
+      C42.72,30.4 42.08,41.28 40.64,41.28
+      H23.36
+      C21.92,41.28 21.28,30.4 20.16,30.4
+      H8.32 Z"/>
   </g>
   <defs>
     <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
