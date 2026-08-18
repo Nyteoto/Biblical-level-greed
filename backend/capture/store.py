@@ -341,6 +341,37 @@ class Store:
             self.version += 1
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
+    def set_overview(self, folder_id: str, text: str) -> dict:
+        """The folder's standing description. Last write wins, like a rename.
+
+        Empty is a real value: clearing an overview is an edit, not a deletion,
+        and the card stays because the folder still has one — it is just blank.
+        """
+        with self._lock:
+            if index.folder(self.conn, folder_id) is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            eventlog.append(eventlog.SET_OVERVIEW, folder_id, text=text)
+            index.set_overview(self.conn, folder_id, text)
+            self.version += 1
+            return index.folder(self.conn, folder_id)  # type: ignore[return-value]
+
+    def set_overview_media(self, folder_id: str, ref: str) -> dict:
+        """The one picture that stands for the folder.
+
+        Setting this on a folder with no overview yet *creates* one, empty —
+        a picture is a statement that the project is worth describing, and the
+        card has to exist for the picture to sit in.
+        """
+        with self._lock:
+            if index.folder(self.conn, folder_id) is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            eventlog.append(
+                eventlog.SET_OVERVIEW_MEDIA, folder_id, media=[ref] if ref else []
+            )
+            index.set_overview_media(self.conn, folder_id, ref)
+            self.version += 1
+            return index.folder(self.conn, folder_id)  # type: ignore[return-value]
+
     def set_folder_state(self, folder_id: str, state: str) -> dict:
         """Move a folder along its life: active, shipped, or neither.
 

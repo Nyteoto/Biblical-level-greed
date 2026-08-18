@@ -85,6 +85,14 @@ UNMAP_TAG = "unmap-tag"
 # and a hobby that turns into a project is one event rather than a migration.
 SET_STATE = "set-state"
 
+# The folder's overview: a standing description of the project, and one picture
+# to stand for it. Two events rather than one because they are set from
+# different places — the card's editor, and a hold on any photograph in the log
+# — and an event that carried both would have to invent a value for whichever
+# half was not being changed.
+SET_OVERVIEW = "set-overview"
+SET_OVERVIEW_MEDIA = "set-overview-media"
+
 KINDS = {
     CAPTURE,
     CHECK,
@@ -99,6 +107,8 @@ KINDS = {
     MAP_TAG,
     UNMAP_TAG,
     SET_STATE,
+    SET_OVERVIEW,
+    SET_OVERVIEW_MEDIA,
 }
 
 

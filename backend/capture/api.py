@@ -60,6 +60,10 @@ class FolderPatch(BaseModel):
     state: str | None = None
     add_tags: list[str] = []
     remove_tags: list[str] = []
+    # The overview's two halves. Absent leaves each alone; empty is a real
+    # value for both — a cleared description, or a removed picture.
+    overview: str | None = None
+    overview_media: str | None = None
 
 
 def _status(exc: CaptureError) -> int:
@@ -211,6 +215,10 @@ def patch_folder(folder_id: str, body: FolderPatch) -> dict:
             folder = store.map_tag(folder_id, tag)
         for tag in body.remove_tags:
             folder = store.unmap_tag(folder_id, tag)
+        if body.overview is not None:
+            folder = store.set_overview(folder_id, body.overview)
+        if body.overview_media is not None:
+            folder = store.set_overview_media(folder_id, body.overview_media)
         if folder is None:
             raise HTTPException(400, "nothing to change")
         return {"folder": folder, "version": store.version}

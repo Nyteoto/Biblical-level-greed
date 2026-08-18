@@ -42,6 +42,10 @@ export interface Folder {
 	id: string;
 	name: string;
 	color: string;
+	/** The folder's standing description, and one picture for it. Both derived
+	 *  from the log like everything else; empty means never written. */
+	overview?: string;
+	overview_media?: string;
 	created_ts: string;
 	/** "active", "shipped", or "" for a folder with no lifecycle — an interest
 	 *  you keep rather than a project you finish. */
@@ -234,7 +238,16 @@ export const createFolder = (name: string, tags: string[] = []) =>
  *  request. `state: ''` is a value, not an omission: it clears the state. */
 export const patchFolder = (
 	id: string,
-	change: { name?: string; state?: string; add_tags?: string[]; remove_tags?: string[] }
+	change: {
+		name?: string;
+		state?: string;
+		add_tags?: string[];
+		remove_tags?: string[];
+		/** The overview's two halves. Empty is a real value for both — a cleared
+		 *  description, or a removed picture. */
+		overview?: string;
+		overview_media?: string;
+	}
 ) => call<{ folder: Folder }>(`/folders/${id}`, { method: 'PATCH', body: JSON.stringify(change) });
 
 export const deleteFolder = (id: string) => call<{ ok: boolean }>(`/folders/${id}`, { method: 'DELETE' });

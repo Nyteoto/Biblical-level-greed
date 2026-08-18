@@ -64,6 +64,7 @@
 	} from '$lib/trophic/api';
 	import { lastAlbum } from '$lib/trophic/lastalbum.svelte';
 	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
+	import OverviewCard from '$lib/trophic/OverviewCard.svelte';
 
 	const id = $derived(page.params.id!);
 	/** `unfiled` is an album you can open like any other and is not a folder. */
@@ -81,6 +82,14 @@
 	let showReadings = $state(false);
 	/** The properties panel, opened by holding a folder in the sidebar. */
 	let panel = $state<{ folder: Folder; x: number; y: number } | null>(null);
+	/** Whether the overview has taken the day column's place. Reset when the
+	 *  album changes: it is a property of reading *this* folder, not a mode. */
+	let overviewOpen = $state(false);
+	$effect(() => {
+		void id;
+		void year;
+		overviewOpen = false;
+	});
 	/** Which quiet stretches the user has opened, by their first day. */
 	let expanded = $state<Set<string>>(new Set());
 
@@ -262,10 +271,30 @@
 		/>
 	{/if}
 
-			<div bind:this={column} class="min-w-0 flex-1 overflow-y-auto px-8 pb-16">
+			<div bind:this={column} class="flex min-w-0 flex-1 flex-col overflow-y-auto px-8 pb-16">
 				{#if error}
 					<p class="pb-4 text-[12px] text-accent-700">{error}</p>
 				{/if}
+
+				<!-- The overview sits above the days and, when opened, replaces them
+				     rather than pushing them down — see `OverviewCard`. The unfiled
+				     pile has no folder to describe, so it has no card. -->
+				{#if album?.folder}
+					{@const owner = album.folder}
+					<div class="mb-[22px] flex min-h-0 shrink-0 flex-col" class:flex-1={overviewOpen}>
+						<OverviewCard
+							folder={owner}
+							bind:expanded={overviewOpen}
+							onsave={(text) => act(patchFolder(owner.id, { overview: text }))}
+							onclearmedia={() => act(patchFolder(owner.id, { overview_media: '' }))}
+						/>
+					</div>
+				{/if}
+
+				{#if overviewOpen}
+					<!-- The days are gone while the overview is open. Nothing is
+					     unmounted that costs anything to rebuild: `days` is derived. -->
+				{:else}
 
 				{#if loading && !album}
 					<p class="text-[13px] text-neutral-700">reading…</p>
@@ -362,6 +391,7 @@
 							</div>
 						{/if}
 					</div>
+				{/if}
 				{/if}
 			</div>
 
