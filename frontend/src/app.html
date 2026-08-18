@@ -12,7 +12,11 @@
 		<title>Trophic</title>
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
-		<meta name="theme-color" content="#f3f2f2" />
+		<!-- The ground, for the status bar and the splash behind an installed app.
+		     It is the same value `--color-ground` carries in app.css; it stayed the
+		     old paper white through the phosphor re-skin, which put a white bar
+		     above a black screen on the home-screen app. -->
+		<meta name="theme-color" content="#0a1116" />
 		<!-- iOS ignores the manifest for the home-screen icon and for standalone
 		     mode; these three are what "Add to Home Screen" actually reads. -->
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
@@ -22,10 +26,13 @@
 		%sveltekit.head%
 	</head>
 	<!-- The inline background is what paints before the stylesheet lands, so it
-	     has to be the ground's own flat colour rather than the old dark shell —
-	     an inline style also beats anything `app.css` says, which is how the
-	     whole app was still rendering on `#14100c` after the redesign. -->
-	<body data-sveltekit-preload-data="hover" style="background: #f3f2f2">
+	     has to be the ground's own flat colour — and an inline style beats
+	     anything `app.css` says, which is the trap this line has now fallen into
+	     twice. It was `#14100c` after the first redesign and paper white after
+	     the phosphor one, both times leaving `body` a colour the app had stopped
+	     using. Nothing covers it except the shell, so it is what an overscroll
+	     or a safe-area inset reveals. Keep it equal to `--color-ground`. -->
+	<body data-sveltekit-preload-data="hover" style="background: #0a1116">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

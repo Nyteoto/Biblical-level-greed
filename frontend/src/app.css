@@ -113,6 +113,13 @@
 html {
 	background: var(--color-ground);
 	color-scheme: dark;
+	/* No rubber-band. Installed to the home screen there is no browser chrome to
+	   absorb the elastic overscroll, so every screen answers a downward drag by
+	   bouncing — including the capture screen, which has nothing to scroll at any
+	   size and so reads as if it is hiding something below the fold. This stops
+	   the bounce at the document, and only at the document: the Log's feed of
+	   days is an ordinary scroll and is untouched. */
+	overscroll-behavior-y: none;
 }
 
 body {
@@ -120,6 +127,7 @@ body {
 	background: var(--color-ground);
 	color: var(--color-neutral-700);
 	font-family: var(--font-sans);
+	overscroll-behavior-y: none;
 }
 
 [data-shell-header] {

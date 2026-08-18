@@ -168,7 +168,7 @@
 
 		<div class="flex min-w-0 flex-1 flex-col gap-[26px] px-[46px] pt-[18px]">
 			<div class="flex items-end justify-between gap-6">
-				<div>
+				<div class="min-w-0">
 					<div class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">
 						Year shelf
 					</div>
@@ -197,8 +197,12 @@
 					</div>
 				</div>
 
+				<!-- The floor is a floor only where there is room for one. At phone
+				     width a 250px minimum next to the year made the row wider than the
+				     screen, and the horizontal scrollbar that raised cost every screen
+				     ten pixels of pointless vertical scroll. -->
 				<form
-					class="focus-pill flex min-w-[250px] items-center gap-2.5 rounded-[12px] bg-surface px-3.5 py-[11px] shadow-sm"
+					class="focus-pill flex min-w-0 items-center gap-2.5 rounded-[12px] bg-surface px-3.5 py-[11px] shadow-sm sm:min-w-[250px]"
 					onsubmit={submitJump}
 				>
 					<svg

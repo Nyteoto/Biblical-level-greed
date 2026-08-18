@@ -298,7 +298,14 @@
 	     and for the same reason. -->
 	<div class="flex shrink-0 items-center justify-between gap-6 px-[34px] pt-[22px] pb-[22px]">
 		<TabPill />
-		<span class="font-mono text-[12px] text-neutral-700">{report?.path ?? ''}</span>
+		<!-- The data root, truncated rather than allowed to set the page's width.
+		     An absolute path is as long as it is, and at phone width this one span
+		     was pushing the document wide enough to raise a horizontal scrollbar —
+		     which then made every screen scroll ten pixels vertically, for no
+		     reason a reader could see. -->
+		<span class="min-w-0 truncate font-mono text-[12px] text-neutral-700">
+			{report?.path ?? ''}
+		</span>
 	</div>
 
 	<div class="flex min-h-0 flex-1">

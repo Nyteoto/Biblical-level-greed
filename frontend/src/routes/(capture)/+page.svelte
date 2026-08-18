@@ -50,7 +50,7 @@
 		type Reminder,
 		type Vocab
 	} from '$lib/trophic/api';
-	import { UI_COLORS, phosphorize } from '$lib/trophic/colors';
+	import { GLOW_STOPS, UI_COLORS, phosphorize } from '$lib/trophic/colors';
 	import { deviceType } from '$lib/trophic/device.svelte';
 	import { attach, release, type Attachment } from '$lib/trophic/media';
 	import { tagForPin, withPinnedTag } from '$lib/trophic/pinned';
@@ -624,11 +624,9 @@
 			>
 				<defs>
 					<linearGradient id="type-glow" x1="0" x2="1" y1="0" y2="0">
-						<stop offset="0%" stop-color="#3586d9" stop-opacity="0" />
-						<stop offset="25%" stop-color="#90bbed" />
-						<stop offset="50%" stop-color="#307dcb" />
-						<stop offset="75%" stop-color="#90bbed" />
-						<stop offset="100%" stop-color="#3586d9" stop-opacity="0" />
+						{#each GLOW_STOPS as stop (stop.offset)}
+							<stop offset={stop.offset} stop-color={stop.color} stop-opacity={stop.opacity} />
+						{/each}
 					</linearGradient>
 				</defs>
 				<path d={NOTCH} fill={indicatorFill} style="transition:fill 0.3s ease" />

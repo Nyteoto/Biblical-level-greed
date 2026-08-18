@@ -50,6 +50,28 @@ export const UI_COLORS = {
 	error: '#ff6a5a' // refused
 } as const;
 
+/**
+ * The typing glow's sweep along the capture bar's indicator, as gradient stops.
+ *
+ * It lives here rather than inline in the capture bar's `<defs>` because that is
+ * exactly where the re-skin missed it: five hardcoded blues inside an SVG, which
+ * is the one kind of place "swap this file and nothing else" cannot reach. The
+ * indicator's other three states were already reading from `UI_COLORS` and were
+ * re-lit for free; this one stayed the old accent's blue for a whole release.
+ *
+ * The shape is the source's and is unchanged — transparent at both ends,
+ * brightest a quarter in from each, a rung down in the middle. That is what
+ * makes it read as light travelling along the line rather than as a bar
+ * switching on.
+ */
+export const GLOW_STOPS = [
+	{ offset: '0%', color: LIT, opacity: 0 },
+	{ offset: '25%', color: LIT, opacity: 1 },
+	{ offset: '50%', color: '#3cbe77', opacity: 1 },
+	{ offset: '75%', color: LIT, opacity: 1 },
+	{ offset: '100%', color: LIT, opacity: 0 }
+] as const;
+
 // The one deliberate exception to the single hue, and it is worth stating why.
 // `error` is a refusal: the validation layer blinks a token in it when the app
 // will not accept what you typed. That is the only moment the screen contradicts
