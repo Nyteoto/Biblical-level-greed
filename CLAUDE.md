@@ -135,18 +135,25 @@ editing frontend source leaves the app serving stale UI until you run
   the corpus. A day is a sticky header, a contact sheet of its media, then its
   lines. Anything that reintroduces one-day-at-a-time navigation is going
   backwards.
-- **The monitor is a layer, not a style.** The scanlines, vignette, grain and
-  glow are five fixed `pointer-events: none` siblings in `+layout.svelte` that
-  know nothing about the app; the curve is one CSS filter on `main`. Content can
-  be rewritten freely without touching any of it, and that separation is the
-  whole point — do not push the effect down into components.
-  - The curve's displacement map **must** stay normalised (`crt.ts`). Storing
-    the offsets at their natural scale uses ~50 of 255 levels and quantises
-    every straight line into a visible staircase.
-  - A filter rasterises its subtree and becomes the containing block for
-    `fixed` descendants. That is why the upload bar is outside it, and why
-    `Lightbox.svelte` portals itself onto `body`: **a full-size photograph is
-    never curved, scanlined or tinted.** Thumbnails are.
+- **The monitor is a layer, not a style.** The scanlines, vignette, grain, glow,
+  sheen, rim and bezel are seven fixed `pointer-events: none` siblings in
+  `+layout.svelte` that know nothing about the app. Content can be rewritten
+  freely without touching any of it, and that separation is the whole point — do
+  not push the effect down into components.
+  - **There is no filter, and putting one back needs a measurement first.** The
+    curve was a real `feDisplacementMap` and it cost **23ms of every frame**:
+    36.4ms per frame while typing against 13.4ms without it, every frame over
+    32ms. The cost is flat in the displacement distance (4px and 28px price the
+    same), and `will-change`, a tight filter region and `contain: paint` all
+    changed nothing — a filter rasterises its subtree on every repaint, and
+    every keystroke is a repaint. The curve is suggested with static paint now:
+    a specular sheen, a lit rim, darkened corners and a rounded bezel, all of
+    which cost nothing per frame. Straight lines stay straight, and that is the
+    known, accepted price.
+  - `Lightbox.svelte` still portals itself onto `body`, and the upload bar still
+    sits outside `main`. The filter that originally forced both is gone; the
+    reason that remains is z-order — **a full-size photograph is never
+    scanlined or tinted.** Thumbnails are.
 - **The ground is painted on `[data-shell-header]`, not on `html` or `body`.**
   WebKitGTK — the engine `desktop.py` ships — drops the canvas background from
   an offscreen snapshot. Harmless when the ground was near-white; on a dark

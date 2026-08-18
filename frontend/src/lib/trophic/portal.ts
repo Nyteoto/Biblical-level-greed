@@ -1,17 +1,19 @@
 /**
  * Move a node out of the app and onto `document.body`.
  *
- * There is one reason this exists, and it is worth stating so nobody deletes it
- * as ceremony: **the screen's curve is a CSS filter, and a filter rasterises
- * everything inside it.** The wrapper around `main` bends the whole app, which
- * is the intent — except for the lightbox, where the thing on screen is the
- * user's own photograph shown at full size. A photograph is not chrome. It does
- * not get curved, scanlined, vignetted or tinted, and there is no way to undo a
- * filter from inside it: the subtree is already a bitmap by then.
+ * This existed for a reason that has since gone away, and it is worth writing
+ * down which part survived. **The screen's curve used to be a CSS filter, and a
+ * filter rasterises everything inside it** — including the lightbox, where the
+ * thing on screen is the user's own photograph at full size. There was no way
+ * to undo a filter from inside it; the subtree was already a bitmap. So the
+ * lightbox left.
  *
- * So the lightbox leaves. `use:portal` relocates the element to the end of
- * `<body>`, outside both the filtered wrapper and the glass, where it draws at
- * its own z-index over everything and is treated by nothing.
+ * The curve is now static paint and there is no filter to escape. What remains
+ * is still worth escaping: the glass layers are `fixed` and sit at z-9000, and
+ * a photograph must be above them rather than under a scanline. `use:portal`
+ * relocates the element to the end of `<body>`, where it draws over everything
+ * and is treated by nothing. Do not delete it as ceremony — `.crt-exempt` turns
+ * the bloom off, and this is what puts the picture above the rest.
  *
  * Svelte keeps owning the node — it is only reparented, not recreated — so
  * props and events behave normally. **Teardown does not**, and that is the part

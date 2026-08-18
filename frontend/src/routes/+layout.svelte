@@ -6,17 +6,9 @@
 	// and they were the two that quietly opted out of it.
 	import '$lib/trophic/trophic.css';
 	import UploadBar from '$lib/trophic/UploadBar.svelte';
-	import { browser } from '$app/environment';
-	import { barrelMap, barrelScale } from '$lib/trophic/crt';
 	import { monitor } from '$lib/trophic/monitor.svelte';
 
 	let { children } = $props();
-
-	// The curve's displacement map. Built once, in the browser only — it is a
-	// canvas — and injected into the filter below. Until it lands the filter has
-	// no map and `feDisplacementMap` is a no-op, so the app renders flat rather
-	// than broken during SSR and first paint.
-	const map = $derived(browser ? barrelMap() : '');
 
 	// The monitor's six numbers, read back from this machine. Until this runs
 	// the screen is lit by the defaults `:root` carries in `app.css`, which are
@@ -25,7 +17,7 @@
 		monitor.hydrate();
 	});
 
-	// The only place the settings reach the glass. Five custom properties onto
+	// The only place the settings reach the glass. Six custom properties onto
 	// the document element and nothing else: the layers below and the rules in
 	// `app.css` are unchanged and unaware, which is the same separation that
 	// lets the app be rewritten without touching the treatment.
@@ -34,11 +26,6 @@
 		for (const [prop, value] of Object.entries(monitor.vars)) root.setProperty(prop, value);
 	});
 
-	// Off, and a flat curve, take the filter out of the document rather than
-	// running it at zero. `filter` rasterises its subtree whatever the scale,
-	// and it becomes the containing block for `fixed` descendants inside it —
-	// so a no-op filter is not free, and is not even inert.
-	const curved = $derived(monitor.on && monitor.curve > 0 && map !== '');
 
 	// The shell is now almost nothing: a ground, an upload bar, and the page.
 	//
@@ -58,30 +45,6 @@
      phone. It is an attribute rather than a `header` selector because the Log's
      day headings are `header` elements too, and every one of them was quietly
      padding itself by the height of the notch. -->
-<!-- The curve's filter. `preserveAspectRatio="none"` stretches the square map
-     over whatever shape the viewport is; the map is a normalised field, so the
-     magnitude comes from `scale` rather than from the pixels. See `crt.ts`. -->
-<svg width="0" height="0" aria-hidden="true" focusable="false" class="absolute">
-	<defs>
-		<filter
-			id="crt-barrel"
-			x="-4%"
-			y="-4%"
-			width="108%"
-			height="108%"
-			color-interpolation-filters="sRGB"
-		>
-			<feImage href={map} preserveAspectRatio="none" result="map" />
-			<feDisplacementMap
-				in="SourceGraphic"
-				in2="map"
-				scale={curved ? barrelScale(monitor.curve) : 0}
-				xChannelSelector="R"
-				yChannelSelector="G"
-			/>
-		</filter>
-	</defs>
-</svg>
 
 <div data-shell-header class="trophic flex min-h-dvh flex-col">
 	<!-- Above the page: an upload outlives the screen that started it, so its
@@ -91,17 +54,28 @@
 	     inside it, which would anchor this to the page instead of the viewport. -->
 	<UploadBar />
 
-	<!-- Only the page content is curved. Everything the glass does is done by
-	     the layers below instead, which are flat, fixed and know nothing about
-	     what they are over. -->
-	<main class="flex flex-1 flex-col {curved ? 'crt-screen' : ''}">
+	<!-- Nothing here is filtered. Everything the glass does is done by the
+	     layers below, which are flat, fixed and know nothing about what they are
+	     over — see `app.css` for what the curve cost before it became one of
+	     them. -->
+	<main class="flex flex-1 flex-col">
 		{@render children()}
 	</main>
 </div>
 
-<!-- The glass. Five layers, over everything, `pointer-events: none`, entirely
+<!-- The glass. Four full-screen layers and six small ones, over everything, `pointer-events: none`, entirely
      unaware of the app underneath — which is what lets the app be rewritten
      without any of this having to move.
+
+     Order is paint order, and it is the one thing here that is not arbitrary:
+     the sheen sits under the grain and the scanlines so the lines run *across*
+     the highlight the way they would on real glass, and the bezel is last
+     because it is the edge of the picture and nothing is outside that.
+
+     Four full-screen layers and not five: each is a viewport-sized paint on
+     every frame, and that count is the frame budget. Everything added to
+     suggest the curve is either folded into a layer that already existed or is
+     a few hundred pixels big. See `app.css` for what the tidier versions cost.
 
      They come out of the document together when the monitor is off, rather than
      staying at zero opacity: four full-viewport painted layers are a real cost
@@ -112,4 +86,12 @@
 	<div class="crt crt-grain"></div>
 	<div class="crt crt-scan"></div>
 	<div class="crt crt-vignette"></div>
+	<!-- The edge of the picture. Six small elements rather than a seventh
+	     full-viewport one — see `app.css` for the 12ms that cost. -->
+	<div class="crt-corner crt-corner-tl"></div>
+	<div class="crt-corner crt-corner-tr"></div>
+	<div class="crt-corner crt-corner-bl"></div>
+	<div class="crt-corner crt-corner-br"></div>
+	<div class="crt-rim crt-rim-top"></div>
+	<div class="crt-rim crt-rim-bottom"></div>
 {/if}

@@ -269,6 +269,7 @@ textarea.smooth-layout:focus-visible,
 	--crt-vignette: 0.4;
 	--crt-grain: 0.02;
 	--crt-bloom: 1;
+	--crt-sheen: 1;
 }
 
 .crt {
@@ -291,11 +292,15 @@ textarea.smooth-layout:focus-visible,
 /* Centred slightly high: the reference's top corners stay brighter than its
    bottom ones, which is what a tube with the gun behind the middle looks like. */
 .crt-vignette {
+	/* Elliptical and tighter than a flat vignette, so it falls off fastest
+	   diagonally: the corners going dark before the edges do is what a picture
+	   pulling away from you looks like. That read used to come from the barrel
+	   distortion actually moving them. */
 	background: radial-gradient(
-		125% 105% at 50% 38%,
-		rgba(0, 0, 0, 0) 42%,
-		rgba(0, 0, 0, calc(var(--crt-vignette) * 0.45)) 74%,
-		rgba(0, 0, 0, var(--crt-vignette)) 100%
+		118% 98% at 50% 38%,
+		rgba(0, 0, 0, 0) 38%,
+		rgba(0, 0, 0, calc(var(--crt-vignette) * 0.42)) 70%,
+		rgba(0, 0, 0, calc(var(--crt-vignette) * 1.15)) 100%
 	);
 }
 
@@ -304,11 +309,20 @@ textarea.smooth-layout:focus-visible,
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* The glow doubles as the specular highlight now: pushed off-axis and up to the
+   left, where a room lamp sits on a curved front, and warmed slightly so it
+   reads as light *on* the glass rather than emission from behind it.
+
+   It is the same single gradient it always was. A dedicated `.crt-sheen` layer
+   beside it measured ~6ms of every frame for a second pool of light doing the
+   same job — every layer here is a full-viewport paint, so the honest way to
+   add an effect is to retune a layer that already exists. */
 .crt-glow {
 	background: radial-gradient(
-		70% 55% at 50% 30%,
-		rgba(79, 255, 159, 0.045) 0%,
-		rgba(79, 255, 159, 0) 70%
+		62% 48% at 29% 20%,
+		rgba(190, 255, 226, calc(0.085 * var(--crt-sheen))) 0%,
+		rgba(150, 255, 205, calc(0.032 * var(--crt-sheen))) 44%,
+		rgba(79, 255, 159, 0) 74%
 	);
 }
 
@@ -321,30 +335,104 @@ body {
 		0 0 calc(22px * var(--crt-bloom)) rgba(79, 255, 159, calc(0.11 * var(--crt-bloom)));
 }
 
-/* -- the curve ------------------------------------------------------------
-   The barrel distortion, on a wrapper around the page content.
+/* -- the glass, and what used to be the curve ----------------------------
+   There was a real barrel distortion here: an `feDisplacementMap` on a wrapper
+   around `main`, bending the page the way a tube does. It is gone, and the
+   measurement is the reason.
 
-   Two things about this were learned the hard way and are worth not
-   rediscovering:
+   While typing, at 1180x860, that one filter cost **23ms of every frame** —
+   36.4ms per frame with it, 13.4ms without, every single frame over the 32ms
+   mark. It is not tunable: 4px, 12px and 28px of corner displacement all cost
+   the same, because the price is the per-pixel resampling pass and not the
+   distance anything moves. `will-change: filter`, a tight filter region and
+   `contain: paint` each changed nothing, because the layer cannot be cached
+   when the pixels it resamples are the ones being typed into. A filter
+   rasterises its subtree on every repaint, and every keystroke is a repaint.
 
-   - **The displacement map must use the full channel range.** The obvious
-     encoding — store the displacement in the R/G channels at its natural scale
-     — only reaches about 50 of the 255 available levels at a gentle curve, and
-     8-bit quantisation then turns every long straight line into a staircase.
-     `crt.ts` normalises the map so the corner sits at ±127 and lets
-     `feDisplacementMap`'s `scale` carry the magnitude instead. That is what
-     makes the curve smooth rather than segmented.
-   - **`feDisplacementMap` point-samples its source**, so 1px hairlines still
-     break up a little at the edges where the stretch is largest. That is
-     inherent to the primitive and cannot be tuned away; it halves on a 2x
-     display, where the filter runs on device pixels.
+   So the curve is suggested instead of computed. Everything below is static
+   paint with no per-frame cost at all: light on curved glass, a bright rim, and
+   a picture whose corners are round. Straight lines stay straight — that is the
+   honest cost of the trade — but the screen still reads as a tube, and the app
+   types at 60fps.
 
-   It wraps `main` and not the shell, because a filtered element becomes the
-   containing block for `position: fixed` descendants. The upload bar is
-   `sticky` and lives outside; the lightbox portals itself out (see
-   `portal.ts`), so full-size photographs are never curved or tinted. */
-.crt-screen {
-	filter: url(#crt-barrel);
+   `--crt-sheen` scales the whole impression, and is the dial that replaced the
+   curve's on the Monitor screen. */
+
+/* The edge of the picture: four rounded corners and two lit rims.
+   Six elements, and every one of them is *small* — which is the whole reason
+   this rule looks like this instead of like one clean full-viewport overlay.
+
+   The clean version existed. It was a single `fixed inset-0` element with
+   `box-shadow: 0 0 0 100vmax` to fill outside a border radius, plus two inset
+   shadows for the rims, and it measured **12ms of every frame**. A box shadow
+   on a viewport-sized element is a viewport-sized paint. Four 26px squares and
+   two 1px strips are a few thousand pixels between them, and cost nothing.
+
+   Each corner paints the ground everywhere except inside a quarter circle, so
+   the picture appears to round off. This rounds the *screen*, not the app —
+   cards, buttons and pills stay sharp, per the corner rule further up. */
+.crt-corner {
+	position: fixed;
+	width: 26px;
+	height: 26px;
+	pointer-events: none;
+	z-index: 9001;
+}
+.crt-corner-tl {
+	top: 0;
+	left: 0;
+	background: radial-gradient(
+		circle 26px at 100% 100%,
+		rgba(0, 0, 0, 0) 0 26px,
+		var(--color-ground) 26px
+	);
+}
+.crt-corner-tr {
+	top: 0;
+	right: 0;
+	background: radial-gradient(
+		circle 26px at 0 100%,
+		rgba(0, 0, 0, 0) 0 26px,
+		var(--color-ground) 26px
+	);
+}
+.crt-corner-bl {
+	bottom: 0;
+	left: 0;
+	background: radial-gradient(
+		circle 26px at 100% 0,
+		rgba(0, 0, 0, 0) 0 26px,
+		var(--color-ground) 26px
+	);
+}
+.crt-corner-br {
+	bottom: 0;
+	right: 0;
+	background: radial-gradient(
+		circle 26px at 0 0,
+		rgba(0, 0, 0, 0) 0 26px,
+		var(--color-ground) 26px
+	);
+}
+
+/* The rim: a tube's glass is brightest where it turns away from you, so the
+   very top carries a hairline of light and the bottom a fainter one. 1px tall,
+   so the paint is the width of the screen and nothing more. */
+.crt-rim {
+	position: fixed;
+	left: 0;
+	right: 0;
+	height: 1px;
+	pointer-events: none;
+	z-index: 9001;
+}
+.crt-rim-top {
+	top: 0;
+	background: rgba(180, 255, 216, calc(0.34 * var(--crt-sheen)));
+}
+.crt-rim-bottom {
+	bottom: 0;
+	background: rgba(140, 255, 200, calc(0.15 * var(--crt-sheen)));
 }
 
 /* -- the monitor's own controls -------------------------------------------

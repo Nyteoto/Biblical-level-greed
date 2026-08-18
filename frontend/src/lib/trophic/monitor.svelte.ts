@@ -1,27 +1,30 @@
 /**
  * The monitor's own controls: how strong the glass is, and whether it is there.
  *
- * The five `--crt-*` custom properties and the curve's corner displacement are
- * the entire effect — `app.css` and `+layout.svelte` read nothing else — so
- * making the monitor adjustable is a question of who owns those six numbers,
- * not of rewriting any of it. They live here, and the layout writes them onto
- * `:root` in one effect. Nothing about the glass moves down into a component,
- * which is the rule the whole treatment was built around.
+ * Six `--crt-*` custom properties are the entire effect — `app.css` and
+ * `+layout.svelte` read nothing else — so making the monitor adjustable is a
+ * question of who owns those six numbers, not of rewriting any of it. They live
+ * here, and the layout writes them onto `:root` in one effect. Nothing about the
+ * glass moves down into a component, which is the rule the whole treatment was
+ * built around.
  *
- * **`off` is not "all six at zero".** A CSS filter rasterises its subtree
- * whatever its scale, and becomes the containing block for `fixed` descendants
- * inside it, so a switch that only zeroed the numbers would keep paying for a
- * monitor nobody can see. Off takes the four layers and the filter out of the
- * document; the numbers are kept, so turning it back on returns the screen you
- * had rather than the one that shipped.
+ * `sheen` is where `curve` used to be. The curve was a real barrel distortion
+ * and cost 23ms of every frame; it is now suggested with static paint, and this
+ * dial scales the impression. That it is an ordinary custom property like the
+ * other five is the simplification: the curve had to be special-cased here,
+ * because it was a filter's `scale` rather than anything CSS could inherit.
+ *
+ * **`off` is not "all six at zero".** Seven full-viewport layers that paint
+ * nothing are still seven layers to composite, so a switch that only zeroed the
+ * numbers would keep paying for a monitor nobody can see. Off takes them out of
+ * the document; the numbers are kept, so turning it back on returns the screen
+ * you had rather than the one that shipped.
  *
  * Same rule as `settings.svelte.ts`, and worth restating: **nothing here is a
  * fact about what you wrote.** These change how the app is lit on this machine
  * and touch no stored byte, which is why `localStorage` is the right home and
  * the log is not.
  */
-
-import { CORNER_PX } from './crt';
 
 /**
  * The settled defaults, which are the same numbers `:root` carries in
@@ -36,20 +39,20 @@ export const MONITOR_DEFAULTS = {
 	vignette: 0.4,
 	grain: 0.02,
 	bloom: 1,
-	curve: CORNER_PX
+	sheen: 1
 };
 
 export type MonitorKey = keyof typeof MONITOR_DEFAULTS;
 
-/** Which custom property each number is written to. `curve` is absent on
- *  purpose — it is not a paint, it is the filter's `scale`, and the layout
- *  passes it through `barrelScale()` rather than through CSS. */
-const PROPS: Partial<Record<MonitorKey, (value: number) => string>> = {
+/** How each number is spelled as a CSS value. Every one of them is a custom
+ *  property now, so there is no longer an exception to carry. */
+const PROPS: Record<MonitorKey, (value: number) => string> = {
 	scanAlpha: (v) => `${v}`,
 	scanPeriod: (v) => `${v}px`,
 	vignette: (v) => `${v}`,
 	grain: (v) => `${v}`,
-	bloom: (v) => `${v}`
+	bloom: (v) => `${v}`,
+	sheen: (v) => `${v}`
 };
 
 const KEY_PREFIX = 'crt-';
@@ -86,7 +89,7 @@ class Monitor {
 	vignette = $state(MONITOR_DEFAULTS.vignette);
 	grain = $state(MONITOR_DEFAULTS.grain);
 	bloom = $state(MONITOR_DEFAULTS.bloom);
-	curve = $state(MONITOR_DEFAULTS.curve);
+	sheen = $state(MONITOR_DEFAULTS.sheen);
 
 	hydrate() {
 		this.on = read('on', 1) === 1;

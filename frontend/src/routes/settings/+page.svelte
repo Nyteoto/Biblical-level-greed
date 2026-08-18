@@ -39,10 +39,9 @@
 	 *     see `settings.svelte.ts`.
 	 *   - **Monitor**, because the glass is the loudest opinion in the app and
 	 *     the person reading through it is the only one who can say whether it
-	 *     is too much. The dials write the same five custom properties and the
-	 *     same corner displacement the effect already reads, so this screen
-	 *     adjusts the monitor without knowing anything about how it is drawn —
-	 *     see `monitor.svelte.ts`.
+	 *     is too much. The dials write the same six custom properties the effect
+	 *     already reads, so this screen adjusts the monitor without knowing
+	 *     anything about how it is drawn — see `monitor.svelte.ts`.
 	 *   - **Manual**, which is read closely once and skimmed rarely after that.
 	 *     It is a link out rather than a pane: it is a document, and it already
 	 *     has a route that can hold one.
@@ -158,7 +157,7 @@
 			id: 'monitor',
 			label: 'Monitor',
 			title: 'Monitor',
-			blurb: 'The glass over the app: scanlines, vignette, grain, bloom and the curve of the tube.'
+			blurb: 'The glass over the app: scanlines, vignette, grain, bloom and the light on the tube.'
 		}
 	];
 
@@ -204,7 +203,7 @@
 	/**
 	 * The six dials, in the order the eye meets the effect: the lines across
 	 * the picture, then the darkening at its edges, then the noise, then the
-	 * halo on the type, then the bend of the tube.
+	 * halo on the type, then the light sitting on the front of the glass.
 	 *
 	 * Each range starts at zero — every part of the monitor can be taken away
 	 * on its own, which is the only way to find out which part you actually
@@ -266,13 +265,13 @@
 			format: (v) => `${v.toFixed(2)}×`
 		},
 		{
-			key: 'curve',
-			label: 'Curve',
-			hint: 'How far the corners of the picture move. Layout does not follow.',
+			key: 'sheen',
+			label: 'Glass',
+			hint: 'Light on the front of the tube, and how round its corners are.',
 			min: 0,
-			max: 28,
-			step: 1,
-			format: (v) => `${v}px`
+			max: 2,
+			step: 0.05,
+			format: (v) => `${v.toFixed(2)}×`
 		}
 	];
 
@@ -579,9 +578,9 @@
 						<div class="rounded-[16px] bg-surface px-4 py-2 shadow-md">
 							<div class="flex items-center gap-3.5 py-[13px]">
 								<span class="flex-1">
-									<span class="block text-[14px]">Glass</span>
+									<span class="block text-[14px]">Tube</span>
 									<span class="mt-0.5 block text-[12px] leading-[1.45] text-neutral-700">
-										Off takes the tube away entirely. Your numbers are kept.
+										Off takes the glass away entirely. Your numbers are kept.
 									</span>
 								</span>
 								<button
