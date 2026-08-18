@@ -52,6 +52,37 @@ const PARTS = [
  *  to be — these are the verbs this codebase actually uses about itself. */
 const STATES = ['ok', 'read', 'folded', 'replayed', 'derived', 'mounted', 'cached', 'warm'];
 
+/**
+ * One true thing about the app, shown above the wordmark while it boots.
+ *
+ * Sourced from the Manual and from the rules this codebase actually keeps, not
+ * written fresh — a hint that drifts from the app is worse than no hint, and
+ * the Manual is the thing that gets corrected when behaviour changes. Kept to
+ * one line each, because it is read in passing.
+ */
+const HINTS = [
+	'a tag is real the moment you type it — nothing has to exist first',
+	'`<pointer>` is the only syntax that can put a line in a folder',
+	'`@helsinki` marks where you were; `a@b.com` stays plain text',
+	'`\\win` and `\\stuck` are counted and drawn, and never interpreted',
+	'`{2d}` is worked out from the day you wrote it, so a rebuild reproduces it',
+	'`--todo` makes a line tickable; the directive itself is not kept',
+	'hold a folder card for its name, its tags, its state',
+	'hold a photograph to make it a folder’s face',
+	'holding anywhere draws a ring — that is the app asking what you meant',
+	'mapping a tag is retroactive: every line ever written with it joins',
+	'nothing is edited or deleted — a mistake is corrected by appending its undo',
+	'the log is the truth; every screen here is a fold over it',
+	'delete the index whenever you like — it is rebuilt from the log',
+	'the Log tab flips between the year shelf and what you were reading',
+	'one hue, and one exception: a refusal is the only other colour',
+	'the monitor is a layer — every part of it is a dial in Settings'
+];
+
+export function bootHint(rng: () => number = Math.random): string {
+	return HINTS[Math.floor(rng() * HINTS.length)];
+}
+
 export type BootLine = { id: number; part: string; state: string };
 
 let seq = 0;

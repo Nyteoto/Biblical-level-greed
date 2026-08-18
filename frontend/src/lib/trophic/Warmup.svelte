@@ -38,7 +38,7 @@
 	 */
 	import { EXPECTED_API } from '$lib/api';
 	import { getEntries } from './api';
-	import { bootLine, bootPool, bootSegments, type BootLine } from './boot';
+	import { bootHint, bootLine, bootPool, bootSegments, type BootLine } from './boot';
 
 	const BOOT_MS = 3200;
 	const STRIKE_MS = 520;
@@ -54,6 +54,8 @@
 	let fill = $state(0);
 	/** The tube's own unsteadiness. 1 is a healthy screen. */
 	let flicker = $state(1);
+	/** One true thing about the app, drawn once per boot. */
+	const hint = bootHint();
 
 	$effect(() => {
 		try {
@@ -141,6 +143,9 @@
 			class="warmup-boot"
 			style="opacity:{Math.min(1, flicker)}; filter:brightness({Math.max(1, flicker)})"
 		>
+			<!-- Above the wordmark, because it is the one line here worth reading
+			     and the mark is the one thing that does not change. -->
+			<span class="warmup-hint">Hint: {hint}</span>
 			<span class="warmup-mark">TROPHIC</span>
 			<span class="warmup-sub">P.G.S version {EXPECTED_API}</span>
 
@@ -191,6 +196,13 @@
 		   exactly what made the first version invisible. */
 		animation: warmup-boot-out 160ms ease-in forwards;
 		animation-delay: calc(var(--boot) - 160ms);
+	}
+
+	.warmup-hint {
+		margin-bottom: 14px;
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--color-neutral-700);
 	}
 
 	.warmup-mark {

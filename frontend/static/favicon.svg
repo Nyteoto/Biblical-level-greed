@@ -1,27 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <title>Personal Growth System</title>
-  <!-- A tech tree read left to right: three tiers, a solid edge (hard
-       prerequisite), a dashed edge (soft), and one node lit as active. -->
-  <rect width="512" height="512" rx="112" fill="#14100c"/>
-
-  <g stroke="#57534e" stroke-width="14" stroke-linecap="round" fill="none">
-    <path d="M150 256 H210"/>
-    <path d="M302 190 H362"/>
+<!-- The capture bar's indicator notch, condensed until it survives a tab strip.
+     Same proportions as the PNGs: a straight top edge with a tab dropping from
+     the middle, narrower at the bottom than the top. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#0a1116"/>
+  <g filter="url(#glow)">
+    <path fill="#4fff9f"
+          d="M8.3,25.6 H55.7 V30.4 H39.4 L36.8,41.3 H27.2 L24.6,30.4 H8.3 Z"/>
   </g>
-  <g stroke="#57534e" stroke-width="14" stroke-linecap="round" fill="none" stroke-dasharray="6 26">
-    <path d="M302 322 H362"/>
-  </g>
-
-  <!-- tier I: done -->
-  <circle cx="112" cy="256" r="38" fill="none" stroke="#57534e" stroke-width="16"/>
-  <path d="M96 256 l12 13 l21 -26" stroke="#a8a29e" stroke-width="14" fill="none"
-        stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- tier II: active -->
-  <circle cx="256" cy="256" r="46" fill="#fbbf24"/>
-
-  <!-- tier III: one available, one still open -->
-  <circle cx="400" cy="190" r="34" fill="none" stroke="#78716c" stroke-width="16"/>
-  <circle cx="400" cy="322" r="34" fill="none" stroke="#57534e" stroke-width="14"
-          stroke-dasharray="18 16"/>
+  <defs>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
 </svg>
