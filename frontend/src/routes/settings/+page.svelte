@@ -17,6 +17,12 @@
 	 *   - **Log**, where the two model additions the redesign assumes are
 	 *     switches rather than a fork in the design. Neither stores anything;
 	 *     see `settings.svelte.ts`.
+	 *   - **Monitor**, because the glass is the loudest opinion in the app and
+	 *     the person reading through it is the only one who can say whether it
+	 *     is too much. The dials write the same five custom properties and the
+	 *     same corner displacement the effect already reads, so this screen
+	 *     adjusts the monitor without knowing anything about how it is drawn —
+	 *     see `monitor.svelte.ts`.
 	 *   - **Manual**, which is read closely once and skimmed rarely after that,
 	 *     and does not earn a permanent tab.
 	 *
@@ -28,6 +34,7 @@
 	import Segmented from '$lib/trophic/Segmented.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings, dayBoundary, type OpenOn } from '$lib/trophic/settings.svelte';
+	import { monitor, type MonitorKey } from '$lib/trophic/monitor.svelte';
 	import {
 		bytes,
 		getBackup,
@@ -124,6 +131,81 @@
 	const OPENS_ON: { value: OpenOn; label: string }[] = [
 		{ value: 'shelf', label: 'Year shelf' },
 		{ value: 'latest', label: 'Latest day' }
+	];
+
+	/**
+	 * The six dials, in the order the eye meets the effect: the lines across
+	 * the picture, then the darkening at its edges, then the noise, then the
+	 * halo on the type, then the bend of the tube.
+	 *
+	 * Each range starts at zero — every part of the monitor can be taken away
+	 * on its own, which is the only way to find out which part you actually
+	 * object to. The tops are where the effect stops reading as a monitor and
+	 * starts reading as damage; they are generous, not safe.
+	 */
+	const DIALS: {
+		key: MonitorKey;
+		label: string;
+		hint: string;
+		min: number;
+		max: number;
+		step: number;
+		format: (value: number) => string;
+	}[] = [
+		{
+			key: 'scanAlpha',
+			label: 'Scanlines',
+			hint: 'How dark the lines between the lines are.',
+			min: 0,
+			max: 0.2,
+			step: 0.005,
+			format: (v) => v.toFixed(3)
+		},
+		{
+			key: 'scanPeriod',
+			label: 'Line spacing',
+			hint: 'How far apart they sit. Tighter is a smaller tube.',
+			min: 2,
+			max: 8,
+			step: 0.5,
+			format: (v) => `${v}px`
+		},
+		{
+			key: 'vignette',
+			label: 'Vignette',
+			hint: 'The falloff into the corners.',
+			min: 0,
+			max: 0.75,
+			step: 0.01,
+			format: (v) => v.toFixed(2)
+		},
+		{
+			key: 'grain',
+			label: 'Grain',
+			hint: 'Sensor noise over the whole picture.',
+			min: 0,
+			max: 0.08,
+			step: 0.002,
+			format: (v) => v.toFixed(3)
+		},
+		{
+			key: 'bloom',
+			label: 'Bloom',
+			hint: 'The halo lit type throws. At zero the text is flat.',
+			min: 0,
+			max: 2,
+			step: 0.05,
+			format: (v) => `${v.toFixed(2)}×`
+		},
+		{
+			key: 'curve',
+			label: 'Curve',
+			hint: 'How far the corners of the picture move. Layout does not follow.',
+			min: 0,
+			max: 28,
+			step: 1,
+			format: (v) => `${v}px`
+		}
 	];
 </script>
 
@@ -342,6 +424,90 @@
 						     disagree. -->
 						<span class="font-mono text-[13px] text-neutral-800">{dayBoundary()}</span>
 					</div>
+				</div>
+			</div>
+
+			<div>
+				<div class="flex items-baseline gap-3">
+					<div class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
+						Monitor
+					</div>
+					<span class="flex-1"></span>
+					<!-- Absent rather than disabled at the defaults: a control that
+					     is always there and usually does nothing has to be read
+					     every time to find out which. -->
+					{#if !monitor.isDefault}
+						<button
+							type="button"
+							class="text-[12px] font-semibold text-neutral-700 hover:text-ink"
+							onclick={() => monitor.reset()}
+						>
+							Reset
+						</button>
+					{/if}
+				</div>
+
+				<div class="mt-2.5 rounded-[16px] bg-surface px-4 py-2 shadow-md">
+					<div class="flex items-center gap-3.5 py-[13px]">
+						<span class="flex-1">
+							<span class="block text-[14px]">Glass</span>
+							<span class="mt-0.5 block text-[12px] leading-[1.45] text-neutral-700">
+								Scanlines, vignette, grain, bloom and the curve of the tube.
+							</span>
+						</span>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={monitor.on}
+							aria-label="the monitor effect"
+							class="flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[3px] transition-colors {monitor.on
+								? 'accent-fill-flat justify-end'
+								: 'justify-start bg-neutral-300'}"
+							onclick={() => monitor.setOn(!monitor.on)}
+						>
+							<span class="h-5 w-5 rounded-full bg-surface shadow-sm"></span>
+						</button>
+					</div>
+
+					{#each DIALS as dial (dial.key)}
+						{@const value = monitor[dial.key]}
+						<!-- The whole row goes quiet with the tube, not just the slider.
+						     `:disabled` on the input alone is not enough: WebKitGTK —
+						     the engine `desktop.py` ships — computes the opacity and
+						     then paints the restyled thumb at full strength anyway,
+						     so the one control that had to look unavailable was the
+						     one that still looked lit. -->
+						<div
+							class="flex flex-col gap-[3px] py-[11px] transition-opacity {monitor.on
+								? ''
+								: 'opacity-40'}"
+						>
+							<div class="flex items-baseline gap-3">
+								<span class="text-[14px]">{dial.label}</span>
+								<span class="flex-1"></span>
+								<span class="font-mono text-[12px] text-neutral-800 tabular-nums">
+									{dial.format(value)}
+								</span>
+							</div>
+							<!-- The whole point of putting these here is that the
+							     screen you are adjusting is the screen you are
+							     looking at, so they write on every input event
+							     rather than on release. -->
+							<input
+								type="range"
+								class="dial"
+								min={dial.min}
+								max={dial.max}
+								step={dial.step}
+								{value}
+								disabled={!monitor.on}
+								aria-label={dial.label}
+								style="--dial-fill:{((value - dial.min) / (dial.max - dial.min)) * 100}%"
+								oninput={(e) => monitor.set(dial.key, Number(e.currentTarget.value))}
+							/>
+							<span class="text-[12px] leading-[1.45] text-neutral-700">{dial.hint}</span>
+						</div>
+					{/each}
 				</div>
 			</div>
 
