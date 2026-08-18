@@ -24,10 +24,13 @@
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import { pixelate } from '$lib/trophic/pixelate';
-	import { getShelf, type Shelf } from '$lib/trophic/api';
+	import { createFolder, getShelf, patchFolder, type Shelf } from '$lib/trophic/api';
 
 	let shelf = $state<Shelf | null>(null);
 	let error = $state<string | null>(null);
+	/** The new-folder tile, which is a button until it is a name field. */
+	let creating = $state(false);
+	let newName = $state('');
 	let loading = $state(true);
 	let jump = $state('');
 
@@ -74,6 +77,43 @@
 		loading = false;
 	}
 
+	/** Re-read the shelf after something changed it. `lastKey` is the latch the
+	 *  loading effect uses to avoid refetching on every keystroke in the jump
+	 *  field, so clearing it is how anything else asks for a fresh read. */
+	function refresh() {
+		lastKey = '';
+		load(logSettings.yearAlbums ? year : 'all');
+	}
+
+	async function submitNewFolder(event: SubmitEvent) {
+		event.preventDefault();
+		const name = newName.trim();
+		if (!name) {
+			creating = false;
+			return;
+		}
+		try {
+			// No tags passed: a folder claims the tag of its own name at creation,
+			// so `New folder → Garden` is already collecting `<garden>` before you
+			// have opened the mapping screen. See TROPHIC.md.
+			const { folder } = await createFolder(name);
+			// And it starts `running`, which is not an assumption about what you
+			// meant — it is the only way the thing you just made is on the screen
+			// you made it from. The shelf drops albums with nothing in them this
+			// year *unless* they are active, precisely so that "a project just
+			// started has nothing in it yet and is still the thing you are doing".
+			// Without this the button appears to do nothing at all. It is one tap
+			// to clear the state again, in the album's own options.
+			await patchFolder(folder.id, { state: 'active' });
+			newName = '';
+			creating = false;
+			error = null;
+			refresh();
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		}
+	}
+
 	/** `Opens on: latest day` — go straight to where the newest line is rather
 	 *  than stopping at the index. Right for someone deep in one project, wrong
 	 *  for someone with six, which is why it is a setting.
@@ -88,12 +128,13 @@
 	$effect(() => {
 		if (jumped || logSettings.openOn !== 'latest' || !shelf) return;
 		jumped = true;
-		const latest = shelf.latest;
-		if (latest) {
-			goto(`/folders/${latest.folder ?? 'unfiled'}?year=${shelf.year ?? 'all'}`, {
-				replaceState: true
-			});
-		}
+		// `latest` is the answer; the rest is for a backend older than this file.
+		// A server that predates the field returns nothing for it, and silently
+		// staying on the shelf is exactly the failure this setting already had.
+		const target = shelf.latest
+			? (shelf.latest.folder ?? 'unfiled')
+			: (shelf.albums[0]?.id ?? (shelf.unfiled > 0 ? 'unfiled' : null));
+		if (target) goto(`/folders/${target}?year=${shelf.year ?? 'all'}`, { replaceState: true });
 	});
 
 	const albumHref = (id: string | null) =>
@@ -321,6 +362,51 @@
 							</span>
 							<span class="ml-auto text-[13px] tabular-nums">{shelf.unfiled}</span>
 						</a>
+					{/if}
+
+					<!-- New folder. The shelf is where you look at your projects, so it
+					     is where you should be able to start one — until now the only
+					     two doors were the capture bar offering to fix a `--directive`
+					     it did not recognise, and the mapping screen. Neither is
+					     somewhere you go to begin something.
+
+					     Square, dashed and unfilled like the unfiled pile, because both
+					     are openings rather than things: one is work you have not
+					     sorted, the other is a project you have not started. -->
+					{#if creating}
+						<form
+							class="focus-pill flex items-center gap-3 rounded-[16px] border-[1.5px] border-dashed border-accent-700 p-4"
+							onsubmit={submitNewFolder}
+						>
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								autofocus
+								bind:value={newName}
+								placeholder="name it"
+								aria-label="new folder name"
+								class="min-w-0 flex-1 bg-transparent text-[15px] font-semibold placeholder:font-normal placeholder:text-neutral-700"
+								onkeydown={(e) => {
+									if (e.key === 'Escape') {
+										creating = false;
+										newName = '';
+									}
+								}}
+								onblur={() => {
+									if (!newName.trim()) creating = false;
+								}}
+							/>
+							<span class="shrink-0 text-[11px] text-neutral-700">↵</span>
+						</form>
+					{:else}
+						<button
+							type="button"
+							class="flex h-[86px] w-[86px] items-center justify-center rounded-[16px] border-[1.5px] border-dashed border-neutral-400 text-[26px] leading-none text-neutral-600 transition-colors hover:border-accent-700 hover:text-accent-700"
+							title="new folder"
+							aria-label="new folder"
+							onclick={() => (creating = true)}
+						>
+							+
+						</button>
 					{/if}
 				</div>
 
