@@ -44,18 +44,22 @@
 	import { mediaViewUrl, mediaUrl } from './api';
 	import RichText from './RichText.svelte';
 	import { clean, isBlank } from './richtext';
+	import { holdable } from './holdable';
 	import type { Folder } from './api';
 
 	let {
 		folder,
 		expanded = $bindable(false),
 		onsave,
-		onclearmedia
+		onholdpicture
 	}: {
 		folder: Folder;
 		expanded?: boolean;
 		onsave: (text: string) => void;
-		onclearmedia?: () => void;
+		/** Hold the picture for what can be done to it. There is no button for
+		 *  removing it: a control that sits on screen forever to be used twice is
+		 *  the noise the hold gesture exists to delete. */
+		onholdpicture?: (x: number, y: number) => void;
 	} = $props();
 
 	let editing = $state(false);
@@ -164,6 +168,7 @@
 							href={mediaUrl(picture)}
 							target="_blank"
 							rel="noreferrer"
+							use:holdable={(x, y) => onholdpicture?.(x, y)}
 							class="float-left mr-[18px] mb-3 block h-[104px] w-[104px] overflow-hidden rounded-[14px] bg-neutral-200 shadow-md"
 						>
 							<img src={mediaViewUrl(picture)} alt="" class="h-full w-full object-cover" />
@@ -189,15 +194,6 @@
 					{/if}
 
 					<div class="clear-both"></div>
-					{#if picture && onclearmedia}
-						<button
-							type="button"
-							class="mt-3 text-[11px] text-neutral-700 transition-colors hover:text-ink"
-							onclick={onclearmedia}
-						>
-							remove picture
-						</button>
-					{/if}
 				</div>
 			{/if}
 		</div>

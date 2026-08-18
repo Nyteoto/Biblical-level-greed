@@ -651,3 +651,21 @@ export const shapeBlurb: Record<DomainShape, string> = {
 	strands: 'parallel strands',
 	cycles: 'projects, with craft feeding them'
 };
+
+
+/**
+ * The API this build was written against. Bumped in lockstep with
+ * `backend/app/version.py` whenever a route, a payload or an event kind changes
+ * in a way this code depends on.
+ *
+ * The browser reloads its own files off disk, so the frontend is always
+ * current. The Python process is not: a long-running service keeps serving the
+ * old code until something restarts it, and the app in front of it then looks
+ * broken for reasons that are nowhere in the source. This is the number that
+ * makes that visible instead of mysterious.
+ */
+export const EXPECTED_API = 2;
+
+export const getApiVersion = () => call<{ api: number; since: string }>('/version');
+
+export const restartServer = () => call<{ ok: boolean; unit: string }>('/restart', { method: 'POST' });

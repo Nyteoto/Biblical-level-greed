@@ -90,6 +90,9 @@
 	 *  a menu rather than a direct action because "hold to silently change
 	 *  something" is not a gesture anyone should have to discover twice. */
 	let heldMedia = $state<{ ref: string; x: number; y: number } | null>(null);
+	/** The overview's own picture, held. Its only option is removal, which is
+	 *  why it had a standing button until the gesture could carry it. */
+	let heldPicture = $state<{ x: number; y: number } | null>(null);
 	$effect(() => {
 		void id;
 		void year;
@@ -291,7 +294,7 @@
 							folder={owner}
 							bind:expanded={overviewOpen}
 							onsave={(text) => act(patchFolder(owner.id, { overview: text }))}
-							onclearmedia={() => act(patchFolder(owner.id, { overview_media: '' }))}
+							onholdpicture={(x, y) => (heldPicture = { x, y })}
 						/>
 					</div>
 				{/if}
@@ -478,6 +481,28 @@
 			Set as overview profile
 			<span class="mt-0.5 block text-[11px] font-normal text-neutral-700">
 				the picture that stands for {owner.name}
+			</span>
+		</button>
+	</HoldMenu>
+{/if}
+
+{#if heldPicture && album?.folder}
+	{@const at = heldPicture}
+	{@const owner = album.folder}
+	<HoldMenu x={at.x} y={at.y} width={230} onclose={() => (heldPicture = null)}>
+		<button
+			type="button"
+			class="text-left text-[13px] font-semibold text-accent-700"
+			onclick={() => {
+				// The request first: clearing `heldPicture` tears down the block
+				// this handler is declared in, `@const` bindings and all.
+				act(patchFolder(owner.id, { overview_media: '' }));
+				heldPicture = null;
+			}}
+		>
+			Remove picture
+			<span class="mt-0.5 block text-[11px] font-normal text-neutral-700">
+				the photograph stays in the log
 			</span>
 		</button>
 	</HoldMenu>

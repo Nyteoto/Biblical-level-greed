@@ -1,7 +1,10 @@
 """FastAPI app. Thin: parses requests, calls the store, returns derived state."""
 from __future__ import annotations
 
+import os
+import subprocess
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -15,6 +18,11 @@ from backend.capture.store import store as capture_store
 from . import backup, config, edits, eventlog, media, storage, tools, watcher, xp
 from .config import ROOT
 from .media import MediaError
+from .version import API_VERSION
+
+# When this process came up. The version check reads it too: a server that
+# restarted is a server whose Python is as new as its files.
+_STARTED = datetime.now(timezone.utc).isoformat()
 from .models import DomainError
 from .tools import ToolError
 from .store import store
@@ -288,6 +296,34 @@ def drop_tool(domain_id: str, tool_id: str) -> dict:
 
 
 # -- media ------------------------------------------------------------------
+
+
+@app.get("/api/version")
+def api_version() -> dict:
+    """What this process is. Cheap enough to call on every app start."""
+    return {"api": API_VERSION, "since": _STARTED}
+
+
+@app.post("/api/restart")
+def restart_server() -> dict:
+    """Restart the service in front of this process.
+
+    The app cannot restart *itself* — `Restart=on-failure` means a clean exit
+    stays exited — so this asks systemd to do it. Spawned and abandoned rather
+    than waited on, because the thing being restarted is the process that would
+    do the waiting: the reply has to leave before the server does.
+    """
+    unit = os.environ.get("PGS_SERVICE", "pgs.service")
+    try:
+        subprocess.Popen(
+            ["systemctl", "--user", "restart", unit],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(500, f"could not restart {unit}: {exc}") from exc
+    return {"ok": True, "unit": unit}
 
 
 @app.post("/api/media")

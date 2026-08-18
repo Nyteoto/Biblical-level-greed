@@ -7,6 +7,8 @@
 	import '$lib/trophic/trophic.css';
 	import UploadBar from '$lib/trophic/UploadBar.svelte';
 	import HoldRing from '$lib/trophic/HoldRing.svelte';
+	import Warmup from '$lib/trophic/Warmup.svelte';
+	import { EXPECTED_API, getApiVersion, restartServer } from '$lib/api';
 	import { monitor } from '$lib/trophic/monitor.svelte';
 
 	let { children } = $props();
@@ -81,6 +83,43 @@
 		};
 	});
 
+	/**
+	 * Is the server older than the page in front of it?
+	 *
+	 * This has bitten three times and it is invisible every time: a backend
+	 * change ships, the long-running service keeps serving the old Python, and
+	 * the app looks broken for reasons that are nowhere in the source — a save
+	 * that does nothing, a setting that never applies, a field that is always
+	 * empty. Asked once on start, because a restart is the only thing that can
+	 * change the answer and a restart reloads this page anyway.
+	 *
+	 * Only when the server is *older*. A newer server against a stale page is
+	 * the other half of the same problem and its fix is a reload, not a restart
+	 * — telling somebody to restart a service that is already current sends them
+	 * chasing something that is not wrong.
+	 */
+	let stale = $state(false);
+	let restarting = $state(false);
+
+	$effect(() => {
+		getApiVersion()
+			.then((v) => (stale = v.api < EXPECTED_API))
+			.catch(() => {
+				/* the server being unreachable is its own, visible, problem */
+			});
+	});
+
+	async function restart() {
+		restarting = true;
+		try {
+			await restartServer();
+		} catch {
+			/* it may well die mid-reply — that is the request working */
+		}
+		// Give systemd its moment, then come back on the new process.
+		setTimeout(() => location.reload(), 4000);
+	}
+
 	// The shell is now almost nothing: a ground, an upload bar, and the page.
 	//
 	// The tab bar that used to live here is gone, and so is the XP meter beside
@@ -100,11 +139,39 @@
      day headings are `header` elements too, and every one of them was quietly
      padding itself by the height of the notch. -->
 
+<!-- The tube coming on, once per launch. Above everything, including the
+     lightbox, because it is the moment before the app rather than a layer on
+     top of it. -->
+<Warmup />
+
 <!-- The hold gesture, over everything and belonging to nothing. Mounted here
      for the same reason the glass is: it is the app's, not a screen's. -->
 <HoldRing />
 
 <div data-shell-header class="trophic flex min-h-dvh flex-col">
+	<!-- Above everything the app draws, because nothing below it can be trusted
+	     to mean what it says while this is true. -->
+	{#if stale}
+		<div
+			class="flex shrink-0 flex-wrap items-center gap-3 bg-accent-100 px-[34px] py-2.5 text-[12px]"
+		>
+			<span class="font-semibold text-accent-700">
+				The server is running older code than this app.
+			</span>
+			<span class="text-neutral-700">
+				Saving and settings may do nothing until it restarts.
+			</span>
+			<button
+				type="button"
+				class="accent-fill ml-auto rounded-[9px] px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+				disabled={restarting}
+				onclick={restart}
+			>
+				{restarting ? 'Restarting…' : 'Restart server'}
+			</button>
+		</div>
+	{/if}
+
 	<!-- Above the page: an upload outlives the screen that started it, so its
 	     progress belongs to the shell rather than to the capture bar.
 	     It is `sticky`, and it stays *outside* the curve for that reason — a
