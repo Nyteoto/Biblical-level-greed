@@ -415,9 +415,7 @@ class Store:
         else uses is how a group is created; there is no separate object to
         make first, and none left behind when the last folder leaves.
         """
-        name = " ".join(name.split())
-        if len(name) > GROUP_NAME_MAX:
-            raise CaptureError(f"group name is longer than {GROUP_NAME_MAX} characters")
+        name = self._group_name(name)
         if not YEAR_RE.match(year):
             raise CaptureError(f"not a year: {year!r}")
 
@@ -427,6 +425,59 @@ class Store:
                 raise CaptureError(f"no such folder: {folder_id}")
             eventlog.append(eventlog.SET_GROUP, folder_id, text=name, year=year)
             index.set_folder_group(self.conn, folder_id, year, name)
+            self.version += 1
+            return index.shelf(self.conn, year)
+
+    def _group_name(self, name: str) -> str:
+        """One tidy-and-cap, so a name typed in the panel and one arriving from
+        anywhere else cannot end up as two different groups."""
+        name = " ".join(name.split())
+        if len(name) > GROUP_NAME_MAX:
+            raise CaptureError(f"group name is longer than {GROUP_NAME_MAX} characters")
+        return name
+
+    def rename_group(self, year: str, name: str, new_name: str) -> dict:
+        """Rename one year's group, carrying every folder under it along.
+
+        Renaming onto a name the year already uses **merges** rather than
+        refusing. It is the obvious reading of the gesture, it is what the fold
+        does anyway, and refusing would leave you renaming a group to something
+        it is already next to with no way to say "these are the same thing".
+        """
+        if not YEAR_RE.match(year):
+            raise CaptureError(f"not a year: {year!r}")
+        new_name = self._group_name(new_name)
+        if not new_name:
+            raise CaptureError("a group needs a name — delete it instead")
+
+        with self._lock:
+            _, names = index.groups_for(self.conn, year)
+            if name not in names:
+                raise CaptureError(f"no such group in {year}: {name!r}")
+            if name == new_name:
+                return index.shelf(self.conn, year)
+            eventlog.append(eventlog.RENAME_GROUP, name, text=new_name, year=year)
+            index.rename_group(self.conn, year, name, new_name)
+            self.version += 1
+            return index.shelf(self.conn, year)
+
+    def delete_group(self, year: str, name: str) -> dict:
+        """Take a group off one year's shelf, returning its folders to the
+        loose grid above.
+
+        Nothing is deleted in any sense that costs anything: a group has never
+        held a folder, let alone an entry, and this is the same un-grouping you
+        could do one card at a time written as one event.
+        """
+        if not YEAR_RE.match(year):
+            raise CaptureError(f"not a year: {year!r}")
+
+        with self._lock:
+            _, names = index.groups_for(self.conn, year)
+            if name not in names:
+                raise CaptureError(f"no such group in {year}: {name!r}")
+            eventlog.append(eventlog.DELETE_GROUP, name, year=year)
+            index.delete_group(self.conn, year, name)
             self.version += 1
             return index.shelf(self.conn, year)
 

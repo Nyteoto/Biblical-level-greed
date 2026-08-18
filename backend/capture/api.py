@@ -293,6 +293,37 @@ def set_folder_group(folder_id: str, body: GroupIn) -> dict:
         raise HTTPException(_status(exc), str(exc)) from exc
 
 
+class GroupEdit(BaseModel):
+    """`to` is only read by the rename route. Both routes are POSTs on a name
+    rather than verbs on a path, because a group's name is its identity and a
+    name with a slash or a space in it does not belong in a URL path — the same
+    reason `/reminders/dismiss` is shaped this way."""
+
+    year: str
+    name: str
+    to: str = ""
+
+
+@router.post("/groups/rename")
+def rename_group(body: GroupEdit) -> dict:
+    """Rename one year's group. Renaming onto a name the year already has
+    merges the two; see `store.rename_group`."""
+    try:
+        return {**store.rename_group(body.year, body.name, body.to), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+@router.post("/groups/delete")
+def delete_group(body: GroupEdit) -> dict:
+    """Take a group off one year's shelf. Its folders return to the loose grid;
+    no folder and no entry is touched."""
+    try:
+        return {**store.delete_group(body.year, body.name), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
 @router.get("/shelf")
 def shelf(year: str | None = None) -> dict:
     """The year shelf: every album with anything in it this year, its twelve

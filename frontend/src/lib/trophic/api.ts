@@ -270,6 +270,22 @@ export const setFolderGroup = (id: string, year: string, name: string) =>
 		body: JSON.stringify({ year, name })
 	});
 
+/** Rename one year's group, carrying every folder under it. Renaming onto a
+ *  name the year already uses merges the two. */
+export const renameGroup = (year: string, name: string, to: string) =>
+	call<Shelf & { version: number }>('/groups/rename', {
+		method: 'POST',
+		body: JSON.stringify({ year, name, to })
+	});
+
+/** Take a group off one year's shelf. Its folders return to the loose grid; no
+ *  folder and no entry is touched. */
+export const deleteGroup = (year: string, name: string) =>
+	call<Shelf & { version: number }>('/groups/delete', {
+		method: 'POST',
+		body: JSON.stringify({ year, name })
+	});
+
 export const deleteFolder = (id: string) => call<{ ok: boolean }>(`/folders/${id}`, { method: 'DELETE' });
 
 export const getUnassignedTags = () =>

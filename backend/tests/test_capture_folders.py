@@ -772,3 +772,198 @@ def test_the_group_travels_over_the_wire(client):
         json={"year": "all", "name": "Field"},
     )
     assert refused.status_code == 400
+
+
+# ── Renaming and deleting a group ─────────────────────────────────────────
+#
+# Both are whole-group edits `set-group` cannot express one folder at a time.
+# The subtle one is `seq`: neither edit is allowed to reshuffle the shelf, and
+# the targeted mirror and the replay have to agree about that or the order
+# changes every time the index is rebuilt.
+
+
+def _three_folders(store):
+    store.capture("a <one>")
+    store.capture("b <two>")
+    store.capture("c <three>")
+    return (
+        store.create_folder("One", ["one"]),
+        store.create_folder("Two", ["two"]),
+        store.create_folder("Three", ["three"]),
+    )
+
+
+def test_renaming_a_group_carries_its_folders(capture_store):
+    one, two, _ = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "Field")
+    capture_store.set_folder_group(two["id"], year, "Field")
+
+    shelf = capture_store.rename_group(year, "Field", "Outdoors")
+
+    assert shelf["groups"] == ["Outdoors"]
+    assert {a["id"] for a in shelf["albums"] if a["group"] == "Outdoors"} == {
+        one["id"],
+        two["id"],
+    }
+    assert log_kinds().count("rename-group") == 1  # one event, not one per folder
+
+
+def test_renaming_keeps_the_group_where_it_was_on_the_shelf(capture_store):
+    one, two, _ = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "First")
+    capture_store.set_folder_group(two["id"], year, "Second")
+
+    capture_store.rename_group(year, "First", "Renamed")
+
+    assert capture_store.shelf(year)["groups"] == ["Renamed", "Second"]
+
+
+def test_renaming_onto_an_existing_group_merges_into_it(capture_store):
+    one, two, three = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "Keep")
+    capture_store.set_folder_group(two["id"], year, "Merge")
+    capture_store.set_folder_group(three["id"], year, "Merge")
+
+    shelf = capture_store.rename_group(year, "Merge", "Keep")
+
+    assert shelf["groups"] == ["Keep"]
+    assert sum(1 for a in shelf["albums"] if a["group"] == "Keep") == 3
+
+
+def test_a_merge_keeps_the_older_slot(capture_store):
+    """The survivor is the group that was there first, so the shelf must not
+    reorder itself because something was renamed into it."""
+    one, two, three = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "Early")
+    capture_store.set_folder_group(two["id"], year, "Later")
+    capture_store.set_folder_group(three["id"], year, "Last")
+
+    # Fold "Early" into "Last": the surviving name is Last, and its slot is the
+    # one it already had — third — not Early's first.
+    capture_store.rename_group(year, "Early", "Last")
+
+    assert capture_store.shelf(year)["groups"] == ["Later", "Last"]
+    assert_index_is_disposable(capture_store)
+
+
+def test_deleting_a_group_returns_its_folders_to_the_loose_grid(capture_store):
+    one, two, _ = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "Field")
+    capture_store.set_folder_group(two["id"], year, "Field")
+
+    shelf = capture_store.delete_group(year, "Field")
+
+    assert shelf["groups"] == []
+    assert all(a["group"] == "" for a in shelf["albums"])
+
+
+def test_deleting_a_group_deletes_no_folder_and_no_entry(capture_store):
+    """The guarantee worth stating out loud, because "delete" beside a shelf of
+    projects reads worse than it is."""
+    one, two, three = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "Field")
+
+    before_folders = {f["id"] for f in capture_store.folders()}
+    before_entries = capture_store.entries(limit=500)
+
+    capture_store.delete_group(year, "Field")
+
+    assert {f["id"] for f in capture_store.folders()} == before_folders
+    assert capture_store.entries(limit=500) == before_entries
+
+
+def test_deleting_one_group_leaves_the_others_where_they_were(capture_store):
+    one, two, three = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "First")
+    capture_store.set_folder_group(two["id"], year, "Second")
+    capture_store.set_folder_group(three["id"], year, "Third")
+
+    capture_store.delete_group(year, "Second")
+
+    assert capture_store.shelf(year)["groups"] == ["First", "Third"]
+    assert_index_is_disposable(capture_store)
+
+
+def test_a_rename_and_a_delete_survive_the_index_being_deleted(capture_store):
+    one, two, three = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "First")
+    capture_store.set_folder_group(two["id"], year, "Second")
+    capture_store.set_folder_group(three["id"], year, "Third")
+    capture_store.rename_group(year, "First", "Renamed")
+    capture_store.delete_group(year, "Second")
+
+    assert_index_is_disposable(capture_store)
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.shelf(year)["groups"] == capture_store.shelf(year)["groups"]
+        assert [(a["id"], a["group"]) for a in fresh.shelf(year)["albums"]] == [
+            (a["id"], a["group"]) for a in capture_store.shelf(year)["albums"]
+        ]
+    finally:
+        fresh.close()
+
+
+def test_a_group_edit_is_per_year_like_the_grouping_itself(capture_store):
+    one, _, _ = _three_folders(capture_store)
+    capture_store.set_folder_group(one["id"], "2025", "Field")
+    capture_store.set_folder_group(one["id"], "2026", "Field")
+
+    capture_store.rename_group("2026", "Field", "Outdoors")
+
+    assert capture_store.shelf("2025")["groups"] == ["Field"]
+    assert capture_store.shelf("2026")["groups"] == ["Outdoors"]
+
+
+def test_editing_a_group_that_is_not_there_is_refused(capture_store):
+    with pytest.raises(CaptureError):
+        capture_store.rename_group("2026", "Nothing", "Something")
+    with pytest.raises(CaptureError):
+        capture_store.delete_group("2026", "Nothing")
+
+
+def test_a_group_cannot_be_renamed_to_nothing(capture_store):
+    one, _, _ = _three_folders(capture_store)
+    year = capture_store.shelf(None)["years"][0]
+    capture_store.set_folder_group(one["id"], year, "Field")
+
+    with pytest.raises(CaptureError):
+        capture_store.rename_group(year, "Field", "   ")
+
+
+def test_the_group_edits_travel_over_the_wire(client):
+    client.post("/api/capture/entries", json={"raw_text": "first light <garden>"})
+    folder_id = client.post(
+        "/api/capture/folders", json={"name": "Garden", "tags": ["garden"]}
+    ).json()["folder"]["id"]
+    year = client.get("/api/capture/shelf").json()["years"][0]
+    client.put(
+        f"/api/capture/folders/{folder_id}/group", json={"year": year, "name": "Field"}
+    )
+
+    renamed = client.post(
+        "/api/capture/groups/rename",
+        json={"year": year, "name": "Field", "to": "Outdoors"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["groups"] == ["Outdoors"]
+
+    removed = client.post(
+        "/api/capture/groups/delete", json={"year": year, "name": "Outdoors"}
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["groups"] == []
+
+    assert (
+        client.post(
+            "/api/capture/groups/delete", json={"year": year, "name": "Outdoors"}
+        ).status_code
+        == 404
+    )

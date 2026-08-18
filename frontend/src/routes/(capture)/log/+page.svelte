@@ -31,12 +31,15 @@
 		getUnassignedTags,
 		patchFolder,
 		setFolderGroup,
+		renameGroup,
+		deleteGroup,
 		type Album,
 		type Folder,
 		type Shelf,
 		type UnassignedTag
 	} from '$lib/trophic/api';
 	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
+	import GroupPanel from '$lib/trophic/GroupPanel.svelte';
 	import { collapsedGroups } from '$lib/trophic/collapsed.svelte';
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import { holdable } from '$lib/trophic/holdable';
@@ -57,6 +60,10 @@
 	let newName = $state('');
 	/** Held a card: the same properties panel the album sidebar opens. */
 	let panel = $state<{ folder: Folder; x: number; y: number } | null>(null);
+	/** A held group heading. Separate from `panel` because the two are
+	 *  different objects with different powers, and one nullable union would
+	 *  make every read of either ask which it was. */
+	let groupPanel = $state<{ name: string; x: number; y: number } | null>(null);
 	let unassigned = $state<UnassignedTag[]>([]);
 	let loading = $state(true);
 	let jump = $state('');
@@ -124,6 +131,7 @@
 
 	async function act(work: Promise<unknown>) {
 		panel = null;
+		groupPanel = null;
 		error = null;
 		try {
 			await work;
@@ -497,6 +505,7 @@
 							type="button"
 							class="group/head flex w-full items-center gap-2.5 text-left"
 							aria-expanded={!shut}
+							use:holdable={(x, y) => (groupPanel = { name: section.name, x, y })}
 							onclick={() => folded.toggle(shelf?.year ?? null, section.name)}
 						>
 							<span
@@ -564,5 +573,20 @@
 		groups={shelf?.groups ?? []}
 		ongroup={(name) =>
 			act(setFolderGroup(open.folder.id, shelf?.year ?? '', name))}
+	/>
+{/if}
+
+{#if groupPanel && shelf?.year}
+	{@const held = groupPanel}
+	{@const year = shelf.year}
+	<GroupPanel
+		x={held.x}
+		y={held.y}
+		name={held.name}
+		{year}
+		count={shelf.albums.filter((a) => a.group === held.name).length}
+		onrename={(to) => act(renameGroup(year, held.name, to))}
+		ondelete={() => act(deleteGroup(year, held.name))}
+		onclose={() => (groupPanel = null)}
 	/>
 {/if}

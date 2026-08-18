@@ -103,11 +103,29 @@ SET_OVERVIEW_MEDIA = "set-overview-media"
 # wrong. Nothing else in this log is keyed by year, so nothing else could carry
 # it.
 #
-# There is no `create-group` and no `delete-group`. A group exists exactly
-# while some folder in that year names it, which means it cannot be created
-# empty and cannot be left behind empty — the two states a separate group
-# object would have to be taught to handle.
+# There is no `create-group`. A group exists exactly while some folder in that
+# year names it, which means it cannot be created empty and cannot be left
+# behind empty — the two states a separate group object would have to be taught
+# to handle. `delete-group` below is not a counter-example: it un-groups the
+# folders that named one, which is the state in which the group stops existing,
+# rather than destroying an object that was holding them.
 SET_GROUP = "set-group"
+
+# A whole group at once, for the two edits `set-group` cannot express one folder
+# at a time. `id` is the *group's name* — a group has no id because a group is
+# its name, in one year, and nothing else. `year` says which shelf.
+#
+# `rename-group` carries the new name in `text`. Renaming onto a name the year
+# already uses merges the two, and the survivor keeps the older of the two
+# ordering slots so the shelf does not reshuffle under a rename.
+#
+# `delete-group` un-groups every folder that named it, which returns them to
+# the loose grid. It deletes no folder and no entry — there is nothing else it
+# could mean, because a group has never held anything. It exists as its own
+# event rather than as N `set-group` lines so the log says what you did once,
+# the way `rename-folder` does instead of a delete and a create.
+RENAME_GROUP = "rename-group"
+DELETE_GROUP = "delete-group"
 
 KINDS = {
     CAPTURE,
@@ -126,6 +144,8 @@ KINDS = {
     SET_OVERVIEW,
     SET_OVERVIEW_MEDIA,
     SET_GROUP,
+    RENAME_GROUP,
+    DELETE_GROUP,
 }
 
 

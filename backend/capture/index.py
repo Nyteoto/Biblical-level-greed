@@ -348,6 +348,26 @@ def fold(events: list[dict]) -> dict:
                     group_seq.setdefault((year, name), seq)
                 else:
                     groups.pop((subject, year), None)
+        elif kind == eventlog.RENAME_GROUP:
+            year = event.get("year") or ""
+            new = event.get("text", "")
+            if year and new and new != subject:
+                hit = [k for k, v in groups.items() if k[1] == year and v == subject]
+                for key in hit:
+                    groups[key] = new
+                was = group_seq.pop((year, subject), None)
+                # `setdefault`, so renaming onto a name the year already uses
+                # keeps the older slot rather than dragging the survivor to
+                # wherever the group being renamed happened to sit.
+                if hit and was is not None:
+                    group_seq.setdefault((year, new), was)
+        elif kind == eventlog.DELETE_GROUP:
+            year = event.get("year") or ""
+            if year:
+                groups = {
+                    k: v for k, v in groups.items() if not (k[1] == year and v == subject)
+                }
+                group_seq.pop((year, subject), None)
         elif kind == eventlog.DELETE_FOLDER:
             folders.pop(subject, None)
             groups = {k: v for k, v in groups.items() if k[0] != subject}
@@ -616,6 +636,41 @@ def set_folder_group(
             "VALUES (?, ?, ?, ?) ON CONFLICT (folder_id, year) "
             "DO UPDATE SET name = excluded.name, seq = excluded.seq",
             (folder_id, year, name, seq),
+        )
+
+
+def rename_group(conn: sqlite3.Connection, year: str, old: str, new: str) -> None:
+    """Mirror of the `rename-group` branch of `fold`.
+
+    The `seq` rule is the whole subtlety: a plain rename carries its own slot
+    across untouched, and a rename *onto an existing group* adopts that group's
+    slot, because the survivor is the older of the two and the shelf must not
+    reorder itself because you renamed something into it.
+    """
+    with conn:
+        row = conn.execute(
+            "SELECT seq FROM folder_groups WHERE year = ? AND name = ? LIMIT 1",
+            (year, new),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "UPDATE folder_groups SET name = ? WHERE year = ? AND name = ?",
+                (new, year, old),
+            )
+        else:
+            conn.execute(
+                "UPDATE folder_groups SET name = ?, seq = ? WHERE year = ? AND name = ?",
+                (new, row["seq"], year, old),
+            )
+
+
+def delete_group(conn: sqlite3.Connection, year: str, name: str) -> None:
+    """Mirror of the `delete-group` branch of `fold`. Un-groups its folders and
+    nothing else — no folder and no entry is touched, and there is nothing else
+    a group could have been holding."""
+    with conn:
+        conn.execute(
+            "DELETE FROM folder_groups WHERE year = ? AND name = ?", (year, name)
         )
 
 
