@@ -6,6 +6,7 @@
 	// and they were the two that quietly opted out of it.
 	import '$lib/trophic/trophic.css';
 	import UploadBar from '$lib/trophic/UploadBar.svelte';
+	import HoldRing from '$lib/trophic/HoldRing.svelte';
 	import { monitor } from '$lib/trophic/monitor.svelte';
 
 	let { children } = $props();
@@ -98,6 +99,10 @@
      phone. It is an attribute rather than a `header` selector because the Log's
      day headings are `header` elements too, and every one of them was quietly
      padding itself by the height of the notch. -->
+
+<!-- The hold gesture, over everything and belonging to nothing. Mounted here
+     for the same reason the glass is: it is the app's, not a screen's. -->
+<HoldRing />
 
 <div data-shell-header class="trophic flex min-h-dvh flex-col">
 	<!-- Above the page: an upload outlives the screen that started it, so its

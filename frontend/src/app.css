@@ -530,6 +530,28 @@ body {
 	background: var(--color-neutral-400);
 }
 
+/* Hold is the app's gesture, so the platform's has to be refused.
+   On iOS a long press on a link or an image raises the callout — the preview
+   card with "Open in New Tab" — and on a home-screen app that is a portal out
+   of the app entirely. `-webkit-touch-callout` is what turns it off, and the
+   selection that a long press also starts would otherwise leave text
+   highlighted under the ring.
+
+   Not on the things you actually type into: the capture bar, the jump field and
+   every name input need selection to work normally, and they are not places a
+   hold means anything. */
+.trophic {
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
+}
+.trophic input,
+.trophic textarea,
+.trophic [contenteditable] {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
 /* -- installed on a phone ------------------------------------------------ */
 /* `viewport-fit=cover` lets the page paint edge to edge, under the notch and
    the home indicator. These put the content back inside the safe area, and

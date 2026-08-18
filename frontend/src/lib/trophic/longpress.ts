@@ -125,6 +125,12 @@ export function longpress(node: HTMLElement, onopen: LongPressAt) {
 		e.preventDefault();
 		handler(e.clientX, e.clientY);
 	};
+	// `HoldRing` runs the same gesture globally and draws it. This node already
+	// answers a hold with its assign menu, so it claims the global one to stop
+	// the ring marking the hold as landing on nothing. Claim only: the timer
+	// above is still what opens the menu, and both are the same `LongPress` with
+	// the same delay, so they cannot disagree about when a hold happened.
+	const onHold = (e: Event) => e.preventDefault();
 
 	node.addEventListener('touchstart', onTouchStart, { passive: true });
 	node.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -132,6 +138,11 @@ export function longpress(node: HTMLElement, onopen: LongPressAt) {
 	node.addEventListener('touchcancel', onTouchEnd);
 	node.addEventListener('click', onClick, true);
 	node.addEventListener('contextmenu', onContextMenu);
+	node.addEventListener('trophic:hold', onHold);
+	// Says in the DOM that this node answers a hold. Nothing styles it; it is
+	// there so the behaviour is findable from the outside — by a test, or by
+	// whoever next wonders why one hold opens a menu and another draws an ×.
+	node.setAttribute('data-longpress', '');
 
 	return {
 		update(next: LongPressAt) {
@@ -145,6 +156,8 @@ export function longpress(node: HTMLElement, onopen: LongPressAt) {
 			node.removeEventListener('touchcancel', onTouchEnd);
 			node.removeEventListener('click', onClick, true);
 			node.removeEventListener('contextmenu', onContextMenu);
+			node.removeEventListener('trophic:hold', onHold);
+			node.removeAttribute('data-longpress');
 		}
 	};
 }
