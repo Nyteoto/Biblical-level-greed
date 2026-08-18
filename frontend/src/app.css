@@ -463,6 +463,25 @@ main {
 	padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* The lightbox has to claim its own insets, and this is why.
+   It portals itself onto `body` so a full-size photograph escapes the CRT
+   filter — and that puts it outside every rule above: it is `fixed inset-0`, so
+   the body's padding cannot reach it and the shell's header is not its
+   ancestor. The close button consequently sat under the status bar on an
+   installed phone, which is the worst possible control to lose, because it is
+   the one that gets you out. Both edges, plus the sides for landscape, where
+   the notch is a left or right inset instead. */
+.lightbox-top {
+	padding-top: calc(env(safe-area-inset-top) + 14px);
+	padding-left: calc(env(safe-area-inset-left) + 14px);
+	padding-right: calc(env(safe-area-inset-right) + 14px);
+}
+.lightbox-bottom {
+	padding-bottom: calc(env(safe-area-inset-bottom) + 22px);
+	padding-left: calc(env(safe-area-inset-left) + 24px);
+	padding-right: calc(env(safe-area-inset-right) + 24px);
+}
+
 /* How much room a full-height page actually has.
    The rules above add the insets back as padding but nothing subtracted them
    again, so a page asking for `100dvh` was that much taller than the screen.

@@ -14,18 +14,28 @@
  * its own z-index over everything and is treated by nothing.
  *
  * Svelte keeps owning the node — it is only reparented, not recreated — so
- * props, events and teardown all behave normally. The action puts it back on
- * destroy so Svelte's own cleanup finds it where it expects.
+ * props and events behave normally. **Teardown does not**, and that is the part
+ * this file gets wrong if you let it.
+ *
+ * It used to put the node back where it came from on destroy, on the theory
+ * that Svelte's own cleanup would then find it where it expected. It does not:
+ * an `{#if}` block removes what is inside its anchors, and a node that has been
+ * moved to `body` and then handed back is in neither place Svelte looks. The
+ * result was a lightbox that survived being closed — reparented into
+ * `main.crt-screen`, still `fixed inset-0`, still opaque, still covering the
+ * whole screen, and now *inside* the very filter it portalled out of to escape.
+ * The only ways out were a reload or a route change, which is exactly what
+ * being stuck in a photo viewer feels like.
+ *
+ * So the action removes the node itself. Svelte may also try, and `remove()` on
+ * an already-detached node is a no-op, so the two cannot fight.
  */
 export function portal(node: HTMLElement) {
-	const origin = node.parentNode;
 	document.body.appendChild(node);
 
 	return {
 		destroy() {
-			// Svelte removes the node itself; this only matters if the element is
-			// still around, which happens when the whole tree is torn down at once.
-			if (node.parentNode === document.body && origin) origin.appendChild(node);
+			node.remove();
 		}
 	};
 }
