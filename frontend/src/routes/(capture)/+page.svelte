@@ -285,7 +285,9 @@
 			const { entry } = await capture(line);
 			// The vocabulary just grew by whatever was in that line.
 			vocab = await getVocab();
-			if (sent.length > 0) startUploads(entry.id, sent);
+			// The folder as the line was written: the pinned one, else the first
+			// `<tag>` in it. Filename only — membership is still resolved.
+			if (sent.length > 0) startUploads(entry.id, sent, entry.folders?.[0] ?? '');
 		} catch (e) {
 			// The two failures are not the same thing. A dead connection is not
 			// the user's problem: the line goes into the retry queue and is

@@ -108,10 +108,19 @@ export function release(a: Attachment) {
  * `fetch` cannot report upload progress, and a two-minute video with no
  * feedback looks like a hang.
  */
-export function upload(file: File, onprogress?: (fraction: number) => void): Promise<Uploaded> {
+export function upload(
+	file: File,
+	onprogress?: (fraction: number) => void,
+	/** Where this is being filed, for the stored filename only — see
+	 *  `media.py`. A snapshot of the upload, not a claim about membership. */
+	folder = ''
+): Promise<Uploaded> {
 	return new Promise((resolve, reject) => {
 		const request = new XMLHttpRequest();
-		request.open('POST', `/api/media?name=${encodeURIComponent(file.name)}`);
+		const query =
+			`name=${encodeURIComponent(file.name)}` +
+			(folder ? `&folder=${encodeURIComponent(folder)}` : '');
+		request.open('POST', `/api/media?${query}`);
 		request.upload.onprogress = (e) => {
 			if (e.lengthComputable) onprogress?.(e.loaded / e.total);
 		};

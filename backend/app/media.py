@@ -46,6 +46,7 @@ import os
 import shutil
 import tempfile
 import time
+import re
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -104,6 +105,20 @@ def extension_for(filename: str) -> str:
     return suffix
 
 
+def _slug(label: str) -> str:
+    """A folder name as a filename fragment: lowercase, ASCII-ish, hyphenated.
+
+    Unicode folder names are normal here — the corpus has `<仕事>` and
+    `<công-việc>` — and a filename is the one place in this app that has to
+    survive being copied onto another filesystem, a backup disk, a phone. What
+    does not survive gets dropped rather than transliterated: a name that is
+    entirely non-ASCII becomes empty and the caller falls back to `unfiled`,
+    which is honest, where a mangled transliteration would not be.
+    """
+    kept = [c if c.isascii() and (c.isalnum()) else "-" for c in label.lower()]
+    return re.sub(r"-{2,}", "-", "".join(kept)).strip("-")[:32]
+
+
 def _umask() -> int:
     """Read the process umask without leaving it changed. There is no getter."""
     current = os.umask(0o022)
@@ -126,13 +141,32 @@ def _check_space(target_dir: Path, expected: int | None) -> None:
 
 
 async def write_stream(
-    chunks: AsyncIterator[bytes], day: str, filename: str, expected: int | None = None
+    chunks: AsyncIterator[bytes],
+    day: str,
+    filename: str,
+    expected: int | None = None,
+    folder: str = "",
 ) -> tuple[str, int]:
     """Stream one upload to disk. Returns (path relative to media/, bytes).
 
     Written to a temporary file in the destination directory and moved into
     place, so a connection that dies halfway leaves nothing behind that looks
     like a real file.
+
+    The name says what the file is: `2026-08-18-garden-a1b2c3d4.jpg` — the day
+    it was uploaded, where it was filed as it arrived, and enough random hex to
+    never collide. It is readable in a file manager, sorts by date inside its
+    month directory, and answers "what is this" without opening the app.
+
+    **The folder is a snapshot, and cannot be anything else.** Membership in
+    this app is resolved from tags at read time, not stored, so a photograph's
+    folder can change tomorrow when a tag is mapped — and this name will not
+    change with it. It could not: the relative path is written into the
+    append-only log as the entry's `media` ref, and renaming the file would mean
+    rewriting history to match. So read the folder in a name as *where this was
+    filed when it landed*, which is a fact about the upload, and never as a
+    claim about where it lives now. The app never reads it back; only a human
+    browsing the directory does.
     """
     suffix = extension_for(filename)
 
@@ -141,7 +175,7 @@ async def write_stream(
     target_dir.mkdir(parents=True, exist_ok=True)
     _check_space(target_dir, expected)
 
-    name = f"{uuid.uuid4().hex[:16]}{suffix}"
+    name = f"{day}-{_slug(folder) or 'unfiled'}-{uuid.uuid4().hex[:8]}{suffix}"
     target = target_dir / name
 
     handle, temp_path = tempfile.mkstemp(dir=target_dir, suffix=".part")

@@ -39,11 +39,16 @@ export const uploads = {
  * log and the point is that you can carry on. Errors are surfaced on the item
  * rather than thrown, because one bad file should not take the others with it.
  */
-export async function startUploads(entryId: string, items: Attachment[]): Promise<void> {
+export async function startUploads(
+	entryId: string,
+	items: Attachment[],
+	/** Where the line these files belong to was filed, for the filename only. */
+	folder = ''
+): Promise<void> {
 	queue.push(...items);
 	for (const item of items) {
 		try {
-			const done = await upload(item.file, (fraction) => (item.progress = fraction));
+			const done = await upload(item.file, (fraction) => (item.progress = fraction), folder);
 			item.ref = done.path;
 			item.progress = 1;
 

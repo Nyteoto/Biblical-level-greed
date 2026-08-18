@@ -48,6 +48,21 @@
 		if (editor) html = editor.innerHTML;
 	}
 
+	/**
+	 * What is in the field right now, read from the element.
+	 *
+	 * Save reads this rather than trusting the binding. A contenteditable
+	 * reports its content through `input` events, and anything that swallows,
+	 * reorders or arrives after the click — an IME still composing, a compositor
+	 * batching, a button that takes focus first — leaves the bound copy behind
+	 * by exactly the characters most worth keeping. The element is the truth and
+	 * it is one property read away; there is no reason for the button to ask
+	 * anyone else.
+	 */
+	export function current(): string {
+		return editor?.innerHTML ?? html;
+	}
+
 	// Pasted markup is cleaned when it lands rather than only when it saves, so
 	// what you are looking at while you write is what will be kept.
 	function scrub() {

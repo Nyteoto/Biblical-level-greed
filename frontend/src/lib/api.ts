@@ -354,9 +354,18 @@ export interface MediaUpload {
  * grow with the size of what is being uploaded. `name` carries the filename
  * because the extension decides how the file is served later.
  */
-export async function uploadMedia(file: File | Blob, filename?: string): Promise<MediaUpload> {
+export async function uploadMedia(
+	file: File | Blob,
+	filename?: string,
+	/** Where this is about to be filed, for the *filename* only — see
+	 *  `media.py`. A snapshot of the upload, never a claim about membership. */
+	folder?: string
+): Promise<MediaUpload> {
 	const name = filename ?? (file instanceof File ? file.name : '');
-	const res = await fetch(`/api/media?name=${encodeURIComponent(name)}`, {
+	const query =
+		`name=${encodeURIComponent(name)}` +
+		(folder ? `&folder=${encodeURIComponent(folder)}` : '');
+	const res = await fetch(`/api/media?${query}`, {
 		method: 'POST',
 		body: file
 	});

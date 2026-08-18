@@ -295,6 +295,7 @@ async def upload_media(
     request: Request,
     name: str = "",
     poster_for: str | None = None,
+    folder: str = "",
 ) -> dict:
     """Store one upload, byte for byte, and derive a display copy.
 
@@ -303,6 +304,11 @@ async def upload_media(
     disk, so nothing here scales with the size of the thing being uploaded.
     `name` carries the original filename because the extension decides how the
     file will later be served — see media.py.
+
+    `folder` is where the capture bar is about to file this — the pinned folder,
+    or a `<tag>` already in the draft. It only ever reaches the *filename*: see
+    media.py for why that is a snapshot of the upload rather than a claim about
+    membership, which this app resolves and never stores.
 
     `poster_for` is the second half of video: the browser grabs a frame,
     posts it here, and it lands in the display-copy slot of the clip it names.
@@ -321,6 +327,7 @@ async def upload_media(
             day_key(),
             name,
             expected=int(length) if length and length.isdigit() else None,
+            folder=folder,
         )
     except MediaError as exc:
         raise HTTPException(400, str(exc)) from exc

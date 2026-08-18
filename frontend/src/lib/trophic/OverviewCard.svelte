@@ -60,6 +60,9 @@
 
 	let editing = $state(false);
 	let draft = $state('');
+	/** The live field, so `save()` can read what is in it rather than what the
+	 *  binding last managed to deliver. */
+	let field = $state<{ current: () => string } | null>(null);
 
 	const text = $derived(folder.overview ?? '');
 	const picture = $derived(folder.overview_media ?? '');
@@ -88,9 +91,15 @@
 	}
 
 	function save() {
+		// Read the element before tearing the editor down: `editing = false`
+		// unmounts it, and `field` with it.
+		const typed = field?.current() ?? draft;
 		editing = false;
-		const kept = isBlank(draft) ? '' : clean(draft);
-		if (kept !== text) onsave(kept);
+		const kept = isBlank(typed) ? '' : clean(typed);
+		// No "did it change" guard. It cost nothing to write the same string
+		// again, and the guard is what turned a save that failed to see your
+		// keystrokes into a card that quietly went passive with nothing kept.
+		onsave(kept);
 	}
 </script>
 
@@ -141,7 +150,11 @@
 		     thing on the screen that scrolls. -->
 		<div class="mt-[18px] flex min-h-0 flex-1 flex-col overflow-y-auto pb-10">
 			{#if editing}
-				<RichText bind:html={draft} placeholder="What is this project, and what is it for?" />
+				<RichText
+					bind:this={field}
+					bind:html={draft}
+					placeholder="What is this project, and what is it for?"
+				/>
 			{:else}
 				<div class="min-h-0 flex-1">
 					{#if picture}
