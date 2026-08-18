@@ -42,8 +42,15 @@
 		`/folders/${folderId ?? 'unfiled'}/${year}-${String(last).padStart(2, '0')}`;
 </script>
 
-<aside class="flex w-[252px] shrink-0 flex-col overflow-y-auto pb-6">
-	<div class="flex items-baseline gap-[9px] px-[22px] pb-5">
+<!-- The 34px gutter is the page's, not this component's invention: the nav
+     pill sits at it on every screen, and the sidebar is what is directly
+     under the pill here. It was 22 for the header and 12 for the cards,
+     which put three different left edges on one screen and left the nav
+     lined up with none of them. The aside owns the gutter and its children
+     sit flush to it; the width grew by as much as the gutter did, so the
+     cards are exactly as wide as they were. -->
+<aside class="flex w-[274px] shrink-0 flex-col overflow-y-auto pb-6 pl-[34px] pr-3">
+	<div class="flex items-baseline gap-[9px] pb-5">
 		<span class="text-[22px] font-extrabold tracking-[-0.02em]">
 			{year === 'all' ? 'All' : year}
 		</span>
@@ -59,7 +66,7 @@
 		>
 	</div>
 
-	<div class="mx-3 flex flex-col gap-0.5 rounded-[14px] bg-surface p-2 shadow-md">
+	<div class="flex flex-col gap-0.5 rounded-[14px] bg-surface p-2 shadow-md">
 		{#each shelf?.albums ?? [] as a (a.id)}
 			{@const on = a.id === folderId}
 			<a
@@ -107,11 +114,11 @@
 
 	{#if album && album.chapters.length > 0}
 		<div
-			class="px-[22px] pt-[26px] pb-2.5 text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase"
+			class="pt-[26px] pb-2.5 text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase"
 		>
 			Chapters
 		</div>
-		<div class="mx-3 flex flex-col gap-2">
+		<div class="flex flex-col gap-2">
 			{#each album.chapters as chapter (chapter.name + chapter.range)}
 				<!-- A chapter is a *run* of months, so it is the one you are in
 				     whenever the month falls inside it. Comparing to its last month

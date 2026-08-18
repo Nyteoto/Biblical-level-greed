@@ -311,12 +311,15 @@
 		<!-- ── The column ──────────────────────────────────────────────────
 		     No border. Cards on the tinted ground, which is the rule everywhere
 		     in this design: a group is a white surface, never a rule. -->
-		<aside class="flex w-[252px] shrink-0 flex-col pb-6">
-			<div class="flex items-baseline gap-[9px] px-[22px] pb-5">
+		<!-- Same 34px gutter as the album sidebar and the shelf rail: it is the
+		     page's, the nav pill is at it on every screen, and this aside is what
+		     sits under the pill here. -->
+		<aside class="flex w-[274px] shrink-0 flex-col pb-6 pl-[34px] pr-3">
+			<div class="flex items-baseline gap-[9px] pb-5">
 				<span class="text-[22px] font-extrabold tracking-[-0.02em]">Settings</span>
 			</div>
 
-			<nav class="mx-3 flex flex-col gap-0.5 rounded-[14px] bg-surface p-2 shadow-md">
+			<nav class="flex flex-col gap-0.5 rounded-[14px] bg-surface p-2 shadow-md">
 				{#each SECTIONS as s (s.id)}
 					{@const on = s.id === current.id}
 					<a
@@ -347,7 +350,7 @@
 			     thing you only click wrong once but resent every time. -->
 			<a
 				href="/manual"
-				class="mx-3 mt-2.5 flex items-center gap-2.5 rounded-[12px] px-3 py-[11px] transition-colors hover:bg-neutral-200"
+				class="mt-2.5 flex items-center gap-2.5 rounded-[12px] px-3 py-[11px] transition-colors hover:bg-neutral-200"
 			>
 				<span class="min-w-0 flex-1 truncate text-[14px] text-neutral-800">Manual</span>
 				<span class="shrink-0 text-[13px] text-neutral-600">→</span>

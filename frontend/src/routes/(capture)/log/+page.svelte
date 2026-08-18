@@ -246,8 +246,13 @@
 		     in full a few centimetres away, and the rail is a place you learn the
 		     position of rather than read. There is no label over it: it was a
 		     vertical wordmark saying TROPHIC LOG on the Log screen of an app
-		     called Trophic, which is the definition of noise. -->
-		<div class="flex w-[92px] shrink-0 flex-col items-center gap-1.5 py-[26px]">
+		     called Trophic, which is the definition of noise.
+
+		     Left-aligned to the page's 34px gutter rather than centred in its own
+		     width, so the chips share an edge with the nav pill directly above
+		     them. Centred, the rail was the third different left edge on one
+		     screen and the nav sat over nothing. -->
+		<div class="flex w-[92px] shrink-0 flex-col items-start gap-1.5 py-[26px] pl-[34px]">
 			{#each shelf?.years ?? [] as y (y)}
 				{@const on = logSettings.yearAlbums && y === shelf?.year}
 				<button
@@ -277,7 +282,12 @@
 
 		<div class="flex min-w-0 flex-1 flex-col gap-[26px] px-[46px] pt-[18px]">
 			<div class="flex items-end justify-between gap-6">
-				<div class="min-w-0">
+				<!-- The year and the two ways in, as one left-hand group. With the
+				     openings as a third child of a `justify-between` row they were
+				     pushed into the middle of the header, belonging to neither the
+				     year on their left nor the search on their right. -->
+				<div class="flex min-w-0 items-end gap-7">
+					<div class="min-w-0">
 					<div class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">
 						Year shelf
 					</div>
@@ -315,6 +325,66 @@
 								</span>
 							</span>
 						{/if}
+					</div>
+				</div>
+
+				<!-- The two openings, up here rather than loose in the grid below.
+				     They are not projects: one is work you have not sorted, the
+				     other is a project you have not started, and as half-filled
+				     cells among the cards they read as two folders that had gone
+				     wrong. Beside the year they read as what they are — the ways
+				     into the shelf, next to the thing the shelf is of.
+
+				     The grid underneath now holds folder cards and nothing else,
+				     which is what lets its rows stay even. -->
+				<div class="flex shrink-0 items-center gap-2.5">
+					{#if shelf && shelf.unfiled > 0}
+						<a
+							href={albumHref(null)}
+							class="flex items-center gap-2.5 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-neutral-700 transition-colors hover:border-neutral-600 hover:text-ink"
+						>
+							<span class="text-[13px]">
+								Unfiled{logSettings.yearAlbums ? ' this year' : ''}
+							</span>
+							<span class="text-[12px] tabular-nums">{shelf.unfiled}</span>
+						</a>
+					{/if}
+
+					{#if creating}
+						<form
+							class="focus-pill flex items-center gap-2.5 rounded-[12px] border border-dashed border-accent-700 px-3 py-[9px]"
+							onsubmit={submitNewFolder}
+						>
+							<!-- svelte-ignore a11y_autofocus -->
+							<input
+								autofocus
+								bind:value={newName}
+								placeholder="name it"
+								aria-label="new folder name"
+								size="12"
+								class="min-w-0 bg-transparent text-[13px] font-semibold placeholder:font-normal placeholder:text-neutral-700"
+								onkeydown={(e) => {
+									if (e.key === 'Escape') {
+										creating = false;
+										newName = '';
+									}
+								}}
+								onblur={() => {
+									if (!newName.trim()) creating = false;
+								}}
+							/>
+							<span class="shrink-0 text-[11px] text-neutral-700">↵</span>
+						</form>
+					{:else}
+						<button
+							type="button"
+							class="flex items-center gap-2 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-[13px] text-neutral-700 transition-colors hover:border-accent-700 hover:text-accent-700"
+							onclick={() => (creating = true)}
+						>
+							<span class="text-[15px] leading-none">+</span>
+							New folder
+						</button>
+					{/if}
 					</div>
 				</div>
 
@@ -432,66 +502,6 @@
 				     looks exactly as it did before groups existed. -->
 				<div class="grid grid-cols-3 gap-[22px]">
 					{@render cards(ungrouped)}
-
-					{#if shelf.unfiled > 0}
-						<!-- The pile nothing has claimed. Dashed and unfilled because it
-						     is not a project — it is the raw material of one, and the
-						     way out of it is Settings → Folders & tags. -->
-						<a
-							href={albumHref(null)}
-							class="flex h-fit w-fit items-center gap-3 self-start rounded-[12px] border border-dashed border-neutral-400 px-3 py-2 text-neutral-700 transition-colors hover:border-neutral-600 hover:text-ink"
-						>
-							<span class="text-[13px]">
-								Unfiled{logSettings.yearAlbums ? ' this year' : ''}
-							</span>
-							<span class="text-[12px] tabular-nums">{shelf.unfiled}</span>
-						</a>
-					{/if}
-
-					<!-- New folder. The shelf is where you look at your projects, so it
-					     is where you should be able to start one — until now the only
-					     two doors were the capture bar offering to fix a `--directive`
-					     it did not recognise, and the mapping screen. Neither is
-					     somewhere you go to begin something.
-
-					     Square, dashed and unfilled like the unfiled pile, because both
-					     are openings rather than things: one is work you have not
-					     sorted, the other is a project you have not started. -->
-					{#if creating}
-						<form
-							class="focus-pill flex items-center gap-3 rounded-[16px] border-[1.5px] border-dashed border-accent-700 p-4"
-							onsubmit={submitNewFolder}
-						>
-							<!-- svelte-ignore a11y_autofocus -->
-							<input
-								autofocus
-								bind:value={newName}
-								placeholder="name it"
-								aria-label="new folder name"
-								class="min-w-0 flex-1 bg-transparent text-[15px] font-semibold placeholder:font-normal placeholder:text-neutral-700"
-								onkeydown={(e) => {
-									if (e.key === 'Escape') {
-										creating = false;
-										newName = '';
-									}
-								}}
-								onblur={() => {
-									if (!newName.trim()) creating = false;
-								}}
-							/>
-							<span class="shrink-0 text-[11px] text-neutral-700">↵</span>
-						</form>
-					{:else}
-						<button
-							type="button"
-							class="flex h-[86px] w-[86px] items-center justify-center rounded-[16px] border-[1.5px] border-dashed border-neutral-400 text-[26px] leading-none text-neutral-600 transition-colors hover:border-accent-700 hover:text-accent-700"
-							title="new folder"
-							aria-label="new folder"
-							onclick={() => (creating = true)}
-						>
-							+
-						</button>
-					{/if}
 				</div>
 
 				<!-- Then the named groups, in the order they were first named. A
