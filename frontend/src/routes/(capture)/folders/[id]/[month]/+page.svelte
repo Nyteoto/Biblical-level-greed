@@ -41,6 +41,7 @@
 	} from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import type { Shot } from '$lib/trophic/media';
+	import Glyph from '$lib/trophic/Glyph.svelte';
 	import {
 		getAlbum,
 		getShelf,
@@ -199,12 +200,18 @@
 						<h1 class="text-[44px] leading-none font-extrabold tracking-[-0.035em]">
 							{monthLabel(month).split(' ')[0]}
 						</h1>
-						<span class="text-[13px] text-neutral-700 tabular-nums">
-							{days.length}
-							{days.length === 1 ? 'day' : 'days'} · {lines}
-							{lines === 1 ? 'capture' : 'captures'}{shots.length
-								? ` · ${shots.length} media`
-								: ''}
+						<span class="flex items-center gap-3 text-[13px] text-neutral-700 tabular-nums">
+							<span>{days.length} {days.length === 1 ? 'day' : 'days'}</span>
+							<span class="flex items-center gap-1.5">
+								<Glyph kind="entries" count={lines} />
+								{lines}
+							</span>
+							{#if shots.length}
+								<span class="flex items-center gap-1.5">
+									<Glyph kind="media" count={shots.length} />
+									{shots.length}
+								</span>
+							{/if}
 						</span>
 					</div>
 

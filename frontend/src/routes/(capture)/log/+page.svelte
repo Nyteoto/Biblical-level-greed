@@ -36,6 +36,7 @@
 		type UnassignedTag
 	} from '$lib/trophic/api';
 	import FolderPanel from '$lib/trophic/FolderPanel.svelte';
+	import Glyph from '$lib/trophic/Glyph.svelte';
 	import { holdable } from '$lib/trophic/holdable';
 
 	let { data }: { data: { shelf?: Shelf; key?: string } } = $props();
@@ -268,11 +269,23 @@
 							</h1>
 						{/key}
 						{#if shelf}
-							<span class="text-[14px] text-neutral-700 tabular-nums">
-								{shelf.albums.length}
-								{shelf.albums.length === 1 ? 'album' : 'albums'} ·
-								{shelf.entries.toLocaleString()} entries ·
-								{shelf.media.toLocaleString()} media
+							<!-- Marks rather than nouns: three numbers and three words was
+							     mostly words, and the words never change. -->
+							<span
+								class="flex items-center gap-3.5 text-[14px] text-neutral-700 tabular-nums"
+							>
+								<span class="flex items-center gap-1.5">
+									<Glyph kind="album" count={shelf.albums.length} />
+									{shelf.albums.length}
+								</span>
+								<span class="flex items-center gap-1.5">
+									<Glyph kind="entries" count={shelf.entries} />
+									{shelf.entries.toLocaleString()}
+								</span>
+								<span class="flex items-center gap-1.5">
+									<Glyph kind="media" count={shelf.media} />
+									{shelf.media.toLocaleString()}
+								</span>
 							</span>
 						{/if}
 					</div>
@@ -342,10 +355,17 @@
 							<div
 								class="flex items-baseline justify-between text-[12px] text-neutral-700 tabular-nums"
 							>
-								<span>
-									{album.entry_count}
-									{album.entry_count === 1 ? 'entry' : 'entries'}
-									{#if album.media_count}· {album.media_count} media{/if}
+								<span class="flex items-center gap-3">
+									<span class="flex items-center gap-1.5">
+										<Glyph kind="entries" count={album.entry_count} size={12} />
+										{album.entry_count}
+									</span>
+									{#if album.media_count}
+										<span class="flex items-center gap-1.5">
+											<Glyph kind="media" count={album.media_count} size={12} />
+											{album.media_count}
+										</span>
+									{/if}
 								</span>
 								<span>{album.chapters} {album.chapters === 1 ? 'chapter' : 'chapters'}</span>
 							</div>
@@ -364,10 +384,10 @@
 							</div>
 							<div class="min-w-0 flex-1">
 								<div class="truncate text-[17px] font-bold tracking-[-0.01em]">{album.name}</div>
-								<div class="mt-[3px] text-[12px] text-neutral-700">
-									{album.entry_count}
-									{album.entry_count === 1 ? 'entry' : 'entries'}
-									{#if album.months}· {album.months}{/if}
+								<div class="mt-[3px] flex items-center gap-1.5 text-[12px] text-neutral-700">
+									<Glyph kind="entries" count={album.entry_count} size={12} />
+									<span class="tabular-nums">{album.entry_count}</span>
+									{#if album.months}<span class="ml-1.5">{album.months}</span>{/if}
 								</div>
 							</div>
 							{#if STATE_WORD[album.state]}

@@ -25,6 +25,7 @@
 	import { longpress } from './longpress';
 	import { mediaViewUrl } from './api';
 	import { holdable } from './holdable';
+	import Glyph from './Glyph.svelte';
 	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
 	import type { Day } from './log';
@@ -63,14 +64,8 @@
 	const time = (entry: Entry) =>
 		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
-	const tally = $derived(
-		[
-			`${day.entries.length} ${day.entries.length === 1 ? 'capture' : 'captures'}`,
-			shots.length ? `${shots.length} media` : ''
-		]
-			.filter(Boolean)
-			.join(' · ')
-	);
+	// The counts are marks now rather than a joined string — see `Glyph`. A
+	// string could not carry them, which is why this stopped being one.
 </script>
 
 <article data-day={day.key} class="flex flex-col gap-[18px]">
@@ -81,7 +76,18 @@
 		<h2 class="text-[34px] leading-none font-extrabold tracking-[-0.03em]">
 			{dayLabel(day.key)}
 		</h2>
-		<span class="ml-auto text-[12px] text-neutral-700 tabular-nums">{tally}</span>
+		<span class="ml-auto flex items-center gap-3 text-[12px] text-neutral-700 tabular-nums">
+			<span class="flex items-center gap-1.5">
+				<Glyph kind="entries" count={day.entries.length} size={12} />
+				{day.entries.length}
+			</span>
+			{#if shots.length}
+				<span class="flex items-center gap-1.5">
+					<Glyph kind="media" count={shots.length} size={12} />
+					{shots.length}
+				</span>
+			{/if}
+		</span>
 	</div>
 
 	{#if hero}

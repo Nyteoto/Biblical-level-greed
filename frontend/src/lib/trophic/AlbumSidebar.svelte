@@ -11,6 +11,7 @@
 	 */
 	import type { AlbumView, Folder, Shelf } from './api';
 	import { holdable } from './holdable';
+	import Glyph from './Glyph.svelte';
 
 	let {
 		shelf,
@@ -46,9 +47,9 @@
 		<span class="text-[22px] font-extrabold tracking-[-0.02em]">
 			{year === 'all' ? 'All' : year}
 		</span>
-		<span class="text-[12px] text-neutral-700">
+		<span class="flex items-center gap-1.5 text-[12px] text-neutral-700 tabular-nums">
+			<Glyph kind="album" count={shelf?.albums.length ?? 0} size={12} />
 			{shelf?.albums.length ?? 0}
-			{shelf?.albums.length === 1 ? 'album' : 'albums'}
 		</span>
 		<button
 			type="button"
@@ -76,7 +77,12 @@
 						shipped
 					</span>
 				{:else}
-					<span class="text-[12px] tabular-nums {on ? 'opacity-85' : 'text-neutral-700'}">
+					<span
+						class="flex items-center gap-1.5 text-[12px] tabular-nums {on
+							? 'opacity-85'
+							: 'text-neutral-700'}"
+					>
+						<Glyph kind="entries" count={a.entry_count} size={11} />
 						{a.entry_count}
 					</span>
 				{/if}
@@ -91,7 +97,10 @@
 					: 'text-neutral-700 hover:bg-neutral-200'}"
 			>
 				<span class="min-w-0 flex-1 truncate text-[14px]">Unfiled</span>
-				<span class="text-[12px] tabular-nums">{shelf.unfiled}</span>
+				<span class="flex items-center gap-1.5 text-[12px] tabular-nums">
+					<Glyph kind="entries" count={shelf.unfiled} size={11} />
+					{shelf.unfiled}
+				</span>
 			</a>
 		{/if}
 	</div>
