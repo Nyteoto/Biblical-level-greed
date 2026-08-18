@@ -61,6 +61,7 @@
 		type Shelf,
 		type UnassignedTag
 	} from '$lib/trophic/api';
+	import { lastAlbum } from '$lib/trophic/lastalbum.svelte';
 
 	const id = $derived(page.params.id!);
 	/** `unfiled` is an album you can open like any other and is not a folder. */
@@ -91,6 +92,13 @@
 
 	$effect(() => {
 		logSettings.hydrate();
+	});
+
+	// Remember where the reading is, so the Log tab can flip back to it from the
+	// shelf. `id` and not `folderId`, because `unfiled` is an album you can be
+	// returned to like any other — it is just not a folder.
+	$effect(() => {
+		lastAlbum.remember(id, year);
 	});
 
 	let lastKey = '';

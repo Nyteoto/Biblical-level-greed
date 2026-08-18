@@ -18,6 +18,7 @@
 	 * The one thing this screen deliberately will not do is show entries. It is
 	 * an index; reading happens one album down.
 	 */
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import Mosaic from '$lib/trophic/Mosaic.svelte';
 	import Sparkline from '$lib/trophic/Sparkline.svelte';
@@ -26,7 +27,16 @@
 	import { pixelate } from '$lib/trophic/pixelate';
 	import { createFolder, getShelf, patchFolder, type Shelf } from '$lib/trophic/api';
 
-	let shelf = $state<Shelf | null>(null);
+	let { data }: { data: { shelf?: Shelf; key?: string } } = $props();
+
+	// `+page.ts` decides whether `/log` is even the right screen, and redirects
+	// before this component exists when it is not. When it does not redirect it
+	// has already read the shelf, so this starts populated rather than repeating
+	// the request a frame later.
+	// `untrack` because the seed is meant to be the *initial* value and nothing
+	// else: this component is reused across `?year=` changes, and re-seeding from
+	// a stale `data` on one of those would put the previous year back on screen.
+	let shelf = $state<Shelf | null>(untrack(() => data.shelf ?? null));
 	let error = $state<string | null>(null);
 	/** The new-folder tile, which is a button until it is a name field. */
 	let creating = $state(false);
@@ -49,7 +59,7 @@
 
 	// Keyed on the only two things that decide what comes back, so nothing
 	// refetches when the jump field is typed in.
-	let lastKey = '';
+	let lastKey = untrack(() => data.key ?? '');
 	$effect(() => {
 		const key = logSettings.yearAlbums ? year : 'all';
 		if (key === lastKey) return;
@@ -113,29 +123,6 @@
 			error = e instanceof Error ? e.message : String(e);
 		}
 	}
-
-	/** `Opens on: latest day` — go straight to where the newest line is rather
-	 *  than stopping at the index. Right for someone deep in one project, wrong
-	 *  for someone with six, which is why it is a setting.
-	 *
-	 *  It reads `shelf.latest` and not `shelf.albums[0]`, and both halves of
-	 *  that mattered. The shelf is sorted **by size**, so the first album is the
-	 *  biggest and not the newest — the setting took you to the same album every
-	 *  time, whatever you had actually just written. And an album list is empty
-	 *  for anyone who has never made a folder, so `albums[0]` was `undefined` and
-	 *  the setting did nothing whatsoever. Unfiled is a destination here. */
-	let jumped = false;
-	$effect(() => {
-		if (jumped || logSettings.openOn !== 'latest' || !shelf) return;
-		jumped = true;
-		// `latest` is the answer; the rest is for a backend older than this file.
-		// A server that predates the field returns nothing for it, and silently
-		// staying on the shelf is exactly the failure this setting already had.
-		const target = shelf.latest
-			? (shelf.latest.folder ?? 'unfiled')
-			: (shelf.albums[0]?.id ?? (shelf.unfiled > 0 ? 'unfiled' : null));
-		if (target) goto(`/folders/${target}?year=${shelf.year ?? 'all'}`, { replaceState: true });
-	});
 
 	const albumHref = (id: string | null) =>
 		`/folders/${id ?? 'unfiled'}?year=${shelf?.year ?? 'all'}`;
