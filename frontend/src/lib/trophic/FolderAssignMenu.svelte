@@ -11,6 +11,12 @@
 	 *     where focusing it would throw the keyboard over the list it filters;
 	 *   - the radio dot is the current filing, so the menu says where the
 	 *     entry already is rather than only offering somewhere to put it.
+	 *
+	 * Queueing a todo is in here rather than behind a hold of its own. The row
+	 * this opens from already answers a `longpress`, and `holdable` is a second
+	 * timer with the same 500ms — a gesture on the todo line would have fired
+	 * both and opened two menus over each other. One hold, one menu, and the
+	 * menu carries everything you can do to the line you held.
 	 */
 	import type { Folder } from './api';
 
@@ -21,7 +27,10 @@
 		current = null,
 		onselect,
 		onclear,
-		onclose
+		onclose,
+		todos = [],
+		queued = null,
+		onqueue
 	}: {
 		x: number;
 		y: number;
@@ -30,6 +39,12 @@
 		onselect: (folderId: string) => void;
 		onclear: () => void;
 		onclose: () => void;
+		/** This entry's still-open `--todo` lines, as `{line, text}`. Empty for
+		 *  an entry with none, which is most of them. */
+		todos?: { line: number; text: string }[];
+		/** The line already queued on this device, if it is one of these. */
+		queued?: number | null;
+		onqueue?: (line: number) => void;
 	} = $props();
 
 	let menu = $state<HTMLDivElement | null>(null);
@@ -113,6 +128,33 @@
 			{/each}
 		{/if}
 	</div>
+
+	{#if todos.length > 0 && onqueue}
+		<!-- The banner shows one todo at a time, oldest first. This is how you
+		     say "that one, next" — per device, written nowhere. Listed per line
+		     rather than per entry, because a todo is a line and an entry can
+		     carry several. -->
+		<div class="mt-1 border-t border-neutral-300 px-1.5 pt-1.5">
+			{#each todos as todo (todo.line)}
+				<button
+					type="button"
+					class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors hover:bg-neutral-200 {todo.line ===
+					queued
+						? 'font-semibold text-accent-700'
+						: 'text-neutral-700 hover:text-accent-700'}"
+					onclick={() => {
+						onqueue(todo.line);
+						onclose();
+					}}
+				>
+					<span class="shrink-0">{todo.line === queued ? '●' : '○'}</span>
+					<span class="truncate">
+						{todos.length > 1 ? todo.text : 'Queue next'}
+					</span>
+				</button>
+			{/each}
+		</div>
+	{/if}
 
 	{#if current}
 		<div class="mt-1 px-1.5">

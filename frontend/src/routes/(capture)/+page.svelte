@@ -34,6 +34,8 @@
 	 */
 	import { goto } from '$app/navigation';
 	import SmoothTextarea from '$lib/trophic/SmoothTextarea.svelte';
+	import { banner } from '$lib/trophic/banner.svelte';
+	import { uiDim } from '$lib/trophic/dim.svelte';
 	import SyntaxBar from '$lib/trophic/SyntaxBar.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import {
@@ -75,7 +77,12 @@
 	let nope = $state(false);
 	let typeGlow = $state(0);
 	let error = $state<string | null>(null);
-	let uiDimmed = $state(false);
+	// Shared, because the standing banner in the layout fades with this too.
+	const dim = uiDim();
+	const uiDimmed = $derived(dim.on);
+	// Leaving mid-fade would strand the banner invisible on the next screen,
+	// where nothing moves the pointer over a capture box to bring it back.
+	$effect(() => () => dim.set(false));
 	let isMobile = $state(false);
 
 	let glowTimer: ReturnType<typeof setTimeout>;
@@ -180,9 +187,9 @@
 	// in practice the chrome stays gone while you are writing.
 	$effect(() => {
 		function reset() {
-			uiDimmed = false;
+			dim.set(false);
 			clearTimeout(dimTimer);
-			dimTimer = setTimeout(() => (uiDimmed = true), 4000);
+			dimTimer = setTimeout(() => dim.set(true), 4000);
 		}
 		reset();
 		window.addEventListener('mousemove', reset);
@@ -288,6 +295,9 @@
 			// The folder as the line was written: the pinned one, else the first
 			// `<tag>` in it. Filename only — membership is still resolved.
 			if (sent.length > 0) startUploads(entry.id, sent, entry.folders?.[0] ?? '');
+			// A line carrying a `--todo` changes what the banner says and how
+			// much room is left under the cap. Cheap, and only on a real send.
+			if (entry.todo_lines.length > 0) banner().refresh();
 		} catch (e) {
 			// The two failures are not the same thing. A dead connection is not
 			// the user's problem: the line goes into the retry queue and is

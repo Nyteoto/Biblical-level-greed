@@ -173,6 +173,7 @@
 				<!-- Right-click, or long-press on a phone: file this line into a
 				     folder without having tagged it. -->
 				<div
+					data-entry={entry.id}
 					class="flex gap-5"
 					style="animation:entry-fade-in 400ms ease-out both;animation-delay:{i * 50}ms"
 					use:longpress={(x, y) => onassign?.(entry, x, y)}

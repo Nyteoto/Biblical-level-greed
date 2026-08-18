@@ -205,3 +205,132 @@ def test_the_index_derives_the_same_thing_the_parser_does(capture_store):
     pure function of the raw text so a rebuild is deterministic."""
     assert index.derive("<a> <a> \\x --b") == index.derive("<a> <a> \\x --b")
     assert index.derive("<a> --b")["folders"] == ["a", "b"]
+
+
+# ── The todo cap ──────────────────────────────────────────────────────────
+#
+# Ten open todos, enforced on the write. The rule is arithmetic rather than a
+# special case: what stands open plus what this line adds must not exceed the
+# cap, which refuses an eleventh added to ten and eleven in one line with the
+# same sum. The log is append-only, so the refusal has to happen before the
+# append — a capture that broke the rule could not be taken back.
+
+
+def _fill(store, n: int) -> None:
+    for i in range(n):
+        store.capture(f"--todo item {i}")
+
+
+def test_ten_todos_are_allowed(capture_store):
+    _fill(capture_store, 10)
+    assert capture_store.banner()["open"] == 10
+
+
+def test_the_eleventh_todo_is_refused(capture_store):
+    _fill(capture_store, 10)
+    with pytest.raises(CaptureError):
+        capture_store.capture("--todo one too many")
+
+
+def test_a_refused_capture_never_reaches_the_log(capture_store):
+    """The point of checking before the append. There is no way to unwrite a
+    line, so a capture that breaks the rule must not be written at all."""
+    _fill(capture_store, 10)
+    before = len(log_lines())
+    with pytest.raises(CaptureError):
+        capture_store.capture("--todo one too many")
+
+    assert len(log_lines()) == before
+    assert capture_store.banner()["open"] == 10
+
+
+def test_eleven_todos_in_one_entry_are_refused_whole(capture_store):
+    """Typing faster is not a way past the limit. The whole entry is turned
+    away — not trimmed to ten, which would silently lose what you wrote."""
+    lines = "\n".join(f"--todo item {i}" for i in range(11))
+    with pytest.raises(CaptureError):
+        capture_store.capture(lines)
+
+    assert log_lines() == []
+    assert capture_store.banner()["open"] == 0
+
+
+def test_an_entry_that_exactly_fills_the_cap_is_allowed(capture_store):
+    capture_store.capture("\n".join(f"--todo item {i}" for i in range(10)))
+    assert capture_store.banner()["open"] == 10
+
+
+def test_an_entry_is_refused_by_its_total_not_its_first_line(capture_store):
+    """Eight open and a three-todo entry is eleven, so it goes — even though
+    each of its lines would have been fine on its own."""
+    _fill(capture_store, 8)
+    with pytest.raises(CaptureError):
+        capture_store.capture("--todo a\n--todo b\n--todo c")
+
+    assert capture_store.banner()["open"] == 8
+    capture_store.capture("--todo a\n--todo b")
+    assert capture_store.banner()["open"] == 10
+
+
+def test_checking_one_off_makes_room_for_another(capture_store):
+    entries = [capture_store.capture(f"--todo item {i}") for i in range(10)]
+    with pytest.raises(CaptureError):
+        capture_store.capture("--todo blocked")
+
+    capture_store.toggle_line(entries[0]["id"], 0)
+
+    assert capture_store.banner()["open"] == 9
+    capture_store.capture("--todo now there is room")
+    assert capture_store.banner()["open"] == 10
+
+
+def test_unchecking_can_put_you_back_at_the_cap(capture_store):
+    """It cannot push you over it — you can only get to eleven by writing one,
+    and that is the path that is guarded."""
+    entries = [capture_store.capture(f"--todo item {i}") for i in range(10)]
+    capture_store.toggle_line(entries[0]["id"], 0)
+    capture_store.capture("--todo the replacement")
+    capture_store.toggle_line(entries[0]["id"], 0)  # back on
+
+    assert capture_store.banner()["open"] == 11
+    with pytest.raises(CaptureError):
+        capture_store.capture("--todo definitely not")
+
+
+def test_a_capture_with_no_todo_is_never_gated(capture_store):
+    """The cap is about promises, not about writing. A full list must not stop
+    you capturing a thought."""
+    _fill(capture_store, 10)
+    entry = capture_store.capture("just a thought <somewhere>")
+    assert entry["raw_text"] == "just a thought <somewhere>"
+
+
+def test_open_todos_are_oldest_first_and_carry_their_line(capture_store):
+    first = capture_store.capture("--todo call the roofer")
+    capture_store.capture("nothing here")
+    second = capture_store.capture("a line\n--todo second thing")
+
+    todos = capture_store.banner()["todos"]
+    assert [t["entry_id"] for t in todos] == [first["id"], second["id"]]
+    assert [t["text"] for t in todos] == ["--todo call the roofer", "--todo second thing"]
+    assert [t["line"] for t in todos] == [0, 1]
+
+
+def test_a_checked_todo_leaves_the_open_list(capture_store):
+    entry = capture_store.capture("--todo a\n--todo b")
+    capture_store.toggle_line(entry["id"], 0)
+
+    todos = capture_store.banner()["todos"]
+    assert [t["line"] for t in todos] == [1]
+
+
+def test_the_cap_survives_the_index_being_deleted(capture_store):
+    _fill(capture_store, 10)
+    fresh = Store()
+    fresh.start()
+    try:
+        assert fresh.banner()["open"] == 10
+        with pytest.raises(CaptureError):
+            fresh.capture("--todo one too many")
+    finally:
+        fresh.close()

@@ -34,7 +34,7 @@
 	 * are in the middle of; the month is for finding your way to a stretch of it.
 	 */
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
 	import FolderAssignMenu from '$lib/trophic/FolderAssignMenu.svelte';
 	import LeadDay from '$lib/trophic/LeadDay.svelte';
 	import LightDay from '$lib/trophic/LightDay.svelte';
@@ -47,6 +47,8 @@
 	import { todayKey } from '$lib/trophic/day';
 	import { albumWeek, foldQuiet, groupDays, stretchLabel, stretchTally } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
+	import { queuedTodo } from '$lib/trophic/queued.svelte';
+	import { banner } from '$lib/trophic/banner.svelte';
 	import type { Shot } from '$lib/trophic/media';
 	import {
 		assignEntry,
@@ -108,6 +110,35 @@
 
 	const today = todayKey();
 	const thisYear = String(new Date().getFullYear());
+
+	/** `?entry=` — where the banner sends you. The row is put in the *middle* of
+	 *  the column rather than at its top, because a reminder is read in context:
+	 *  what you wrote around it is most of what it means, and a line pinned to
+	 *  the top edge has half of that off-screen above it.
+	 *
+	 *  It runs when the entries arrive, not on mount — `days` is derived from a
+	 *  fetch, so on mount there is nothing to scroll to. Once landed it clears
+	 *  the parameter, so a later reload of the same URL does not yank you back
+	 *  to a line you have since scrolled away from.
+	 */
+	const wanted = $derived(page.url.searchParams.get('entry'));
+	let landed = $state('');
+
+	$effect(() => {
+		if (!wanted || !column || days.length === 0 || landed === wanted) return;
+		const row = column.querySelector<HTMLElement>(`[data-entry="${CSS.escape(wanted)}"]`);
+		if (!row) return;
+		landed = wanted;
+		row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		// A brief mark, so it is obvious which line you were sent to. It is a
+		// class rather than a style so the animation lives with the rest of the
+		// vocabulary in `trophic.css`.
+		row.classList.add('entry-landed');
+		setTimeout(() => row.classList.remove('entry-landed'), 2200);
+		const url = new URL(page.url);
+		url.searchParams.delete('entry');
+		replaceState(url, {});
+	});
 
 	$effect(() => {
 		logSettings.hydrate();
@@ -188,10 +219,16 @@
 		await refresh();
 	}
 
+	const queue = queuedTodo();
+
 	async function onToggle(entry: Entry, line: number) {
 		try {
 			const { entry: updated } = await toggleLine(entry.id, line);
 			if (album) album.entries = album.entries.map((e) => (e.id === updated.id ? updated : e));
+			// Ticking here changes what the banner has to say — which todo is
+			// oldest-open, and how much room is left under the cap.
+			if (queue.is(entry.id, line)) queue.clear();
+			banner().refresh();
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
@@ -472,6 +509,13 @@
 		onselect={(target_id) => act(assignEntry(target.id, target_id))}
 		onclear={() => act(assignEntry(target.id, null))}
 		onclose={() => (menu = null)}
+		todos={target.todo_lines
+			.filter((line) => !target.todo_done.includes(line))
+			.map((line) => ({ line, text: target.clean_text.split('\n')[line]?.trim() ?? '' }))}
+		queued={queue.key?.startsWith(`${target.id}:`)
+			? Number(queue.key.split(':')[1])
+			: null}
+		onqueue={(line) => queue.set(target.id, line)}
 	/>
 {/if}
 

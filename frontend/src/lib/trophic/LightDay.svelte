@@ -49,7 +49,14 @@
 
 <div data-day={day.key} class="flex flex-col gap-3">
 	{#each day.lines as entry, i (entry.id)}
-		<div class="flex items-baseline gap-[18px]" use:longpress={(x, y) => onassign?.(entry, x, y)}>
+		<!-- `data-entry` is how the banner's reminder finds this line to scroll it
+		     into the middle of the screen. Not styled, and not read by anything
+		     else — it says in the DOM which entry this row is. -->
+		<div
+			data-entry={entry.id}
+			class="flex items-baseline gap-[18px]"
+			use:longpress={(x, y) => onassign?.(entry, x, y)}
+		>
 			<span class="w-[92px] shrink-0 text-[14px] font-bold">
 				{i === 0 ? dayLabel(day.key) : ''}
 			</span>

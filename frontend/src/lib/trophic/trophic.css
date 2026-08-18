@@ -254,3 +254,25 @@
 		scroll-behavior: auto !important;
 	}
 }
+
+/* Where the banner sent you. A brief lift rather than a highlight: a colour
+   wash would have to be a second accent, and the one-hue rule says no. The
+   line simply comes forward for a moment and settles. */
+.trophic .entry-landed {
+	animation: entry-landed 2200ms ease-out both;
+}
+
+@keyframes entry-landed {
+	0% {
+		transform: translateX(6px);
+		opacity: 0.45;
+	}
+	12% {
+		transform: translateX(0);
+		opacity: 1;
+	}
+	100% {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}

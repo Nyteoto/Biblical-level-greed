@@ -545,6 +545,102 @@ def dismiss_reminder(conn: sqlite3.Connection, entry_id: str, line: int) -> None
         )
 
 
+def home_folder(conn: sqlite3.Connection, entry_id: str) -> str | None:
+    """Which album to open in order to be looking at this entry.
+
+    Resolved, never stored — the same rule as membership itself. An entry's
+    `folders` are *tags*; a tag points at a folder or at nothing, and an entry
+    can also have been filed by hand. Either route counts, and a hand filing
+    wins because it is the one somebody chose deliberately.
+
+    `None` means the unfiled pile, which is a real album you can open rather
+    than an absence. An entry in two folders has two right answers and gets the
+    first — this is a place to be taken to, not a claim about where it lives.
+    """
+    row = conn.execute(
+        "SELECT folder_id FROM entry_folders WHERE entry_id = ? LIMIT 1", (entry_id,)
+    ).fetchone()
+    if row:
+        return row["folder_id"]
+    row = conn.execute(
+        "SELECT ft.folder_id AS folder_id FROM entry_tags et "
+        "JOIN folder_tags ft ON ft.tag = et.tag "
+        "WHERE et.entry_id = ? ORDER BY et.tag LIMIT 1",
+        (entry_id,),
+    ).fetchone()
+    return row["folder_id"] if row else None
+
+
+def open_todos(conn: sqlite3.Connection) -> list[dict]:
+    """Every `--todo` line nobody has ticked, oldest first.
+
+    Derived on the read like everything else: `todo_lines` is a pure function
+    of the raw text and `todo_done` is the fold of the `check`/`uncheck`
+    events, so nothing anywhere records that a todo is open — it is open
+    because it is a todo line whose index is not in the done list.
+
+    Oldest first, because the banner shows one at a time and the one worth
+    showing is the one that has been waiting longest. It is the order you would
+    have to argue *against*, which is what makes it the right default.
+    """
+    out: list[dict] = []
+    for row in conn.execute(
+        # `rowid`, not `id`, as the tiebreak. A `ts` is second-resolution, so
+        # three todos written in one second share one, and `id` is a random
+        # uuid — ordering by it would shuffle them against the order they were
+        # actually written. `rowid` follows insertion, and a rebuild inserts in
+        # log order, so it agrees with the log both live and after a replay.
+        # This is the table's spelling of `eventlog.read_all`'s stable sort.
+        "SELECT id, ts, day, raw_text, todo_lines, todo_done FROM entries "
+        "WHERE todo_lines != '[]' ORDER BY ts, rowid"
+    ).fetchall():
+        lines = json.loads(row["todo_lines"])
+        done = set(json.loads(row["todo_done"]))
+        text_lines = row["raw_text"].split("\n")
+        for line in lines:
+            if line in done:
+                continue
+            out.append(
+                {
+                    "entry_id": row["id"],
+                    "line": line,
+                    "text": text_lines[line].strip() if line < len(text_lines) else "",
+                    "ts": row["ts"],
+                    "day": row["day"],
+                }
+            )
+    return out
+
+
+def count_open_todos(conn: sqlite3.Connection) -> int:
+    """How many stand unchecked. Counted the same way `open_todos` lists them,
+    by calling it — two implementations of "open" could disagree, and the one
+    that gates the write must not be the one that is wrong."""
+    return len(open_todos(conn))
+
+
+def upcoming_reminders(conn: sqlite3.Connection, as_of: str) -> list[dict]:
+    """Reminders still ahead of `as_of`, soonest first — the countdown.
+
+    The mirror of `due_reminders`, which only ever answered for what had
+    already come due. A reminder you cannot see until it is late is a reminder
+    that failed; the point of writing `{14/09}` is the fortnight before it.
+    """
+    return [
+        {
+            "entry_id": row["entry_id"],
+            "line": row["line"],
+            "line_text": row["line_text"],
+            "due_at": row["due_at"],
+        }
+        for row in conn.execute(
+            "SELECT entry_id, line, line_text, due_at FROM reminders "
+            "WHERE dismissed = 0 AND due_at > ? ORDER BY due_at, entry_id, line",
+            (as_of,),
+        ).fetchall()
+    ]
+
+
 def due_reminders(conn: sqlite3.Connection, as_of: str) -> list[dict]:
     """Reminders that have come due and have not been dismissed, soonest
     first. `as_of` is an ISO instant — the caller's clock, not this module's,

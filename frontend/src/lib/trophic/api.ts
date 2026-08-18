@@ -222,6 +222,47 @@ export const importCsv = (csv: string) =>
 		body: JSON.stringify({ csv })
 	});
 
+/** One line the banner can point at — an open todo, or a reminder. `folder`
+ *  is the album to open in order to be looking at it, resolved on the server;
+ *  null means the unfiled pile, which is a real album like any other. */
+export interface BannerTodo {
+	entry_id: string;
+	line: number;
+	/** The raw line, `--todo` and all. The banner trims it for display. */
+	text: string;
+	ts: string;
+	day: string;
+	folder: string | null;
+}
+
+export interface BannerReminder {
+	entry_id: string;
+	line: number;
+	line_text: string;
+	/** ISO instant. Ahead of `as_of` for a countdown, behind it for overdue. */
+	due_at: string;
+	folder: string | null;
+	/** The day the line was written — the year whose album holds it. Not the
+	 *  due date, which can fall in a year the entry is not in. */
+	day: string;
+}
+
+export interface BannerState {
+	todos: BannerTodo[];
+	open: number;
+	cap: number;
+	due: BannerReminder[];
+	upcoming: BannerReminder[];
+	/** The server's clock at the moment it answered. Days-left is counted
+	 *  against this rather than the device's, so a phone with a skewed clock
+	 *  cannot disagree with the log about what day it is. */
+	as_of: string;
+	version: number;
+}
+
+/** Everything the persistent banner draws, in one read — see `store.banner`. */
+export const getBanner = () => call<BannerState>('/banner');
+
 // ── Reminders ─────────────────────────────────────────────────────────────
 
 export const getReminders = () => call<{ reminders: Reminder[] }>('/reminders');

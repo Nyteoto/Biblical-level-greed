@@ -41,6 +41,18 @@ GROUP_NAME_MAX = 32
 # allowed to be the only thing that knows the shape of a stored field.
 YEAR_RE = re.compile(r"^\d{4}$")
 
+# How many `--todo` lines may stand unchecked at once, across the whole log.
+#
+# A cap rather than a setting, and a small one. An open todo is a promise to
+# yourself, and a list that can grow without bound stops being a list of things
+# you are going to do and becomes a list of things you feel bad about. Ten is
+# the number of things a person will actually look at.
+#
+# It is enforced on the write, not drawn as a warning: a capture that would
+# cross it is refused whole, including one entry carrying eleven todos at once.
+# A limit you can exceed by typing faster is not a limit.
+MAX_OPEN_TODOS = 10
+
 # Where a folder is in its life. The empty one is the default and means "no
 # lifecycle" — an interest you keep rather than a project you finish. Kept
 # small on purpose: a longer list is a taxonomy, and a taxonomy is something

@@ -8,6 +8,8 @@
 	import UploadBar from '$lib/trophic/UploadBar.svelte';
 	import HoldRing from '$lib/trophic/HoldRing.svelte';
 	import Warmup from '$lib/trophic/Warmup.svelte';
+	import Banner from '$lib/trophic/Banner.svelte';
+	import { banner } from '$lib/trophic/banner.svelte';
 	import { EXPECTED_API, getApiVersion, restartServer } from '$lib/api';
 	import { monitor } from '$lib/trophic/monitor.svelte';
 
@@ -19,6 +21,10 @@
 	$effect(() => {
 		monitor.hydrate();
 	});
+
+	// The standing strip's one owner. Started here because it is drawn here, and
+	// its slow tick is cleared on teardown so a hot reload leaves nothing behind.
+	$effect(() => banner().start());
 
 	// The only place the settings reach the glass. Six custom properties onto
 	// the document element and nothing else: the layers below and the rules in
@@ -183,6 +189,13 @@
 	     layers below, which are flat, fixed and know nothing about what they are
 	     over — see `app.css` for what the curve cost before it became one of
 	     them. -->
+	<!-- The standing strip, above the content on every screen. It is app
+	     content, not part of the monitor layer — the seven `pointer-events:none`
+	     siblings below know nothing about the app and this knows nothing about
+	     them. It sits inside the shell rather than inside `main` so it is not
+	     re-created by every page that renders. -->
+	<Banner />
+
 	<main class="flex flex-1 flex-col">
 		{@render children()}
 	</main>

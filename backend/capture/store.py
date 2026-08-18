@@ -24,6 +24,7 @@ from backend.app.timeutil import day_key, now
 from . import colors, eventlog, index, parser
 from .config import (
     FOLDER_STATES,
+    MAX_OPEN_TODOS,
     GROUP_NAME_MAX,
     MAX_NAME_LEN,
     MAX_RAW_LEN,
@@ -128,6 +129,53 @@ class Store:
         with self._lock:
             return index.due_reminders(self.conn, as_of)
 
+    def banner(self) -> dict:
+        """Everything the persistent banner draws, in one read.
+
+        One endpoint rather than three, because the banner is one strip on
+        every screen and three requests for it would let its halves disagree
+        about the moment they describe — a todo checked off and a count that
+        still says otherwise, half a second apart.
+
+        The clock is read here, once, and handed down. Nothing below reads one.
+        """
+        as_of = now().astimezone(timezone.utc).isoformat()
+        with self._lock:
+            todos = index.open_todos(self.conn)
+
+            def _placed(item: dict) -> dict:
+                """Where to go to be looking at this line. Resolved here so the
+                banner is one round trip — the client would otherwise have to
+                ask per item, on every screen, forever."""
+                entry = index.get(self.conn, item["entry_id"])
+                return {
+                    **item,
+                    "folder": index.home_folder(self.conn, item["entry_id"]),
+                    # The day the line was *written*, which is the year whose
+                    # album holds it. Not the due date: `{14/09}` written in
+                    # August is read in August's album, and a reminder that
+                    # crosses a new year would otherwise open an album the
+                    # entry is not in.
+                    "day": entry["day"] if entry else "",
+                }
+
+            due = [_placed(r) for r in index.due_reminders(self.conn, as_of)]
+            upcoming = [_placed(r) for r in index.upcoming_reminders(self.conn, as_of)]
+            return {
+                # All of them, not just the first: the banner shows one at a
+                # time but the client picks *which* — a queued todo is a
+                # device-local choice and the server has no business knowing it.
+                "todos": [_placed(t) for t in todos],
+                "open": len(todos),
+                "cap": MAX_OPEN_TODOS,
+                # Overdue first, then the countdown. Both are the same shape,
+                # and which of them a reminder is is a fact about the clock
+                # rather than about the reminder.
+                "due": due,
+                "upcoming": upcoming,
+                "as_of": as_of,
+            }
+
     # -- writes ------------------------------------------------------------
 
     def capture(self, raw_text: str, media: Iterable[str] = ()) -> dict:
@@ -151,6 +199,28 @@ class Store:
                 raise CaptureError(f"no such media: {ref}")
 
         with self._lock:
+            # The todo cap, checked against the log as it stands plus what this
+            # line would add. Both halves matter: eleven todos in one entry is
+            # refused by the same arithmetic that refuses an eleventh added to
+            # ten, and neither is a special case.
+            #
+            # Refused *before* the append, because the log is append-only —
+            # there is no way to take a line back, so a capture that breaks the
+            # rule must never reach the file. This is the only place a capture
+            # is turned away for what it says rather than how big it is.
+            adding = len(index.derive(text)["todo_lines"])
+            if adding:
+                standing = index.count_open_todos(self.conn)
+                if standing + adding > MAX_OPEN_TODOS:
+                    raise CaptureError(
+                        f"{standing} of {MAX_OPEN_TODOS} todos are already open"
+                        + (
+                            f" — this line adds {adding}"
+                            if adding > 1
+                            else " — check one off first"
+                        )
+                    )
+
             event = eventlog.append(
                 eventlog.CAPTURE, eventlog.new_id(), text=text, media=attached
             )

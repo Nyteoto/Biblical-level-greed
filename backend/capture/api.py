@@ -148,6 +148,13 @@ class DismissIn(BaseModel):
     line: int
 
 
+@router.get("/banner")
+def banner() -> dict:
+    """The persistent banner: the open todos, the cap, and the reminders on
+    both sides of now. One read, so its halves cannot disagree about when."""
+    return {**store.banner(), "version": store.version}
+
+
 @router.get("/reminders")
 def list_reminders() -> dict:
     """What has come due and not been dismissed, soonest first.
