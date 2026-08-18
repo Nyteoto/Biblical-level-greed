@@ -53,6 +53,23 @@ parser re-scores all of history with no migration.
 folder's for folder events — and anything it needs to name second (`folder`,
 `tag`, `line`) has its own field.
 
+**`@place` is a sixth token, and it is ours.** The source has five: `<folder>`,
+`{time}`, `\pattern`, `--directive`, `--todo`. A place is the same *shape* as a
+pattern — same scripts, same internal hyphens, points at nothing — and is a
+separate kind rather than a second pattern so that "where have I been" is a
+query instead of a naming convention. It reaches `entries.places` and `vocab`,
+and deliberately **not** `folders`: only a tag or a directive can put an entry
+in a folder, and a second route into membership is the one thing the folder
+model above cannot survive.
+
+The one rule it needs that a pattern does not: **`@` opens a place only at the
+start of a word**, because `a@b.com` is an address. That is not a guess — 17
+tokenize fixtures and 40 parser fixtures carry exactly that string and expect
+plain text, which makes the corpus the oracle for the new kind too. Adding it
+changed no fixture: 395/395 and 1185/1185 still pass, and the parser's corpus
+adapter projects six named fields, so `places` is invisible to it by
+construction.
+
 **A `--directive` files the entry under its own name.** `--work` puts the entry
 in the tag `work`, which is exactly where `<work>` would have put it. The source
 instead looks the directive up in the folder table at write time and drops it if

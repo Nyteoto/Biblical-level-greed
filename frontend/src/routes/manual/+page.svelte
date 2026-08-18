@@ -35,6 +35,12 @@
 			body: 'How it went, in your own word. `\\win`, `\\stuck`, `\\steady`. They are counted and drawn under Readings, and never interpreted — nothing here will tell you what your week meant.'
 		},
 		{
+			glyph: '@place',
+			color: SYNTAX_COLORS.place,
+			name: 'a place',
+			body: 'Where you were. `@helsinki`, `@the-office`. It tags the line the way a pattern does and points at nothing — only a `<pointer>` can put a line in a folder. An address is safe: `a@b.com` is just text, because a place has to start a word.'
+		},
+		{
 			glyph: '--directive',
 			color: SYNTAX_COLORS.directive,
 			name: 'a directive',

@@ -4,12 +4,23 @@ Extracts from raw text:
  - folders:    <pointer>        e.g. <career>, <the backup-system>
  - times:      {time-link}      e.g. {q3}, {review_monday}
  - patterns:   \\sentiment       e.g. \\hate, \\burnout, \\win
+ - places:     @place           e.g. @helsinki, @the-office
  - directives: --foldername     direct-file into a folder (stripped from text)
  - todos:      --todo           that line becomes a checkbox
 
 Rules: captures are trimmed, lowercased and de-duplicated, keeping
 first-appearance order; empty captures are dropped; `\\ ` is a literal
-backslash rather than a sentiment; and text inside "quotes" triggers nothing.
+backslash rather than a sentiment; `@` opens a place only at the start of a
+word, because `a@b.com` is an address; and text inside "quotes" triggers
+nothing.
+
+`places` is this port's own addition and has no fixtures behind it — the
+corpus adapter projects six named fields and does not see it, so the 1185
+cases still pin every one of the source's. What the corpus *does* pin is the
+boundary rule: forty of its inputs carry `a@b.com`, and all forty expect no
+capture. A place is deliberately the same shape as a pattern and points at
+nothing; only `<folder>` resolves anywhere. It is a separate list rather than
+a second class of pattern so that asking "where have I been" is a query.
 
 Why it is shaped this way
 -------------------------
@@ -153,6 +164,40 @@ def _scan_patterns(text: str) -> list[str]:
     return out
 
 
+def _scan_places(masked: str, raw: str) -> list[str]:
+    """`/@([\\p{L}\\p{N}\\p{M}]+(?:-[\\p{L}\\p{N}\\p{M}]+)*)/gu`, by hand, plus a guard.
+
+    The body is `_scan_patterns`' exactly, because a place and a pattern are the
+    same shape of word. The difference is the guard: `@` opens a place only at
+    the start of a word. `\\` is punctuation nobody types inside a word; `@` is
+    an email address, and forty fixtures say so.
+
+    The boundary is read from `raw`, not from `masked`. Masking preserves
+    length, so the indices agree — but what it does not preserve is which
+    character sits *before* a match, and `"quoted"@x` must not become a place
+    merely because the quote was blanked to spaces.
+    """
+    out: list[str] = []
+    i, n = 0, len(masked)
+    while i < n:
+        if masked[i] != "@" or i + 1 >= n or not _is_lnm(masked[i + 1]):
+            i += 1
+            continue
+        if i > 0 and raw[i - 1] not in _JS_WS:
+            i += 1
+            continue
+        j = i + 1
+        while j < n and _is_lnm(masked[j]):
+            j += 1
+        while j + 1 < n and masked[j] == "-" and _is_lnm(masked[j + 1]):
+            j += 1
+            while j < n and _is_lnm(masked[j]):
+                j += 1
+        out.append(masked[i + 1 : j])
+        i = j  # resume after the match, as /g does
+    return out
+
+
 def _scan_directives(text: str):
     """`/--([\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}_-]*)/gu`, by hand.
 
@@ -234,6 +279,7 @@ class ParsedEntry:
     folders: list[str] = field(default_factory=list)
     times: list[str] = field(default_factory=list)
     patterns: list[str] = field(default_factory=list)
+    places: list[str] = field(default_factory=list)
     directive: str | None = None  # --foldername directive (lowercased)
     todo_lines: list[int] = field(default_factory=list)  # 0-based line indices
     clean_text: str = ""  # raw_text with --foldername and --todo stripped
@@ -245,6 +291,7 @@ def parse_entry(raw: str) -> ParsedEntry:
     folders = _collect(masked, _FOLDER_RE)
     times = _collect(masked, _TIME_RE)
     patterns = _dedupe(_scan_patterns(masked))
+    places = _dedupe(_scan_places(masked, raw))
 
     # Find --"quoted folder" or --foldername (quoted form takes priority). The
     # quoted form has to match on `raw`: masking blanked its contents out.
@@ -282,6 +329,7 @@ def parse_entry(raw: str) -> ParsedEntry:
         folders=folders,
         times=times,
         patterns=patterns,
+        places=places,
         directive=directive,
         todo_lines=todo_lines,
         clean_text=clean_text,

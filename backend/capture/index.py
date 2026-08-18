@@ -64,6 +64,10 @@ CREATE TABLE IF NOT EXISTS entries (
     folders    TEXT NOT NULL DEFAULT '[]',
     times      TEXT NOT NULL DEFAULT '[]',
     patterns   TEXT NOT NULL DEFAULT '[]',
+    -- @places. Derived like folders and patterns, and stored beside them for
+    -- the same reason: so "every place I have written" is one query rather
+    -- than a scan of every raw line.
+    places     TEXT NOT NULL DEFAULT '[]',
     todo_lines TEXT NOT NULL DEFAULT '[]',
     todo_done  TEXT NOT NULL DEFAULT '[]',
     -- Paths under data/media, as a JSON array. Stored rather than derived:
@@ -122,7 +126,7 @@ CREATE INDEX IF NOT EXISTS entry_folders_by_folder ON entry_folders (folder_id);
 """
 
 COLUMNS = (
-    "id, ts, day, raw_text, clean_text, folders, times, patterns, "
+    "id, ts, day, raw_text, clean_text, folders, times, patterns, places, "
     "todo_lines, todo_done, media"
 )
 
@@ -184,6 +188,7 @@ def derive(raw_text: str) -> dict:
         "folders": folders,
         "times": parsed.times,
         "patterns": parsed.patterns,
+        "places": parsed.places,
         "todo_lines": parsed.todo_lines,
     }
 
@@ -234,6 +239,7 @@ def _row(event: dict, done: list[int], media: list[str] | None = None) -> tuple[
         json.dumps(d["folders"], ensure_ascii=False),
         json.dumps(d["times"], ensure_ascii=False),
         json.dumps(d["patterns"], ensure_ascii=False),
+        json.dumps(d["places"], ensure_ascii=False),
         json.dumps(d["todo_lines"]),
         json.dumps(sorted(done)),
         json.dumps(list(event.get("media", []) if media is None else media), ensure_ascii=False),
@@ -366,7 +372,7 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.executescript(SCHEMA)
         conn.executemany(
-            f"INSERT INTO entries ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO entries ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         conn.executemany(
@@ -410,7 +416,7 @@ def add_capture(conn: sqlite3.Connection, event: dict) -> None:
     with conn:
         conn.execute(
             f"INSERT OR REPLACE INTO entries ({COLUMNS}) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             row,
         )
         conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", (event["id"],))
@@ -549,6 +555,7 @@ def _as_entry(row: sqlite3.Row) -> dict:
         "folders": json.loads(row["folders"]),
         "times": json.loads(row["times"]),
         "patterns": json.loads(row["patterns"]),
+        "places": json.loads(row["places"]),
         "todo_lines": json.loads(row["todo_lines"]),
         "todo_done": json.loads(row["todo_done"]),
         "media": json.loads(row["media"]),
@@ -1080,17 +1087,19 @@ def vocab(conn: sqlite3.Connection, recent: int = 500) -> dict:
     time rather than after.
     """
     rows = conn.execute(
-        "SELECT folders, times, patterns FROM entries "
+        "SELECT folders, times, patterns, places FROM entries "
         "ORDER BY ts DESC LIMIT ?",
         (recent,),
     ).fetchall()
     tags: set[str] = set()
     times: set[str] = set()
     patterns: set[str] = set()
+    places: set[str] = set()
     for row in rows:
         tags.update(json.loads(row["folders"]))
         times.update(json.loads(row["times"]))
         patterns.update(json.loads(row["patterns"]))
+        places.update(json.loads(row["places"]))
 
     mapping = {
         row["tag"]: row["folder_id"]
@@ -1107,4 +1116,5 @@ def vocab(conn: sqlite3.Connection, recent: int = 500) -> dict:
         "tags": sorted(tags),
         "times": sorted(times),
         "patterns": sorted(patterns),
+        "places": sorted(places),
     }

@@ -10,8 +10,16 @@
 //
 // The backend does not have this; it only needs the parser. If a Python port
 // is ever wanted, `verify_golden.py tokenize` has 395 cases waiting.
+//
+// **One kind is this port's own: `place`.** Everything above still holds for
+// the other five — they are the source's, and the corpus is their spec — but
+// `@helsinki` does not exist upstream. It is added here rather than left for a
+// rewrite because the corpus can still police it: no fixture contains a
+// word-start `@`, so all 395 pass unchanged, and the seventeen that carry
+// `a@b.com` are exactly what pins the boundary rule below. A new kind is the
+// cheap half; keeping the old five byte-identical is the half that matters.
 
-export type TokenKind = "folder" | "time" | "pattern" | "directive" | "todo" | "text"
+export type TokenKind = "folder" | "time" | "pattern" | "place" | "directive" | "todo" | "text"
 
 export type Token = {
   kind: TokenKind
@@ -31,6 +39,13 @@ const PATTERNS: { kind: Exclude<TokenKind, "text">; re: RegExp; group?: number; 
   { kind: "time", re: /\{([^{}]+)\}/g },
   // Unicode-aware: accept letters + numbers + combining marks in any script.
   { kind: "pattern", re: /\\([\p{L}\p{N}\p{M}]+(?:-[\p{L}\p{N}\p{M}]+)*)/gu },
+  // A place. Deliberately the same body as `pattern` — same scripts, same
+  // hyphenation — because it is the same *kind* of thing: a bare word you tag a
+  // line with, that points at nothing. Only `<folder>` resolves to anywhere.
+  // It is its own kind rather than a second pattern so that "every place I have
+  // written" is a query and not a convention, which is the whole reason for
+  // spending a sigil on it.
+  { kind: "place", re: /@([\p{L}\p{N}\p{M}]+(?:-[\p{L}\p{N}\p{M}]+)*)/gu },
   // Quoted directive must come before unquoted so it wins on overlap
   {
     kind: "directive",
@@ -64,16 +79,32 @@ function isEscapedBackslash(text: string, pos: number): boolean {
   return text[pos] === "\\" && text[pos + 1] === " "
 }
 
+/**
+ * `@` only opens a place at the start of a word.
+ *
+ * This is the one rule `pattern` does not need and `place` cannot do without:
+ * `\` is punctuation nobody types mid-word, but `@` is an email address. The
+ * corpus is unambiguous about it — seventeen tokenize fixtures and forty parser
+ * ones carry `a@b.com`, and every one expects plain text straight through.
+ */
+function atWordStart(text: string, pos: number): boolean {
+  return pos === 0 || /\s/.test(text[pos - 1]!)
+}
+
 export function tokenize(text: string): Token[] {
   const quoted = quotedRanges(text)
   const matches: Token[] = []
 
   for (const { kind, re, filter } of PATTERNS) {
     for (const m of text.matchAll(re)) {
-      // Skip patterns inside quoted strings
-      if (kind === "pattern" && inQuoted(m.index!, quoted)) continue
+      // Skip patterns inside quoted strings. Places too: "text inside quotes
+      // triggers nothing" is the rule for the whole syntax, and a place is not
+      // the exception to it.
+      if ((kind === "pattern" || kind === "place") && inQuoted(m.index!, quoted)) continue
       // Skip escaped backslash (`\ `)
       if (kind === "pattern" && isEscapedBackslash(text, m.index!)) continue
+      // An `@` inside a word is an address, not a place.
+      if (kind === "place" && !atWordStart(text, m.index!)) continue
 
       const inner = kind === "todo" ? "todo" : (m[1]?.trim().toLowerCase() ?? "")
       if (!inner) continue

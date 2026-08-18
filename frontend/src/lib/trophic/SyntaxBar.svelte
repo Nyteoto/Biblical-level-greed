@@ -24,9 +24,14 @@
 		{ label: '>', color: SYNTAX_COLORS.folder },
 		{ label: '{', color: SYNTAX_COLORS.time }
 	];
+	// `@` sits next to `\` because they are the same kind of key: a bare word
+	// that tags the line and points at nothing. That leaves the right group one
+	// wider than the left, which is the right trade — the split is about which
+	// thumb can reach a group, not about the two being the same size.
 	const RIGHT = [
 		{ label: '}', color: SYNTAX_COLORS.time },
 		{ label: '\\', color: SYNTAX_COLORS.pattern },
+		{ label: '@', color: SYNTAX_COLORS.place },
 		{ label: '--', color: SYNTAX_COLORS.directive }
 	];
 

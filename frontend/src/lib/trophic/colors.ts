@@ -35,6 +35,7 @@ export const SYNTAX_COLORS = {
 	folder: LIT, // <pointer>
 	time: LIT, // {time-link}
 	pattern: LIT, // \pattern
+	place: LIT, // @place
 	directive: LIT, // --directive
 	todo: LIT // --todo
 } as const;
@@ -81,11 +82,15 @@ export const GLOW_STOPS = [
 
 /** Which token kinds get colour when an entry is rendered read-only.
  *  Directives and todos are stripped from the stored text, so they never
- *  reach this map — matching the source's TOKEN_COLORS exactly. */
+ *  reach this map — which is the source's TOKEN_COLORS exactly, plus `place`.
+ *  A place survives into the stored line the way a folder and a pattern do,
+ *  so leaving it out would render `@helsinki` as plain prose everywhere the
+ *  Log shows an entry back to you. */
 export const TOKEN_COLORS: Record<string, string> = {
 	folder: SYNTAX_COLORS.folder,
 	time: SYNTAX_COLORS.time,
-	pattern: SYNTAX_COLORS.pattern
+	pattern: SYNTAX_COLORS.pattern,
+	place: SYNTAX_COLORS.place
 };
 
 /**

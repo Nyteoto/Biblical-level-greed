@@ -97,6 +97,8 @@ function tokenColor(t: Token, vocab: Vocab | undefined): string | null {
 			return SYNTAX_COLORS.time;
 		case 'pattern':
 			return SYNTAX_COLORS.pattern;
+		case 'place':
+			return SYNTAX_COLORS.place;
 		case 'directive':
 			return SYNTAX_COLORS.directive;
 		case 'todo':

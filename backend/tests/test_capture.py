@@ -151,7 +151,7 @@ def test_empty_and_oversized_captures_are_refused(capture_store):
 
 
 def test_dates_and_vocab_come_off_the_index(capture_store):
-    capture_store.capture("<job> \\win {tmr}")
+    capture_store.capture("<job> \\win {tmr} @helsinki")
     capture_store.capture("<home> \\win")
 
     day = capture_store.entries(limit=1)[0]["day"]
@@ -162,7 +162,30 @@ def test_dates_and_vocab_come_off_the_index(capture_store):
         "tags": ["home", "job"],
         "times": ["tmr"],
         "patterns": ["win"],
+        "places": ["helsinki"],
     }
+
+
+def test_a_place_is_a_tag_that_points_nowhere(capture_store):
+    """`@place` captures like `\\pattern` and files like neither.
+
+    The two halves that matter: a place reaches the index as its own list, and
+    it does *not* reach `folders`. Only `<tag>` and `--directive` can put an
+    entry anywhere, and a second route into folder membership is the one thing
+    the folder model cannot survive — see TROPHIC.md.
+    """
+    capture_store.capture("coffee @helsinki with <work>")
+    entry = capture_store.entries(limit=1)[0]
+
+    assert entry["places"] == ["helsinki"]
+    assert entry["folders"] == ["work"]  # the place is not in here
+    assert entry["raw_text"] == "coffee @helsinki with <work>"
+
+
+def test_an_email_address_is_not_a_place(capture_store):
+    """The boundary rule, which forty parser fixtures pin from the other side."""
+    capture_store.capture("email a@b.com about @oslo")
+    assert capture_store.entries(limit=1)[0]["places"] == ["oslo"]
 
 
 def test_capture_writes_nowhere_near_the_tech_tree(capture_store):

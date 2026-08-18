@@ -12,6 +12,9 @@ export interface Entry {
 	folders: string[];
 	times: string[];
 	patterns: string[];
+	/** `@place`. Captured like a pattern and, like one, pointing at nothing:
+	 *  only `folders` decides where an entry lives. */
+	places: string[];
 	todo_lines: number[];
 	todo_done: number[];
 	/** Folders this entry was filed into by hand. At most one, like the source. */
@@ -32,6 +35,7 @@ export interface Vocab {
 	tags: string[];
 	times: string[];
 	patterns: string[];
+	places: string[];
 }
 
 export interface Folder {
