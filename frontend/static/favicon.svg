@@ -1,11 +1,12 @@
-<!-- The capture bar's indicator notch, condensed until it survives a tab strip.
-     Same proportions as the PNGs: a straight top edge with a tab dropping from
-     the middle, narrower at the bottom than the top. -->
+<!-- The capture bar's indicator notch, condensed until it survives a tab
+     strip. Same fractions as the PNGs — see `scripts/icon.py` in the commit that
+     drew them: a straight top edge with a tab dropping from the middle, wider at
+     the top than the bottom, and wider than the source's so it reads at 16px. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" fill="#0a1116"/>
   <g filter="url(#glow)">
     <path fill="#4fff9f"
-          d="M8.3,25.6 H55.7 V30.4 H39.4 L36.8,41.3 H27.2 L24.6,30.4 H8.3 Z"/>
+          d="M8.3,25.6 H55.7 V30.4 H43.8 L40.6,41.3 H23.4 L20.2,30.4 H8.3 Z"/>
   </g>
   <defs>
     <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
