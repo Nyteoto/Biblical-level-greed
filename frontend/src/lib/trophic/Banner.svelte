@@ -34,6 +34,7 @@
 	 * you see on every screen and stop reading by Tuesday.
 	 */
 	import { goto } from '$app/navigation';
+	import { tick as flush } from 'svelte';
 	import Glyph from './Glyph.svelte';
 	import { banner } from './banner.svelte';
 	import { queuedTodo } from './queued.svelte';
@@ -42,6 +43,39 @@
 	import type { BannerReminder, BannerTodo } from './api';
 
 	const bar = banner();
+
+	/**
+	 * The strip putting its hand up when a promise has just been written.
+	 *
+	 * Two short blinks and done. It is the only thing in the app that asks to
+	 * be looked at, and it is allowed to because of when it happens: you have
+	 * just pressed enter on a line that made a promise, so the strip that keeps
+	 * that promise has one moment where it is worth a glance. It does not
+	 * repeat and there is nothing to dismiss.
+	 *
+	 * On the inner row rather than on the strip itself, because the strip's own
+	 * opacity belongs to the idle dim and an animation on the same property
+	 * would fight it. The capture screen wakes the chrome at the same moment —
+	 * see the send handler there — so there is something lit to blink.
+	 */
+	let landed = $state(false);
+	let landedTimer: ReturnType<typeof setTimeout> | undefined;
+	let announced = 0;
+
+	$effect(() => {
+		const count = bar.landed;
+		// Never on the first read: `landed` starts at 0 and this runs on mount.
+		if (count === announced) return;
+		announced = count;
+		clearTimeout(landedTimer);
+		landed = false;
+		flush().then(() => {
+			landed = true;
+			landedTimer = setTimeout(() => (landed = false), 1400);
+		});
+	});
+
+	$effect(() => () => clearTimeout(landedTimer));
 	const queue = queuedTodo();
 	const dim = uiDim();
 
@@ -135,7 +169,7 @@
 			: ''}"
 	>
 		{#if current}
-			<div class="flex min-w-0 items-center gap-2.5">
+			<div class="flex min-w-0 items-center gap-2.5" class:landed>
 				<button
 					type="button"
 					disabled={busy}
@@ -196,3 +230,30 @@
 		{/if}
 	</div>
 {/if}
+
+<style>
+	/* Two blinks. It dips rather than going out — the caret in the capture bar
+	   is the thing in this app that goes to nothing, and a second full blink
+	   somewhere else would read as the same signal. */
+	.landed {
+		animation: banner-landed 1400ms ease-out;
+	}
+
+	@keyframes banner-landed {
+		0% {
+			opacity: 0.25;
+		}
+		12% {
+			opacity: 1;
+		}
+		26% {
+			opacity: 0.25;
+		}
+		40% {
+			opacity: 1;
+		}
+		100% {
+			opacity: 1;
+		}
+	}
+</style>

@@ -20,6 +20,11 @@ const SLOW_TICK = 15 * 60 * 1000;
 
 const state = $state({
 	data: null as BannerState | null,
+	/** Bumped when a promise has just been written. The strip watches this and
+	 *  blinks; nothing else reads it, and the number itself means nothing
+	 *  beyond "it changed". A counter rather than a boolean because two todos
+	 *  captured in a row are two announcements, and a flag set twice is one. */
+	landed: 0,
 	// Never surfaced. A banner that cannot reach the server should disappear
 	// rather than announce itself: it is furniture on every screen, and
 	// furniture that reports its own failures is worse than furniture missing.
@@ -42,6 +47,26 @@ export function banner() {
 	return {
 		get data() {
 			return state.data;
+		},
+		get landed() {
+			return state.landed;
+		},
+		/**
+		 * Say that the line just captured carried a `--todo`.
+		 *
+		 * The strip is standing furniture — it is on the screen already, saying
+		 * what is owed — so a promise arriving in it changes nothing you would
+		 * notice at the moment you are least likely to look, which is directly
+		 * after pressing enter on the thought you were holding. This is the
+		 * strip putting its hand up for a second.
+		 *
+		 * Separate from `refresh()` on purpose: most refreshes are not news.
+		 * Ticking one off, arriving on a screen, the quarter-hour tick — none of
+		 * those should make the banner announce itself, and a refresh that
+		 * blinked would make the app twitch every fifteen minutes.
+		 */
+		announce() {
+			state.landed += 1;
 		},
 		/** Coalesced: several callers refreshing in the same tick share one
 		 *  request, which is the normal case after a capture that both the page

@@ -88,6 +88,9 @@
 
 	let glowTimer: ReturnType<typeof setTimeout>;
 	let dimTimer: ReturnType<typeof setTimeout>;
+	/** Brings the chrome back and restarts the idle countdown. Assigned by the
+	 *  effect below, which is also the only thing that clears the timer. */
+	let wake: () => void = () => {};
 	let suppressGlow = false;
 
 	// Lines the connection swallowed, waiting to be replayed. The count is
@@ -186,12 +189,17 @@
 
 	// Idle dimming. Any mouse movement resets it; the fade back takes 30s, so
 	// in practice the chrome stays gone while you are writing.
+	//
+	// `wake` is hoisted out of the effect because the send handler needs it: a
+	// captured `--todo` makes the banner announce itself, and announcing into
+	// chrome that has faded to nothing is a blink nobody sees.
 	$effect(() => {
 		function reset() {
 			dim.set(false);
 			clearTimeout(dimTimer);
 			dimTimer = setTimeout(() => dim.set(true), 4000);
 		}
+		wake = reset;
 		reset();
 		window.addEventListener('mousemove', reset);
 		window.addEventListener('touchstart', reset);
@@ -348,7 +356,16 @@
 			if (sent.length > 0) startUploads(entry.id, sent, entry.folders?.[0] ?? '');
 			// A line carrying a `--todo` changes what the banner says and how
 			// much room is left under the cap. Cheap, and only on a real send.
-			if (entry.todo_lines.length > 0) banner().refresh();
+			if (entry.todo_lines.length > 0) {
+				// And the strip says so. The refresh is what makes it true; the
+				// announcement is what makes it noticed, and the wake is what
+				// makes it visible — four seconds of typing will have faded the
+				// chrome out from under it.
+				wake();
+				banner()
+					.refresh()
+					.then(() => banner().announce());
+			}
 		} catch (e) {
 			// The two failures are not the same thing. A dead connection is not
 			// the user's problem: the line goes into the retry queue and is
