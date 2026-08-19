@@ -63,9 +63,16 @@
 
 	let ta = $state<HTMLTextAreaElement | null>(null);
 	let wrapper = $state<HTMLDivElement | null>(null);
+	let overlay = $state<HTMLDivElement | null>(null);
 	let marker = $state<HTMLSpanElement | null>(null);
 
 	let caret = $state(0);
+	/** The selection, in characters of `value`. Equal when there is none. */
+	let selStart = $state(0);
+	let selEnd = $state(0);
+	/** Where the selection is on screen, one rectangle per line it covers. */
+	let selRects = $state<{ x: number; y: number; w: number; h: number }[]>([]);
+	let focused = $state(false);
 	let suggestIdx = $state(0);
 	let stats = $state<UsageStats>({});
 	let caretPos = $state<{ x: number; y: number } | null>(null);
@@ -95,12 +102,15 @@
 		value = value.slice(0, start) + text + value.slice(end);
 		requestAnimationFrame(() => {
 			ta?.setSelectionRange(nextCaret, nextCaret);
-			caret = nextCaret;
+			syncCaret();
 		});
 	}
 
 	function syncCaret() {
-		if (ta) caret = ta.selectionStart ?? 0;
+		if (!ta) return;
+		caret = ta.selectionStart ?? 0;
+		selStart = ta.selectionStart ?? 0;
+		selEnd = ta.selectionEnd ?? 0;
 	}
 
 	/** Apply a new bar state and put the real selection where it says. */
@@ -115,7 +125,7 @@
 			if (!ta) return;
 			ta.focus();
 			ta.setSelectionRange(next.caret, next.caret);
-			caret = next.caret;
+			syncCaret();
 		});
 	}
 
@@ -145,6 +155,102 @@
 		if (!ta) return;
 		ta.style.height = 'auto';
 		ta.style.height = `${ta.scrollHeight}px`;
+	});
+
+	/**
+	 * Where a character offset lands in the overlay's text.
+	 *
+	 * The overlay is a run of spans and one zero-width marker — the thing the
+	 * caret is measured from — and that marker is a character in the DOM and no
+	 * characters of `value`, so it is stepped over rather than counted. Get that
+	 * wrong and the highlight is off by one from wherever the caret is.
+	 */
+	function locate(offset: number): { node: Node; at: number } | null {
+		if (!overlay) return null;
+		const walk = document.createTreeWalker(overlay, NodeFilter.SHOW_TEXT);
+		let seen = 0;
+		let node = walk.nextNode();
+		while (node) {
+			if (!marker?.contains(node)) {
+				const len = node.textContent?.length ?? 0;
+				if (seen + len >= offset) return { node, at: offset - seen };
+				seen += len;
+			}
+			node = walk.nextNode();
+		}
+		return null;
+	}
+
+	/**
+	 * The selection, drawn rather than left to the browser.
+	 *
+	 * The same argument as the caret two layers up: what is selected is the
+	 * *textarea*, whose glyphs are transparent because the coloured ones belong
+	 * to the overlay underneath it — so the native highlight paints a block over
+	 * the overlay and takes the words with it, and `::selection { color }` does
+	 * not reliably bring them back on an element whose own colour is
+	 * `transparent`. WebKit is the engine that does not, and WebKit is what this
+	 * app is read in.
+	 *
+	 * So the native one is switched off in the styles below, exactly as the
+	 * caret is, and the highlight is measured off the overlay with a DOM range
+	 * and painted *under* the text. Under, not over, is the other half of the
+	 * point: the syntax colouring stays visible through a selection, which is
+	 * the whole reason this bar has an overlay in the first place.
+	 *
+	 * One rectangle per line, because that is what `getClientRects` gives a
+	 * range that wraps — and it costs nothing when there is no selection, which
+	 * is almost always.
+	 */
+	$effect(() => {
+		void value;
+		void selStart;
+		void selEnd;
+		void focused;
+		if (!wrapper || !overlay || !focused || selEnd <= selStart) {
+			selRects = [];
+			return;
+		}
+		const from = locate(selStart);
+		const to = locate(selEnd);
+		if (!from || !to) {
+			selRects = [];
+			return;
+		}
+		const range = document.createRange();
+		range.setStart(from.node, from.at);
+		range.setEnd(to.node, to.at);
+		const box = wrapper.getBoundingClientRect();
+		// One band per line, not one per span. A range across coloured tokens
+		// comes back as a rectangle for every text node it touches — a dozen of
+		// them for one dragged line, several of them empty — so they are merged
+		// on their vertical position, which is what makes a line.
+		//
+		// The band is the *line's* height rather than the glyphs': the rects a
+		// range gives are the height of the type, so using them raw leaves a
+		// stripe of unhighlighted ground between wrapped lines.
+		// Off the overlay, which is the layer that carries the text metrics —
+		// the wrapper has no line-height of its own and answers `normal`.
+		const line = parseFloat(getComputedStyle(overlay).lineHeight) || 0;
+		const bands = new Map<number, { x: number; right: number; y: number; h: number }>();
+		for (const r of range.getClientRects()) {
+			if (r.width <= 0) continue;
+			const key = Math.round(r.top);
+			const found = bands.get(key);
+			if (found) {
+				found.x = Math.min(found.x, r.left - box.left);
+				found.right = Math.max(found.right, r.right - box.left);
+			} else {
+				const h = Math.max(line, r.height);
+				bands.set(key, {
+					x: r.left - box.left,
+					right: r.right - box.left,
+					y: r.top - box.top - (h - r.height) / 2,
+					h
+				});
+			}
+		}
+		selRects = [...bands.values()].map((b) => ({ x: b.x, y: b.y, w: b.right - b.x, h: b.h }));
 	});
 
 	$effect(() => {
@@ -202,9 +308,25 @@
 </script>
 
 <div bind:this={wrapper} class="relative w-full">
+	<!-- The selection, under the words rather than over them. First in the DOM
+	     so it paints below the overlay: the tokens keep their colours through a
+	     highlight, which is the whole reason there is an overlay. -->
+	<div aria-hidden="true" class="pointer-events-none absolute inset-0">
+		{#each selRects as r, i (i)}
+			<span
+				class="smooth-select absolute"
+				style="left:{r.x}px;top:{r.y}px;width:{r.w}px;height:{r.h}px"
+			></span>
+		{/each}
+	</div>
+
 	<!-- Coloured overlay. Also carries the marker the caret is measured from,
 	     so it must lay text out identically to the textarea below it. -->
-	<div aria-hidden="true" class="smooth-layout pointer-events-none absolute inset-0">
+	<div
+		bind:this={overlay}
+		aria-hidden="true"
+		class="smooth-layout pointer-events-none absolute inset-0"
+	>
 		{#each bar.overlay as seg, i (i)}{#if seg.role === 'marker'}<span bind:this={marker}
 					>&#8203;</span
 				>{:else}<span
@@ -238,10 +360,14 @@
 		onselect={syncCaret}
 		onpaste={(e) => onpaste?.(e)}
 		onfocus={() => {
+			focused = true;
 			syncCaret();
 			onfocus?.();
 		}}
-		onblur={() => onblur?.()}
+		onblur={() => {
+			focused = false;
+			onblur?.();
+		}}
 	></textarea>
 
 	<!-- The caret. 80ms linear, and it stops blinking while you type. -->
@@ -320,27 +446,23 @@
 		color: var(--color-neutral-600);
 	}
 
-	/* Selected text, on the one field in the app whose text is invisible.
-	 *
-	 * `app.css` lights every selection in the app with the phosphor, and this is
-	 * the one place that rule cannot finish the job on its own. What is selected
-	 * here is the *textarea*, whose glyphs are `color: transparent` because the
-	 * coloured ones belong to the overlay underneath — so a `::selection` that
-	 * sets only a background paints a solid block over the overlay and the
-	 * selected words vanish behind it.
-	 *
-	 * `-webkit-text-fill-color` is what brings them back. It is the property
-	 * that beats a transparent fill in WebKit — the engine on both the iPad this
-	 * is written on and the packaged window — where `color` alone does not, and
-	 * it is set beside `color` rather than instead of it so the two engines that
-	 * disagree about which one wins both end up at the same colour.
-	 *
-	 * The result is inverse video for the run you have selected: the syntax
-	 * colouring under it gives way to dark type on lit phosphor, which is what
-	 * selecting text on a monitor has always looked like. */
+	/* The native selection is switched off, the same way and for the same reason
+	   as the native caret above it: what would be painted is the *textarea*,
+	   which sits over the overlay and whose glyphs are transparent, so the
+	   browser's highlight is a block that covers the words it is highlighting.
+	   Tinting it does not fix that on WebKit — see `selRects`, which is the
+	   highlight this draws instead. */
 	textarea::selection {
-		background: var(--color-accent-500);
-		color: #06120c;
-		-webkit-text-fill-color: #06120c;
+		background: transparent;
+		color: transparent;
+		-webkit-text-fill-color: transparent;
+	}
+
+	/* And the drawn one. Dark enough to read lit type on, because the type is
+	   on top of it and keeps its own colour — this is the one selection in the
+	   app that is not inverse video, and that is the trade: the tokens stay
+	   legible as tokens while you drag across them. */
+	.smooth-select {
+		background: var(--color-accent-300);
 	}
 </style>
