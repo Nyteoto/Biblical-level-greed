@@ -256,6 +256,33 @@ def test_an_album_with_nothing_this_year_is_not_on_the_shelf(capture_store):
     assert names == ["new"]
 
 
+def test_an_empty_folder_stays_on_the_shelf_whatever_its_state(capture_store):
+    """The bug this is here for: a folder with nothing in it yet was kept on
+    the shelf only while it was marked `active`, so marking one `open` or
+    `shipped` made it disappear from every year at once. Nothing was deleted
+    and nothing could be — but a folder you cannot see is a folder you have
+    lost, and three of them were."""
+    for state in ("", "active", "shipped"):
+        folder = capture_store.create_folder(f"empty {state or 'open'}", [])
+        if state:
+            capture_store.set_folder_state(folder["id"], state)
+
+    names = {a["name"] for a in capture_store.shelf("2026")["albums"]}
+    assert names == {"empty open", "empty active", "empty shipped"}
+
+
+def test_a_folder_with_a_history_still_drops_out_of_a_year_it_missed(capture_store):
+    """The rule that was always right, and is untouched: an album is a folder
+    seen through one year, and a year you did not touch it is not one of its
+    years. Only *never used at all* is the exception."""
+    capture_store.create_folder("film", ["film"])
+    write(capture_store, "2025-03-02", "shot something <film>")
+    capture_store.reindex()
+
+    assert [a["name"] for a in capture_store.shelf("2025")["albums"]] == ["film"]
+    assert capture_store.shelf("2026")["albums"] == []
+
+
 def test_albums_come_back_busiest_first(capture_store):
     capture_store.create_folder("quiet", ["quiet"])
     capture_store.create_folder("busy", ["busy"])

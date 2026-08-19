@@ -1296,6 +1296,11 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
     unfiled pile and a one-line handover to the year below. Albums with nothing
     in them this year are dropped rather than shown empty — an album is a year
     of a project, and a year you did not touch it is not one of them.
+
+    **An empty folder is not that.** A folder with nothing in it in any year has
+    no year it belongs to, so dropping it drops it from everywhere; it stays on
+    whatever shelf you are looking at until something lands in it. See the note
+    on the filter below.
     """
     available = years(conn)
     in_group, group_names = groups_for(conn, year)
@@ -1318,7 +1323,15 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
 
     for record in folders(conn):
         rows = _album_rows(conn, record["id"], year)
-        if not rows and record["state"] != "active":
+        # Nothing in it this year: drop it, but only if there is a *year* it
+        # does belong to. A folder that has never held anything anywhere is not
+        # a project you did not touch this year — it is a folder you just made,
+        # and hiding it is indistinguishable from having eaten it. That is
+        # exactly what happened: three empty folders were marked `open` and
+        # `shipped` and vanished off every shelf at once, reachable only
+        # through the mapping screen, because the only state that kept an empty
+        # album on the shelf was `active`.
+        if not rows and record["state"] != "active" and record["entry_count"] > 0:
             continue
         volumes = _volumes(rows)
         albums.append(
