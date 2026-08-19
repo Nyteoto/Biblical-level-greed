@@ -279,9 +279,9 @@
 		x={held.x}
 		y={held.y}
 		chapter={held.chapter}
-		onrename={async (to) => {
+		onrename={async (to, at) => {
 			chapterPanel = null;
-			await nameChapter(folderId, year, held.chapter.first_month, to);
+			await nameChapter(folderId, year, at, to);
 			await refresh();
 		}}
 		onclose={() => (chapterPanel = null)}

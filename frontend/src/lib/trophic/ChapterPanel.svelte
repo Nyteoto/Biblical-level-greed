@@ -35,8 +35,15 @@
 		x: number;
 		y: number;
 		chapter: Chapter;
-		/** An empty string hands it back to the reader. */
-		onrename: (to: string) => void;
+		/** An empty string hands it back to the reader.
+		 *
+		 *  The chapter's first month comes back with it, because the month is
+		 *  what the name is anchored to and *this* is the component that still
+		 *  has it. Asking the caller to read it off its own `{@const}` after the
+		 *  panel closes is asking it to read a scope that is being torn down —
+		 *  see the note beside the media panels on the album screen, and the
+		 *  three handlers that had that bug. */
+		onrename: (to: string, at: number) => void;
 		onclose: () => void;
 	} = $props();
 
@@ -47,7 +54,7 @@
 		const next = value.trim();
 		renaming = false;
 		if (!next || next === chapter.name) return;
-		onrename(next);
+		onrename(next, chapter.first_month);
 	}
 </script>
 
@@ -99,7 +106,7 @@
 			<button
 				type="button"
 				class="px-3.5 py-2 text-left text-[13px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-ink"
-				onclick={() => onrename('')}
+				onclick={() => onrename('', chapter.first_month)}
 			>
 				Call it <span class="font-semibold">{chapter.derived}</span> again
 			</button>

@@ -534,13 +534,17 @@
 		x={held.x}
 		y={held.y}
 		chapter={held.chapter}
-		onrename={(to) => {
+		onrename={(to, at) => {
 			chapterPanel = null;
+			// The anchor arrives with the rename rather than being read off
+			// `held` here, which by this line is a binding into a block that is
+			// being torn down — see `ChapterPanel`.
+			//
 			// The album comes back from the write, so nothing here has to decide
-			// what a rename did to the chapters around it — a name given to one
+			// what a rename did to the chapters around it: a name given to one
 			// that has since merged with another changes which name the run
 			// carries, and the server is where that is resolved.
-			act(nameChapter(folderId, year, held.chapter.first_month, to));
+			act(nameChapter(folderId, year, at, to));
 		}}
 		onclose={() => (chapterPanel = null)}
 	/>
@@ -554,8 +558,14 @@
 		folder={open.folder}
 		{unassigned}
 		onpatch={(change) => {
-			panel = null;
+			// The request first, the teardown second, for the reason written out
+			// beside the media panels below: clearing `panel` destroys the block
+			// this handler is declared in and every `@const` in it, so reading
+			// `open` afterwards reads a scope that is already gone and the call
+			// quietly never happens. It was the wrong way round here, which is
+			// why renaming a folder from this sidebar did nothing at all.
 			act(patchFolder(open.folder.id, change));
+			panel = null;
 		}}
 		ondelete={() => remove(open.folder.id)}
 		onclose={() => (panel = null)}
