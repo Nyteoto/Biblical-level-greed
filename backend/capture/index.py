@@ -46,6 +46,12 @@ from .config import DATE_LOCALE, INDEX_PATH, ensure_dirs
 from .parser import parse_entry
 from .reminder import resolve_reminders
 
+# The unfiled pile, as a subject an event can name. It is an album you can open
+# like any other, so it is one you can name a chapter in — and it needs a
+# spelling in the log for that. A word rather than an empty string, and one no
+# folder id can collide with: ids are twelve hex characters.
+UNFILED_ALBUM = "unfiled"
+
 TABLES = (
     "entries",
     "entry_tags",
@@ -54,6 +60,7 @@ TABLES = (
     "folder_tags",
     "entry_folders",
     "folder_groups",
+    "chapter_names",
 )
 
 SCHEMA = """
@@ -129,6 +136,19 @@ CREATE TABLE IF NOT EXISTS folder_groups (
     PRIMARY KEY (folder_id, year)
 );
 CREATE INDEX IF NOT EXISTS folder_groups_by_year ON folder_groups (year);
+
+-- A chapter named by hand. Keyed on the month it was anchored to rather than
+-- on the chapter, because a chapter is a run of months and a run is derived —
+-- see `name-chapter` in eventlog.py for why a month is a safe anchor and what
+-- happens when two named runs merge. `folder_id` is a folder or the literal
+-- `unfiled`, which is an album like any other.
+CREATE TABLE IF NOT EXISTS chapter_names (
+    folder_id TEXT NOT NULL,
+    year      TEXT NOT NULL,
+    month     INTEGER NOT NULL,
+    name      TEXT NOT NULL,
+    PRIMARY KEY (folder_id, year, month)
+);
 
 -- `tag` is the primary key, not a pair: one tag belongs to at most one
 -- folder. The source spells the same rule `@@unique([userId, tagName])`.
@@ -288,6 +308,8 @@ def fold(events: list[dict]) -> dict:
     # (folder, year) -> (group name, the seq that group was first named at)
     groups: dict[tuple[str, str], str] = {}
     group_seq: dict[tuple[str, str], int] = {}
+    # (folder, year, month) -> the name given to the chapter anchored there.
+    chapter_names: dict[tuple[str, str, int], str] = {}
 
     for seq, event in enumerate(events):
         kind = event["kind"]
@@ -369,9 +391,22 @@ def fold(events: list[dict]) -> dict:
                     k: v for k, v in groups.items() if not (k[1] == year and v == subject)
                 }
                 group_seq.pop((year, subject), None)
+        elif kind == eventlog.NAME_CHAPTER:
+            year = event.get("year") or ""
+            month = int(event.get("month") or 0)
+            name = event.get("text", "")
+            # `unfiled` is a real album to name a chapter in and is the one
+            # subject here that is not a folder id.
+            known = subject == UNFILED_ALBUM or subject in folders
+            if known and year and 1 <= month <= 12:
+                if name:
+                    chapter_names[(subject, year, month)] = name
+                else:
+                    chapter_names.pop((subject, year, month), None)
         elif kind == eventlog.DELETE_FOLDER:
             folders.pop(subject, None)
             groups = {k: v for k, v in groups.items() if k[0] != subject}
+            chapter_names = {k: v for k, v in chapter_names.items() if k[0] != subject}
             # Cascade, the same one Prisma declares on FolderTag and the same
             # one the source gets from `onDelete: Cascade`. A mapping to a
             # folder that no longer exists would make its tag look claimed.
@@ -413,6 +448,7 @@ def fold(events: list[dict]) -> dict:
         "manual": manual,
         "groups": groups,
         "group_seq": group_seq,
+        "chapter_names": chapter_names,
     }
 
 
@@ -481,6 +517,14 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             [
                 (fid, year, name, state["group_seq"].get((year, name), 0))
                 for (fid, year), name in state["groups"].items()
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO chapter_names (folder_id, year, month, name) "
+            "VALUES (?, ?, ?, ?)",
+            [
+                (fid, year, month, name)
+                for (fid, year, month), name in state["chapter_names"].items()
             ],
         )
         conn.executemany(
@@ -1134,6 +1178,39 @@ def _runs(volumes: list[int]) -> list[tuple[int, int]]:
     return out
 
 
+def set_chapter_name(
+    conn: sqlite3.Connection, folder_id: str, year: str, month: int, name: str
+) -> None:
+    """Mirror one `name-chapter`. An empty name is a deletion, which is what
+    hands the chapter back to the reader that names it from your own words."""
+    with conn:
+        conn.execute(
+            "DELETE FROM chapter_names WHERE folder_id = ? AND year = ? AND month = ?",
+            (folder_id, year, month),
+        )
+        if name:
+            conn.execute(
+                "INSERT INTO chapter_names (folder_id, year, month, name) "
+                "VALUES (?, ?, ?, ?)",
+                (folder_id, year, month, name),
+            )
+
+
+def chapter_names(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+) -> dict[int, str]:
+    """Month → the name given to the chapter anchored there, for one album in
+    one year. Empty for the all-years shelf: a chapter is a run of months
+    *inside a year*, so there is no chapter to have named across all of them."""
+    if year is None:
+        return {}
+    rows = conn.execute(
+        "SELECT month, name FROM chapter_names WHERE folder_id = ? AND year = ?",
+        (folder_id or UNFILED_ALBUM, year),
+    ).fetchall()
+    return {int(r["month"]): r["name"] for r in rows}
+
+
 def _chapter_name(rows: list[sqlite3.Row], first: int, last: int, owned: set[str]) -> str:
     """What the app calls a run of months.
 
@@ -1160,15 +1237,34 @@ def _chapter_name(rows: list[sqlite3.Row], first: int, last: int, owned: set[str
     return name.replace("-", " ").capitalize()
 
 
-def chapters(rows: list[sqlite3.Row], owned: set[str] = frozenset()) -> list[dict]:
-    """Month runs, newest first. Derived on every read — see `_chapter_name`."""
+def chapters(
+    rows: list[sqlite3.Row],
+    owned: set[str] = frozenset(),
+    named: dict[int, str] | None = None,
+) -> list[dict]:
+    """Month runs, newest first. Derived on every read — see `_chapter_name` —
+    except where one has been named by hand, which is `named`.
+
+    A run takes the name anchored to the earliest of its months that has one.
+    Two named runs merge into one chapter when the month between them is
+    written in, and this is the rule that says which of the two names it keeps:
+    the one it began with. Renaming always anchors to the run's *first* month,
+    so a rename cannot be shadowed by an older name further along.
+    """
     volumes = _volumes(rows)
+    named = named or {}
     out = []
     for first, last in reversed(_runs(volumes)):
         window = [1 if first <= i <= last else 0 for i in range(12)]
+        # Months here are zero-based; the anchors, like the payload, are not.
+        given = next((named[m] for m in range(first + 1, last + 2) if m in named), "")
         out.append(
             {
-                "name": _chapter_name(rows, first, last, owned),
+                "name": given or _chapter_name(rows, first, last, owned),
+                # What the run is called with nothing said about it, so the
+                # panel can offer to hand it back without asking the server.
+                "derived": _chapter_name(rows, first, last, owned),
+                "named": bool(given),
                 "range": _month_range(window),
                 "first_month": first + 1,
                 "last_month": last + 1,
@@ -1253,7 +1349,7 @@ def album(
         "year": year,
         "entries": contents,
         "volumes": _volumes(rows),
-        "chapters": chapters(rows, owned),
+        "chapters": chapters(rows, owned, chapter_names(conn, folder_id, year)),
         "media_count": sum(len(json.loads(r["media"])) for r in rows),
         # Promises made in here and promises kept, off the same rows the twelve
         # bars are counted from. The unfiled pile gets one like any other album

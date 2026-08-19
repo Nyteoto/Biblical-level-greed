@@ -56,9 +56,11 @@
 		getAlbum,
 		getShelf,
 		getUnassignedTags,
+		nameChapter,
 		patchFolder,
 		toggleLine,
 		type AlbumView,
+		type Chapter,
 		type Entry,
 		type Folder,
 		type Shelf,
@@ -69,6 +71,7 @@
 	import OverviewCard from '$lib/trophic/OverviewCard.svelte';
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import HoldMenu from '$lib/trophic/HoldMenu.svelte';
+	import ChapterPanel from '$lib/trophic/ChapterPanel.svelte';
 
 	const id = $derived(page.params.id!);
 	/** `unfiled` is an album you can open like any other and is not a folder. */
@@ -86,6 +89,10 @@
 	let showReadings = $state(false);
 	/** The properties panel, opened by holding a folder in the sidebar. */
 	let panel = $state<{ folder: Folder; x: number; y: number } | null>(null);
+	/** And the chapter's, from a hold on one of its rows. A chapter is a run of
+	 *  months rather than a thing with an id, so what is held here is the whole
+	 *  record — the panel needs its first month to anchor a name to. */
+	let chapterPanel = $state<{ chapter: Chapter; x: number; y: number } | null>(null);
 	/** Whether the overview has taken the day column's place. Reset when the
 	 *  album changes: it is a property of reading *this* folder, not a mode. */
 	let overviewOpen = $state(false);
@@ -339,6 +346,7 @@
 			{year}
 			oncollapse={() => (collapsed = true)}
 			onhold={(f, x, y) => (panel = { folder: f, x, y })}
+			onholdchapter={(chapter, x, y) => (chapterPanel = { chapter, x, y })}
 		/>
 	{/if}
 
@@ -517,6 +525,24 @@
 			? Number(queue.key.split(':')[1])
 			: null}
 		onqueue={(line) => queue.set(target.id, line)}
+	/>
+{/if}
+
+{#if chapterPanel}
+	{@const held = chapterPanel}
+	<ChapterPanel
+		x={held.x}
+		y={held.y}
+		chapter={held.chapter}
+		onrename={(to) => {
+			chapterPanel = null;
+			// The album comes back from the write, so nothing here has to decide
+			// what a rename did to the chapters around it — a name given to one
+			// that has since merged with another changes which name the run
+			// carries, and the server is where that is resolved.
+			act(nameChapter(folderId, year, held.chapter.first_month, to));
+		}}
+		onclose={() => (chapterPanel = null)}
 	/>
 {/if}
 

@@ -9,7 +9,7 @@
 	 * the sidebar is the same object on both screens instead of two lists that
 	 * happen to look alike.
 	 */
-	import type { AlbumView, Folder, Shelf } from './api';
+	import type { AlbumView, Chapter, Folder, Shelf } from './api';
 	import { holdable } from './holdable';
 	import Glyph from './Glyph.svelte';
 
@@ -20,7 +20,8 @@
 		year,
 		month = null,
 		oncollapse,
-		onhold
+		onhold,
+		onholdchapter
 	}: {
 		shelf: Shelf | null;
 		album: AlbumView | null;
@@ -32,6 +33,9 @@
 		/** Hold a row to open its properties. The row is the folder as far as
 		 *  the reader is concerned, so it is the thing that answers. */
 		onhold?: (folder: Folder, x: number, y: number) => void;
+		/** And a chapter row answers a hold with what can be done to a chapter,
+		 *  which is exactly one thing: what it is called. */
+		onholdchapter?: (chapter: Chapter, x: number, y: number) => void;
 	} = $props();
 
 	const albumHref = (target: string | null) => `/folders/${target ?? 'unfiled'}?year=${year}`;
@@ -128,6 +132,7 @@
 				{@const on = here >= chapter.first_month && here <= chapter.last_month}
 				<a
 					href={chapterHref(chapter.last_month)}
+					use:holdable={(x, y) => onholdchapter?.(chapter, x, y)}
 					class="flex items-baseline gap-2.5 rounded-[12px] px-3.5 text-left transition-shadow {on
 						? 'bg-surface py-[11px] shadow-sm'
 						: 'py-[9px] hover:bg-neutral-200'}"

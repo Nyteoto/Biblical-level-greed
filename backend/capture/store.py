@@ -506,6 +506,42 @@ class Store:
             self.version += 1
             return index.shelf(self.conn, year)
 
+    def name_chapter(
+        self, folder_id: str | None, year: str, month: int, name: str
+    ) -> dict:
+        """Give a chapter a name of your own, or hand it back.
+
+        A chapter is the one thing on the album screen that had no way to be
+        wrong: it is a run of months named from the commonest word written
+        inside it, which is right often enough to be worth doing and wrong often
+        enough to need overruling. An empty `name` deletes the override and the
+        reader names it again.
+
+        The month is the run's first, and the caller is the only one that knows
+        it — `index.chapters` hands `first_month` out with every chapter for
+        exactly this. See `name-chapter` in eventlog.py for why a month is a
+        durable anchor for something derived.
+        """
+        name = self._group_name(name)
+        if not YEAR_RE.match(year):
+            raise CaptureError(f"not a year: {year!r}")
+        if not 1 <= month <= 12:
+            raise CaptureError(f"not a month: {month!r}")
+
+        subject = folder_id or index.UNFILED_ALBUM
+        with self._lock:
+            if subject != index.UNFILED_ALBUM and index.folder(self.conn, subject) is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            eventlog.append(
+                eventlog.NAME_CHAPTER, subject, text=name, year=year, month=month
+            )
+            index.set_chapter_name(self.conn, subject, year, month, name)
+            self.version += 1
+            found = index.album(self.conn, folder_id, year)
+            if found is None:
+                raise CaptureError(f"no such folder: {folder_id}")
+            return found
+
     def _group_name(self, name: str) -> str:
         """One tidy-and-cap, so a name typed in the panel and one arriving from
         anywhere else cannot end up as two different groups."""

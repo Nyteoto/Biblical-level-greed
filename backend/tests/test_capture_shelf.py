@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 
 from backend.capture import eventlog, index
+from backend.capture.store import CaptureError, Store
 
 import pytest
 
@@ -372,3 +373,136 @@ def test_an_album_for_a_folder_that_does_not_exist_is_refused(capture_store):
 
     with pytest.raises(CaptureError):
         capture_store.album("nope", "2026")
+
+
+# ── Naming a chapter ──────────────────────────────────────────────────────
+#
+# A chapter is a run of months named from the commonest word written inside it.
+# That is right often enough to be worth doing and wrong often enough to need
+# overruling, so it can be named by hand — and since the run itself is derived,
+# the name is anchored to a month instead. What the anchor has to survive is
+# every way a run can change, which is fewer ways than it looks: entries are
+# only ever appended, so a run can extend or merge but can never split.
+
+
+def test_a_chapter_can_be_named_and_handed_back(capture_store):
+    film = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-03-02", "in the darkroom <film> \\win")
+    capture_store.reindex()
+
+    assert capture_store.album(film["id"], "2026")["chapters"][0]["name"] == "Win"
+
+    capture_store.name_chapter(film["id"], "2026", 3, "The long spring")
+    chapter = capture_store.album(film["id"], "2026")["chapters"][0]
+    assert chapter["name"] == "The long spring"
+    # The reader's answer is still offered, so the panel can hand it back
+    # without asking the server what it would have said.
+    assert chapter["derived"] == "Win"
+    assert chapter["named"] is True
+
+    capture_store.name_chapter(film["id"], "2026", 3, "")
+    assert capture_store.album(film["id"], "2026")["chapters"][0]["name"] == "Win"
+
+
+def test_a_name_holds_when_the_run_grows_around_it(capture_store):
+    """The anchor is a month, and a month never loses its entries. Writing in
+    the months either side extends the run; the name it was given stays on the
+    chapter that has grown."""
+    film = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-05-02", "<film>")
+    capture_store.reindex()
+    capture_store.name_chapter(film["id"], "2026", 5, "The long spring")
+
+    write(capture_store, "2026-04-02", "<film>")
+    write(capture_store, "2026-06-02", "<film>")
+    capture_store.reindex()
+
+    chapters = capture_store.album(film["id"], "2026")["chapters"]
+    assert len(chapters) == 1
+    assert chapters[0]["name"] == "The long spring"
+    assert (chapters[0]["first_month"], chapters[0]["last_month"]) == (4, 6)
+
+
+def test_two_named_runs_that_merge_keep_the_earlier_name(capture_store):
+    """Both names are in the log and neither is lost; the chapter takes the one
+    it began with. The rule matters because the alternative is a coin toss that
+    a replay could land differently."""
+    film = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-02-02", "<film>")
+    write(capture_store, "2026-04-02", "<film>")
+    capture_store.reindex()
+    capture_store.name_chapter(film["id"], "2026", 2, "Before")
+    capture_store.name_chapter(film["id"], "2026", 4, "After")
+    assert [c["name"] for c in capture_store.album(film["id"], "2026")["chapters"]] == [
+        "After",
+        "Before",
+    ]
+
+    write(capture_store, "2026-03-02", "<film>")
+    capture_store.reindex()
+    chapters = capture_store.album(film["id"], "2026")["chapters"]
+    assert [c["name"] for c in chapters] == ["Before"]
+
+
+def test_naming_anchors_to_the_run_s_first_month(capture_store):
+    """So a rename cannot be shadowed. The chapter above keeps `Before` because
+    that is where it began — and renaming it now writes to the first month of
+    the run as it stands, which is the earliest anchor there is."""
+    film = capture_store.create_folder("film", ["film"])
+    for day in ("2026-02-02", "2026-03-02", "2026-04-02"):
+        write(capture_store, day, "<film>")
+    capture_store.reindex()
+    capture_store.name_chapter(film["id"], "2026", 4, "Late")
+    assert capture_store.album(film["id"], "2026")["chapters"][0]["name"] == "Late"
+
+    first = capture_store.album(film["id"], "2026")["chapters"][0]["first_month"]
+    capture_store.name_chapter(film["id"], "2026", first, "Early")
+    assert capture_store.album(film["id"], "2026")["chapters"][0]["name"] == "Early"
+
+
+def test_the_unfiled_pile_can_have_a_chapter_named_too(capture_store):
+    """It is an album you can open like any other, so it is one you can name a
+    chapter in. It is also the one subject here that is not a folder id."""
+    write(capture_store, "2026-03-02", "loose thought")
+    capture_store.reindex()
+    capture_store.name_chapter(None, "2026", 3, "Odds and ends")
+
+    assert capture_store.album(None, "2026")["chapters"][0]["name"] == "Odds and ends"
+
+
+def test_a_chapter_name_survives_the_index_being_deleted(capture_store):
+    """Derived like everything else: the name is in the log and nowhere else."""
+    film = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-03-02", "<film>")
+    capture_store.reindex()
+    capture_store.name_chapter(film["id"], "2026", 3, "The long spring")
+
+    fresh = Store()
+    fresh.start()
+    try:
+        assert fresh.album(film["id"], "2026")["chapters"][0]["name"] == "The long spring"
+    finally:
+        fresh.close()
+
+
+def test_a_deleted_folder_takes_its_chapter_names_with_it(capture_store):
+    """The same cascade the groups and the tag mappings get. A name left behind
+    would attach itself to the next folder to be given that id, which is not a
+    thing that can happen — but a fold that relies on that is a fold with a
+    reason to be re-read later."""
+    film = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-03-02", "<film>")
+    capture_store.reindex()
+    capture_store.name_chapter(film["id"], "2026", 3, "The long spring")
+    capture_store.delete_folder(film["id"])
+
+    events, _ = eventlog.read_all()
+    assert index.fold(events)["chapter_names"] == {}
+
+
+def test_a_chapter_name_is_refused_a_month_that_is_not_one(capture_store):
+    film = capture_store.create_folder("film", ["film"])
+    with pytest.raises(CaptureError):
+        capture_store.name_chapter(film["id"], "2026", 13, "Nope")
+    with pytest.raises(CaptureError):
+        capture_store.name_chapter(film["id"], "202", 3, "Nope")

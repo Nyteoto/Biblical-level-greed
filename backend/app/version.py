@@ -30,4 +30,7 @@ thing that is not wrong. That case is a page reload, which the message says.
 # 4 — `todos` on a shelf card. The log's cards read it without a guard, so a
 #     server that has never heard of it does not merely draw one figure short:
 #     it takes the shelf down. This is the case the number is for.
-API_VERSION = 4
+# 5 — `name-chapter`, its route, and `derived`/`named` beside a chapter's name.
+#     The panel reads both to decide whether it can offer the chapter back to
+#     the reader that named it.
+API_VERSION = 5

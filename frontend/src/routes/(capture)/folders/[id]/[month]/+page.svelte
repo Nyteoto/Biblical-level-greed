@@ -45,11 +45,14 @@
 	import {
 		getAlbum,
 		getShelf,
+		nameChapter,
 		toggleLine,
 		type AlbumView,
+		type Chapter,
 		type Entry,
 		type Shelf
 	} from '$lib/trophic/api';
+	import ChapterPanel from '$lib/trophic/ChapterPanel.svelte';
 
 	const id = $derived(page.params.id!);
 	const month = $derived(page.params.month!); // `YYYY-MM`
@@ -62,6 +65,12 @@
 	let expanded = $state<Set<string>>(new Set());
 	let lightbox = $state<{ shots: Shot[]; index: number } | null>(null);
 	let loading = $state(true);
+	/** The chapter panel, from a hold on one of the sidebar's rows. The chapter
+	 *  list is the same component and the same rows on this screen as on the
+	 *  album's, so a hold has to mean the same thing on both — a gesture that
+	 *  works on one screen and draws the null ring on the next is worse than one
+	 *  that was never offered. */
+	let chapterPanel = $state<{ chapter: Chapter; x: number; y: number } | null>(null);
 
 	$effect(() => {
 		logSettings.hydrate();
@@ -165,6 +174,7 @@
 				{year}
 				{month}
 				oncollapse={() => (collapsed = true)}
+				onholdchapter={(chapter, x, y) => (chapterPanel = { chapter, x, y })}
 			/>
 		{/if}
 
@@ -262,6 +272,21 @@
 		{/if}
 	</div>
 </div>
+
+{#if chapterPanel}
+	{@const held = chapterPanel}
+	<ChapterPanel
+		x={held.x}
+		y={held.y}
+		chapter={held.chapter}
+		onrename={async (to) => {
+			chapterPanel = null;
+			await nameChapter(folderId, year, held.chapter.first_month, to);
+			await refresh();
+		}}
+		onclose={() => (chapterPanel = null)}
+	/>
+{/if}
 
 {#if lightbox}
 	{@const open = lightbox}

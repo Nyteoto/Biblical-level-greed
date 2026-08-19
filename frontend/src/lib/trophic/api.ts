@@ -98,6 +98,12 @@ export interface Album extends Folder {
  *  commonest tag or pattern inside it. Derived on every read. */
 export interface Chapter {
 	name: string;
+	/** What the run would be called with nothing said about it — the commonest
+	 *  word written inside it. Carried beside the name so the panel can offer to
+	 *  hand the chapter back without asking the server what it would say. */
+	derived: string;
+	/** Whether `name` came from you rather than from the words in the run. */
+	named: boolean;
 	range: string;
 	first_month: number;
 	last_month: number;
@@ -331,6 +337,25 @@ export const renameGroup = (year: string, name: string, to: string) =>
 	call<Shelf & { version: number }>('/groups/rename', {
 		method: 'POST',
 		body: JSON.stringify({ year, name, to })
+	});
+
+/**
+ * Name a chapter by hand, or clear the name with an empty string.
+ *
+ * `month` is the run's **first** month, which is what the name is anchored to —
+ * a chapter is a run of months and a run is derived, so there is nothing else
+ * durable to hang it on. Answers with the whole album, because naming one that
+ * has since merged with another decides which name the run now carries.
+ */
+export const nameChapter = (
+	folder: string | null,
+	year: string,
+	month: number,
+	name: string
+) =>
+	call<AlbumView & { version: number }>(`/folders/${folder ?? 'unfiled'}/chapter`, {
+		method: 'PUT',
+		body: JSON.stringify({ year, month, name })
 	});
 
 /** Take a group off one year's shelf. Its folders return to the loose grid; no

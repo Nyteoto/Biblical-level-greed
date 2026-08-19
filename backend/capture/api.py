@@ -286,6 +286,39 @@ class GroupIn(BaseModel):
     name: str = ""
 
 
+def _album_folder(folder: str | None) -> str | None:
+    """The pile nothing has claimed is an album you can open, and it is spelled
+    `unfiled` wherever one is named. `None` is what everything below the API
+    calls it."""
+    return None if folder in (None, "", "unfiled") else folder
+
+
+class ChapterIn(BaseModel):
+    """`month` is the chapter's *first* month, which is the anchor the name is
+    stored against. An empty `name` hands the chapter back to the reader that
+    names it from the words written inside it."""
+
+    year: str
+    month: int
+    name: str = ""
+
+
+@router.put("/folders/{folder_id}/chapter")
+def name_chapter(folder_id: str, body: ChapterIn) -> dict:
+    """Name a chapter by hand, or clear the name.
+
+    Answers with the whole album, because a rename can change more than the one
+    row that asked for it: naming a chapter that has since merged with another
+    resolves which name the run now carries, and a folder-shaped reply would
+    leave the client guessing.
+    """
+    try:
+        album = store.name_chapter(_album_folder(folder_id), body.year, body.month, body.name)
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**album, "version": store.version}
+
+
 @router.put("/folders/{folder_id}/group")
 def set_folder_group(folder_id: str, body: GroupIn) -> dict:
     """Put a folder under a named heading on one year's shelf.
@@ -346,7 +379,7 @@ def shelf(year: str | None = None) -> dict:
 def album(folder: str | None = None, year: str | None = None) -> dict:
     """One album, one year. `folder` absent (or `unfiled`) is the pile nothing
     has claimed, which the shelf offers as an album of its own."""
-    target = None if folder in (None, "", "unfiled") else folder
+    target = _album_folder(folder)
     try:
         return {**store.album(target, _year(year)), "version": store.version}
     except CaptureError as exc:

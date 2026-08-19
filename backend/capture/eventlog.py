@@ -127,6 +127,24 @@ SET_GROUP = "set-group"
 RENAME_GROUP = "rename-group"
 DELETE_GROUP = "delete-group"
 
+# A chapter given a name by hand. `id` is the folder — or the literal `unfiled`,
+# which is an album you can open like any other and so is one you can name a
+# chapter in. `year` and `month` say which chapter; `text` is the name, and an
+# empty one hands the chapter back to the reader that names it from your own
+# words.
+#
+# **A chapter has no id of its own because a chapter is a run of months, and a
+# run is derived.** So the name is anchored to a month instead: the run's first
+# month at the moment you named it. That works because of a property of this
+# log — entries are only ever appended, so a month never loses its last entry,
+# so a run can extend or merge but can never split or shrink. The anchor is
+# therefore inside the same run forever, whatever else lands around it.
+#
+# When two named runs merge, the chapter has two names and takes the one
+# anchored earliest. That is a rule rather than a guess: the chapter began
+# there, and it is the same answer on every replay.
+NAME_CHAPTER = "name-chapter"
+
 KINDS = {
     CAPTURE,
     CHECK,
@@ -146,6 +164,7 @@ KINDS = {
     SET_GROUP,
     RENAME_GROUP,
     DELETE_GROUP,
+    NAME_CHAPTER,
 }
 
 
@@ -173,6 +192,7 @@ def append(
     ts: str | None = None,
     media: list[str] | None = None,
     year: str | None = None,
+    month: int | None = None,
 ) -> dict:
     """Write one event. Never rewrites or deletes an existing line.
 
@@ -208,6 +228,8 @@ def append(
         event["folder"] = folder
     if year is not None:
         event["year"] = year
+    if month is not None:
+        event["month"] = month
     if media:
         # Paths under data/media, not the files. A reference is a fact about
         # the entry in the same way the raw line is — it cannot be derived
