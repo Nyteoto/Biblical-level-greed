@@ -73,8 +73,33 @@
 		}
 	});
 
+	/**
+	 * The moment it opened, and whether the tail of that gesture has been let
+	 * through yet.
+	 *
+	 * This menu is opened by a hold, and a hold ends with a lift. On a touch
+	 * screen the lift is followed by a synthetic `mousedown` at the same point
+	 * — which is outside this menu, because the menu opened *over* where the
+	 * finger was — and that closed it again before it had finished appearing.
+	 * Hold, wait for the ring, see the menu, let go, watch it vanish.
+	 *
+	 * `HoldMenu` had already solved this for the folder panels by swallowing
+	 * the first press after opening; this is the same fix, and the two should
+	 * stay the same. It is written with a window rather than a plain flag so a
+	 * deliberate press *later* still dismisses on the first go — only the press
+	 * that arrives in the tail of the opening gesture is spent.
+	 */
+	const opened = Date.now();
+	const TAIL = 700;
+	let spent = false;
+
 	function outside(event: Event) {
-		if (menu && !menu.contains(event.target as Node)) onclose();
+		if (!menu || menu.contains(event.target as Node)) return;
+		if (!spent && Date.now() - opened < TAIL) {
+			spent = true;
+			return;
+		}
+		onclose();
 	}
 
 	const filtered = $derived(
