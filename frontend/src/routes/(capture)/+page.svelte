@@ -38,6 +38,7 @@
 	import { uiDim } from '$lib/trophic/dim.svelte';
 	import SyntaxBar from '$lib/trophic/SyntaxBar.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
+	import TodoTally from '$lib/trophic/TodoTally.svelte';
 	import {
 		capture,
 		captureBody,
@@ -693,5 +694,13 @@
 </main>
 
 <!-- The column above is vertically centred in whatever is left, so the page
-     needs a foot of the same height as the header to centre against. -->
-<div class="h-[62px] shrink-0"></div>
+     needs a foot of the same height as the header to centre against.
+
+     The tally stands in it rather than being fixed to the viewport, and that is
+     what keeps it out of the way: the foot is reserved space, so a short screen
+     with the keyboard up moves the badge instead of putting it under the
+     writing. It is the one thing here that does not fade under the idle dim —
+     see the note in `TodoTally`, which is where the argument for that lives. -->
+<div class="relative h-[62px] shrink-0">
+	<TodoTally />
+</div>

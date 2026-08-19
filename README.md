@@ -130,6 +130,16 @@ own screen to go and look at. `data/notes/` and `data/todos.jsonl` are left on
 disk untouched; nothing reads the first any more, and the second is still
 folded into XP so past errands keep the points they earned.
 
+Ten `--todo` lines may stand open at once; the eleventh is refused at the
+write. What became of the rest is the one figure the capture screen keeps on
+show — a standing tally of promises kept over promises made, all of history,
+in the bottom-left corner. It answers when either number moves. It is also a
+toy: take hold of it, spin it, flick it, and it runs down and settles back. That
+does nothing whatsoever, which is the point of it. The same pair,
+narrowed to one folder and one year, sits in that folder's overview beside its
+entry and media counts, and a todo nobody tagged belongs to the unfiled pile
+like anything else. Both are derived on the read: nothing records them.
+
 ## Levels and XP
 
 XP began as decoration under the rule that it must never change what the board
