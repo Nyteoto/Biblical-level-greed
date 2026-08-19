@@ -362,6 +362,7 @@
 							group={album.group}
 							entries={album.entries.length}
 							media={album.media_count}
+							todos={album.todos}
 							sentiments={album.sentiments}
 						/>
 					</div>

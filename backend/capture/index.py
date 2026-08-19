@@ -37,6 +37,7 @@ from __future__ import annotations
 import calendar
 import json
 import sqlite3
+from collections.abc import Iterable
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -619,6 +620,63 @@ def count_open_todos(conn: sqlite3.Connection) -> int:
     return len(open_todos(conn))
 
 
+def todo_tally(entries: Iterable[dict]) -> dict:
+    """`{made, done}` over a set of entries: promises written, promises kept.
+
+    Folded from the same two fields `open_todos` reads rather than counted by a
+    query of its own, so the two cannot drift: `made` is how many indices are
+    in `todo_lines`, `done` is how many of *those* the check events left set,
+    and `made - done` is therefore exactly the length of the list `open_todos`
+    returns. The cap is enforced against that difference, so a second way of
+    counting a todo is a way for the banner and the folder card to disagree by
+    one about a number the user can see in both places at once.
+
+    `done` is intersected with `todo_lines` rather than measured on its own. A
+    `check` names a line index and the fold does not ask whether that line is a
+    todo — a stray one from a restored backup is ignored by `open_todos`, and
+    must be ignored here too or the tally reads as more kept than were made.
+    """
+    made = 0
+    done = 0
+    for entry in entries:
+        lines = entry["todo_lines"]
+        ticked = set(entry["todo_done"])
+        made += len(lines)
+        done += sum(1 for line in lines if line in ticked)
+    return {"made": made, "done": done}
+
+
+def rows_tally(rows: Iterable[sqlite3.Row]) -> dict:
+    """`todo_tally` over raw rows, which carry the two lists as JSON.
+
+    Here rather than at each call site so that every tally in the app — the
+    badge's, an album's, a shelf card's — is arrived at by the same two lines.
+    """
+    return todo_tally(
+        {
+            "todo_lines": json.loads(row["todo_lines"]),
+            "todo_done": json.loads(row["todo_done"]),
+        }
+        for row in rows
+    )
+
+
+def todo_totals(conn: sqlite3.Connection) -> dict:
+    """The tally over the whole log — every promise ever made here, filed or
+    not.
+
+    Not a sum over the folders, and that is the point: membership is resolved
+    from an entry's tags, so a todo written on a line nobody tagged is in no
+    folder at all. Adding the folders up would quietly leave those out and
+    print a total smaller than the list the banner draws from.
+    """
+    return rows_tally(
+        conn.execute(
+            "SELECT todo_lines, todo_done FROM entries WHERE todo_lines != '[]'"
+        ).fetchall()
+    )
+
+
 def upcoming_reminders(conn: sqlite3.Connection, as_of: str) -> list[dict]:
     """Reminders still ahead of `as_of`, soonest first — the countdown.
 
@@ -1123,24 +1181,20 @@ def chapters(rows: list[sqlite3.Row], owned: set[str] = frozenset()) -> list[dic
 def _album_rows(
     conn: sqlite3.Connection, folder_id: str | None, year: str | None
 ) -> list[sqlite3.Row]:
-    """The (ts, day, media, patterns, folders) of one album's entries in one
-    year. `folder_id=None` is the unfiled pile.
+    """One album's entries in one year, as the handful of columns every
+    figure on a shelf card is folded out of. `folder_id=None` is the unfiled
+    pile.
 
     `ts` is here only so `shelf()` can say which album was written in last. Day
     would nearly do, and ties on the same day would then fall to whatever order
     the folders happen to come back in — which is the kind of arbitrary that
     reads as a broken setting rather than as a coin toss."""
     clause, args = _year_clause(year)
+    columns = "ts, day, media, patterns, folders, todo_lines, todo_done"
     if folder_id is None:
-        sql = (
-            f"SELECT ts, day, media, patterns, folders FROM entries "
-            f"WHERE id IN ({_UNFILED})"
-        )
+        sql = f"SELECT {columns} FROM entries WHERE id IN ({_UNFILED})"
     else:
-        sql = (
-            f"SELECT ts, day, media, patterns, folders FROM entries "
-            f"WHERE id IN ({_MEMBERSHIP})"
-        )
+        sql = f"SELECT {columns} FROM entries WHERE id IN ({_MEMBERSHIP})"
         args = [folder_id, folder_id] + args
     return conn.execute(sql + clause, args).fetchall()
 
@@ -1193,13 +1247,19 @@ def album(
         return None
     rows = _album_rows(conn, folder_id, year)
     owned = set(record["tags"]) if record else set()
+    contents = album_entries(conn, folder_id, year)
     return {
         "folder": record,
         "year": year,
-        "entries": album_entries(conn, folder_id, year),
+        "entries": contents,
         "volumes": _volumes(rows),
         "chapters": chapters(rows, owned),
         "media_count": sum(len(json.loads(r["media"])) for r in rows),
+        # Promises made in here and promises kept, off the same rows the twelve
+        # bars are counted from. The unfiled pile gets one like any other album
+        # — a todo nobody tagged is still a todo, and the pile is a real album
+        # you can open.
+        "todos": rows_tally(rows),
         "sentiments": folder_sentiments(conn, folder_id) if folder_id else [],
         # The group is a fact about this folder *in this year*, so it belongs
         # to the album rather than to the folder record beside it.
@@ -1269,6 +1329,11 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
                 "entry_count": len(rows),
                 "all_time_count": record["entry_count"],
                 "media_count": sum(len(json.loads(r["media"])) for r in rows),
+                # Promises made in this album this year, and how many were
+                # kept. On the card rather than only on the folder's own screen
+                # because it is the one figure here that is about how the
+                # project is going rather than about how much of it there is.
+                "todos": rows_tally(rows),
                 "volumes": volumes,
                 "months": _month_range(volumes),
                 "chapters": len(_runs(volumes)),

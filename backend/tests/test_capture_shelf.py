@@ -172,6 +172,37 @@ def test_mapping_a_tag_moves_it_out_of_unfiled_with_nothing_to_migrate(capture_s
 # ── What the cards say ────────────────────────────────────────────────────
 
 
+def test_the_overview_counts_promises_made_in_here_and_kept(capture_store):
+    """The folder's own tally, and it is the album's — this folder through the
+    year on screen, like every other figure on that card. A todo written into
+    it last year belongs to last year's overview."""
+    film = capture_store.create_folder("film", ["film"])
+    first = write(capture_store, "2026-03-02", "--todo book the studio <film>")
+    write(capture_store, "2026-03-09", "--todo call back <film>")
+    write(capture_store, "2025-11-02", "--todo last year's <film>")
+    capture_store.reindex()
+    capture_store.toggle_line(first, 0)
+
+    assert capture_store.album(film["id"], "2026")["todos"] == {"made": 2, "done": 1}
+    assert capture_store.album(film["id"], "2025")["todos"] == {"made": 1, "done": 0}
+
+
+def test_the_unfiled_pile_has_a_tally_like_any_other_album(capture_store):
+    """A todo nobody tagged is still a promise, and the pile is a real album.
+    Filing the tag it carries moves the tally with it, with nothing to
+    migrate."""
+    folder = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-03-03", "--todo loose one <sketch>")
+    capture_store.reindex()
+
+    assert capture_store.album(None, "2026")["todos"] == {"made": 1, "done": 0}
+    assert capture_store.album(folder["id"], "2026")["todos"] == {"made": 0, "done": 0}
+
+    capture_store.map_tag(folder["id"], "sketch")
+    assert capture_store.album(None, "2026")["todos"] == {"made": 0, "done": 0}
+    assert capture_store.album(folder["id"], "2026")["todos"] == {"made": 1, "done": 0}
+
+
 def test_the_card_counts_media_and_leads_with_the_newest(capture_store, tmp_path):
     capture_store.create_folder("film", ["film"])
     write(capture_store, "2026-03-02", "old shot <film>", ["a/one.jpg"])
@@ -181,6 +212,34 @@ def test_the_card_counts_media_and_leads_with_the_newest(capture_store, tmp_path
     album = capture_store.shelf("2026")["albums"][0]
     assert album["media_count"] == 3
     assert album["lead"][0] == "a/two.jpg"
+
+
+def test_the_card_carries_the_folder_s_todo_tally_for_the_year(capture_store):
+    """The same pair the overview shows, on the shelf, cut to the year like
+    every other figure on the card."""
+    capture_store.create_folder("film", ["film"])
+    first = write(capture_store, "2026-03-02", "--todo book the studio <film>")
+    write(capture_store, "2026-03-09", "--todo call back <film>")
+    write(capture_store, "2025-11-02", "--todo last year's <film>")
+    capture_store.reindex()
+    capture_store.toggle_line(first, 0)
+
+    card = capture_store.shelf("2026")["albums"][0]
+    assert card["todos"] == {"made": 2, "done": 1}
+    assert capture_store.shelf("2025")["albums"][0]["todos"] == {"made": 1, "done": 0}
+
+
+def test_a_shelf_card_and_the_album_agree_about_the_tally(capture_store):
+    """Two reads of one fold. They are counted from the same rows by the same
+    function precisely so they cannot drift — the card is what you decide to
+    open the album from."""
+    folder = capture_store.create_folder("film", ["film"])
+    write(capture_store, "2026-03-02", "--todo one <film>\n--todo two <film>")
+    write(capture_store, "2026-04-02", "no promises here <film>")
+    capture_store.reindex()
+
+    card = capture_store.shelf("2026")["albums"][0]
+    assert card["todos"] == capture_store.album(folder["id"], "2026")["todos"]
 
 
 def test_an_album_with_nothing_this_year_is_not_on_the_shelf(capture_store):

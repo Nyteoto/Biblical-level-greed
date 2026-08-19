@@ -664,7 +664,7 @@ export const shapeBlurb: Record<DomainShape, string> = {
  * broken for reasons that are nowhere in the source. This is the number that
  * makes that visible instead of mysterious.
  */
-export const EXPECTED_API = 2;
+export const EXPECTED_API = 4;
 
 export const getApiVersion = () => call<{ api: number; since: string }>('/version');
 

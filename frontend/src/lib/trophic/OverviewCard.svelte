@@ -57,6 +57,7 @@
 		group = '',
 		entries = 0,
 		media = 0,
+		todos = { made: 0, done: 0 },
 		sentiments = []
 	}: {
 		folder: Folder;
@@ -74,6 +75,11 @@
 		group?: string;
 		entries?: number;
 		media?: number;
+		/** Promises made in here and promises kept. A fact about the folder in
+		 *  the same way the entry count is, which is why it sits in the row of
+		 *  figures and not under the readings — a reading is drawn and never
+		 *  interpreted, and this one is arithmetic with an answer. */
+		todos?: { made: number; done: number };
 		sentiments?: { name: string; count: number }[];
 	} = $props();
 
@@ -262,6 +268,28 @@
 								{media.toLocaleString()}
 							</dd>
 						</div>
+						{#if todos.made > 0}
+							<!-- Kept over made, in that order, because it is the same pair
+							     the capture screen stands a badge on — a ratio that swapped
+							     ends between two screens would be read wrong on one of
+							     them. Only when there are any: a folder nobody promised
+							     anything in has no ratio, and `0/0` looks like a fault. -->
+							<div class="flex flex-col gap-1">
+								<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+									Todos
+								</dt>
+								<dd
+									class="flex items-center gap-1.5 tabular-nums"
+									title="{todos.done} of {todos.made} kept"
+								>
+									<Glyph kind="todo" count={todos.made} size={12} />
+									<span>
+										{todos.done.toLocaleString()}<span class="text-neutral-600">/</span
+										>{todos.made.toLocaleString()}
+									</span>
+								</dd>
+							</div>
+						{/if}
 						{#if folder.tags.length > 0}
 							<div class="flex min-w-0 flex-col gap-1">
 								<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">

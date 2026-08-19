@@ -22,4 +22,12 @@ thing that is not wrong. That case is a page reload, which the message says.
 # 1 — everything up to the phosphor re-skin.
 # 2 — `shelf.latest`, `entries.places`, folder overviews (`overview`,
 #     `overview_media`) and the two events behind them.
-API_VERSION = 2
+# 3 — the todo tally: `made`/`done` on the banner, `todos` on an album. Both
+#     are new fields on existing payloads, which is the quietest way this can
+#     go wrong — the capture screen's badge reads `0 / 0` against a server that
+#     has never heard of them, and a figure that is merely *wrong* says nothing
+#     about why.
+# 4 — `todos` on a shelf card. The log's cards read it without a guard, so a
+#     server that has never heard of it does not merely draw one figure short:
+#     it takes the shelf down. This is the case the number is for.
+API_VERSION = 4

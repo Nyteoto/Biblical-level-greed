@@ -77,6 +77,10 @@ export interface Album extends Folder {
 	 *  the sidebar is about the project. */
 	all_time_count: number;
 	media_count: number;
+	/** Promises made in this album this year, and how many were kept — the same
+	 *  pair the folder's overview and the capture screen's badge show, cut to
+	 *  the year like every other figure on the card. */
+	todos: { made: number; done: number };
 	/** Twelve entry counts, January first. The sparkline and the month spine
 	 *  read the same list — one lying down, one standing up. */
 	volumes: number[];
@@ -128,6 +132,10 @@ export interface AlbumView {
 	volumes: number[];
 	chapters: Chapter[];
 	media_count: number;
+	/** Promises made in this album this year, and how many were kept. Derived
+	 *  on the read like every other figure here; the unfiled pile gets one
+	 *  too, because a todo nobody tagged is still a todo. */
+	todos: { made: number; done: number };
 	sentiments: { name: string; count: number }[];
 	/** Which shelf group this folder sits in *this year*, or "" for the loose
 	 *  grid. Per-year, so the same folder can be filed differently next year. */
@@ -251,6 +259,12 @@ export interface BannerState {
 	todos: BannerTodo[];
 	open: number;
 	cap: number;
+	/** All of history, every folder and none: promises written here, and how
+	 *  many of them were kept. `open` is `made - done` — the capture screen's
+	 *  tally and the banner's count are two readings of one fold, which is why
+	 *  they arrive in one answer. */
+	made: number;
+	done: number;
 	due: BannerReminder[];
 	upcoming: BannerReminder[];
 	/** The server's clock at the moment it answered. Days-left is counted

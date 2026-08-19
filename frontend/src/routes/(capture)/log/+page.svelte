@@ -463,6 +463,26 @@
 												{album.media_count}
 											</span>
 										{/if}
+										{#if album.todos.made}
+											<!-- Kept over made, the same way round as the overview and
+											     the badge. Only when something was promised in here:
+											     the other two figures are hidden at nought for the same
+											     reason, and a card is a summary rather than a form with
+											     blanks in it. -->
+											<span
+												class="flex items-center gap-1.5"
+												title="{album.todos.done} of {album.todos.made} todos kept"
+											>
+												<Glyph kind="todo" count={album.todos.made} size={12} />
+												<!-- The ratio is one flex item, not three. Loose in the
+												     row, the gap that separates the mark from the figure
+												     would separate the figure from its own slash. -->
+												<span>
+													{album.todos.done}<span class="text-neutral-600">/</span
+													>{album.todos.made}
+												</span>
+											</span>
+										{/if}
 									</span>
 									<span>{album.chapters} {album.chapters === 1 ? 'chapter' : 'chapters'}</span>
 								</div>

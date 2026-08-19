@@ -168,6 +168,14 @@ class Store:
                 "todos": [_placed(t) for t in todos],
                 "open": len(todos),
                 "cap": MAX_OPEN_TODOS,
+                # The standing pair, all of history and every folder including
+                # none: how many promises have been written here and how many
+                # were kept. It rides on this read rather than getting an
+                # endpoint of its own because everything that changes it — a
+                # capture, a tick — already refreshes the banner, and a second
+                # channel for the same two numbers is a second thing to be out
+                # of date. `open` is `made - done`, by construction.
+                **index.todo_totals(self.conn),
                 # Overdue first, then the countdown. Both are the same shape,
                 # and which of them a reminder is is a fact about the clock
                 # rather than about the reminder.

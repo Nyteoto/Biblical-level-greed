@@ -334,3 +334,81 @@ def test_the_cap_survives_the_index_being_deleted(capture_store):
             fresh.capture("--todo one too many")
     finally:
         fresh.close()
+
+
+# ── The standing tally ────────────────────────────────────────────────────
+#
+# Promises made against promises kept, all of history. The cap above governs
+# what is *open*, which is the difference between these two — so the tally has
+# to be folded from the same fields or the two numbers on screen disagree.
+
+
+def test_the_banner_carries_the_all_time_tally(capture_store):
+    entry = capture_store.capture("--todo a\n--todo b")
+    capture_store.capture("--todo c")
+    capture_store.toggle_line(entry["id"], 0)
+
+    banner = capture_store.banner()
+    assert (banner["made"], banner["done"]) == (3, 1)
+
+
+def test_open_is_exactly_what_was_made_less_what_was_kept(capture_store):
+    """The invariant the badge and the banner share. Ticking moves one across;
+    unticking moves it back. Neither ever changes what was made."""
+    entries = [capture_store.capture(f"--todo item {i}") for i in range(4)]
+    for state in (True, False, True):
+        for entry in entries[:2]:
+            capture_store.toggle_line(entry["id"], 0)
+        banner = capture_store.banner()
+        assert banner["made"] == 4
+        assert banner["done"] == (2 if state else 0)
+        assert banner["open"] == banner["made"] - banner["done"]
+
+
+def test_a_kept_promise_is_never_unmade(capture_store):
+    """What makes this worth showing: `made` only ever climbs. Checking one
+    off frees room under the cap and takes nothing off the total, which is the
+    difference between a tally and a queue length."""
+    entry = capture_store.capture("--todo the only one")
+    capture_store.toggle_line(entry["id"], 0)
+
+    banner = capture_store.banner()
+    assert (banner["made"], banner["done"], banner["open"]) == (1, 1, 0)
+
+
+def test_the_tally_counts_todos_no_folder_claims(capture_store):
+    """A todo written with no tag is in no folder, and is still a promise. The
+    total is read off the entries rather than summed over the folders for
+    exactly this line."""
+    capture_store.create_folder("work", ["work"])
+    capture_store.capture("--todo filed <work>")
+    capture_store.capture("--todo loose")
+
+    assert capture_store.banner()["made"] == 2
+
+
+def test_a_check_on_a_line_that_is_not_a_todo_is_not_kept(capture_store):
+    """The fold does not ask whether a checked line is a todo — a restored
+    backup can leave one behind. `open_todos` ignores it, and so must the
+    tally, or the badge reads as more kept than were ever made."""
+    entry = capture_store.capture("plain line\n--todo the real one")
+    eventlog.append(eventlog.CHECK, entry["id"], line=0)
+    capture_store.reindex()
+
+    banner = capture_store.banner()
+    assert (banner["made"], banner["done"]) == (1, 0)
+    assert banner["open"] == 1
+
+
+def test_the_tally_survives_the_index_being_deleted(capture_store):
+    """Derived like everything else: nothing anywhere records it."""
+    entry = capture_store.capture("--todo a\n--todo b")
+    capture_store.toggle_line(entry["id"], 1)
+
+    fresh = Store()
+    fresh.start()
+    try:
+        assert fresh.banner()["made"] == 2
+        assert fresh.banner()["done"] == 1
+    finally:
+        fresh.close()

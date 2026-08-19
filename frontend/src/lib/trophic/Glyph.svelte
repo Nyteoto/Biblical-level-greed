@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * The three things this app counts, as marks instead of words.
+	 * The four things this app counts, as marks instead of words.
 	 *
 	 * `0 albums · 3 entries · 3 media` is three numbers wearing three nouns, and
 	 * the nouns are the longest part of it while carrying the least — you learn
@@ -22,7 +22,7 @@
 	 * word from the DOM as well as the screen would be trading clarity for
 	 * density rather than buying it.
 	 */
-	type Kind = 'entries' | 'album' | 'media';
+	type Kind = 'entries' | 'album' | 'media' | 'todo';
 
 	let {
 		kind,
@@ -39,7 +39,10 @@
 	const NOUN: Record<Kind, [string, string]> = {
 		entries: ['entry', 'entries'],
 		album: ['album', 'albums'],
-		media: ['photograph or clip', 'media']
+		media: ['photograph or clip', 'media'],
+		// Read beside a `done/made` pair rather than beside one number, so the
+		// singular is the one case where it would be read at all.
+		todo: ['todo', 'todos']
 	};
 
 	const label = $derived(NOUN[kind][count === 1 ? 0 : 1]);
@@ -70,6 +73,17 @@
 		<!-- A folder, tab and all. An album is a folder read through one year, and
 		     the folder is the half of that a mark can carry. -->
 		<path d="M2 4.2a1 1 0 0 1 1-1h3.1l1.4 1.6H13a1 1 0 0 1 1 1v6.4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" />
+	{:else if kind === 'todo'}
+		<!-- A tick inside a ring. It was a bare tick, which was wrong for the
+		     set: the other three are *things* — a written line, a folder, a
+		     photograph — and a tick on its own is an annotation about a thing.
+		     Closed into a ring it becomes an object like the rest of them, and
+		     the row of marks reads as one family.
+		     The ring is drawn a hair inside the box so its stroke is not clipped
+		     at 11px, and the tick is short and steep so it stays a tick rather
+		     than a smear when the whole mark is a dozen pixels wide. -->
+		<circle cx="8" cy="8" r="6.1" />
+		<path d="M5.2 8.3 7.1 10.3 10.9 5.9" />
 	{:else}
 		<!-- A photograph: a frame, a sun, and the hill the light falls on. The
 		     frame is drawn a little wide because at 13px a square reads as a
