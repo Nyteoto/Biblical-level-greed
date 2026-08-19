@@ -530,6 +530,31 @@ body {
 	background: var(--color-neutral-400);
 }
 
+/* Selected text, and the caret that put it there.
+
+   Both were the browser's defaults, which on a dark page means a blue block of
+   somebody else's accent and a white bar — the two things on this screen that
+   are not made of phosphor, and they only appear while you are looking straight
+   at them.
+
+   Inverse video for the selection, because that is what a monitor does: the
+   block is lit and the type is cut out of it in the colour of the ground.
+   `accent-500` rather than the peak, since a selected paragraph is a large
+   area and the top of the ramp at that size is glare.
+
+   The caret is set globally rather than per field. The capture bar is exempt
+   without saying so — it switches its own off inline and draws a measured one
+   instead — so what this reaches is every other place text is typed: the
+   overview editor, the jump box, every name input. */
+::selection {
+	background: var(--color-accent-500);
+	color: #06120c;
+}
+
+:root {
+	caret-color: var(--color-accent);
+}
+
 /* Hold is the app's gesture, so the platform's has to be refused.
    On iOS a long press on a link or an image raises the callout — the preview
    card with "Open in New Tab" — and on a home-screen app that is a portal out

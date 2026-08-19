@@ -319,4 +319,28 @@
 	textarea::placeholder {
 		color: var(--color-neutral-600);
 	}
+
+	/* Selected text, on the one field in the app whose text is invisible.
+	 *
+	 * `app.css` lights every selection in the app with the phosphor, and this is
+	 * the one place that rule cannot finish the job on its own. What is selected
+	 * here is the *textarea*, whose glyphs are `color: transparent` because the
+	 * coloured ones belong to the overlay underneath — so a `::selection` that
+	 * sets only a background paints a solid block over the overlay and the
+	 * selected words vanish behind it.
+	 *
+	 * `-webkit-text-fill-color` is what brings them back. It is the property
+	 * that beats a transparent fill in WebKit — the engine on both the iPad this
+	 * is written on and the packaged window — where `color` alone does not, and
+	 * it is set beside `color` rather than instead of it so the two engines that
+	 * disagree about which one wins both end up at the same colour.
+	 *
+	 * The result is inverse video for the run you have selected: the syntax
+	 * colouring under it gives way to dark type on lit phosphor, which is what
+	 * selecting text on a monitor has always looked like. */
+	textarea::selection {
+		background: var(--color-accent-500);
+		color: #06120c;
+		-webkit-text-fill-color: #06120c;
+	}
 </style>
