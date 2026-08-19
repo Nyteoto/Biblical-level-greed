@@ -202,6 +202,56 @@
 		};
 	});
 
+	/**
+	 * Start typing and it goes in the bar, wherever the focus was.
+	 *
+	 * The autofocus above cannot be relied on. iPadOS only honours a
+	 * programmatic `focus()` inside a user gesture, so on the machine this app
+	 * is actually written on — an iPad with a hardware keyboard — the bar
+	 * comes up unfocused and the first thing you type goes nowhere. Tapping the
+	 * screen to fix it is the exact gesture a keyboard exists to avoid.
+	 *
+	 * So: a printable key pressed while nothing else is focused *is* the
+	 * gesture. The bar takes the focus and the keystroke both.
+	 *
+	 * The keystroke is inserted by hand rather than left to the browser. After
+	 * `focus()` inside a keydown, whether the character reaches the newly
+	 * focused element is a question every engine answers differently; typing
+	 * the first letter of a thought and watching it vanish is worse than the
+	 * small amount of care this takes. `preventDefault` stops the second copy.
+	 *
+	 * What it deliberately does not catch: anything with a modifier (those are
+	 * shortcuts, including the browser's own), anything while a composition is
+	 * running (an IME is mid-word and the keystroke is not a character yet),
+	 * and anything at all while another field has the focus — the pin's menu,
+	 * a name box, the Log's jump field. Non-printable keys only move the focus:
+	 * a Backspace or an Enter aimed at an empty bar has nothing to do, and
+	 * stealing them would break Escape and Tab everywhere on the screen.
+	 */
+	$effect(() => {
+		function typeAnywhere(event: KeyboardEvent) {
+			if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+			// `key` is one code point for a printable key and a word — `Enter`,
+			// `ArrowLeft` — for everything else.
+			if ([...event.key].length !== 1) return;
+			const active = document.activeElement as HTMLElement | null;
+			if (
+				active &&
+				(active.tagName === 'TEXTAREA' ||
+					active.tagName === 'INPUT' ||
+					active.isContentEditable)
+			) {
+				return;
+			}
+			event.preventDefault();
+			input?.focus();
+			input?.insertText(event.key);
+		}
+
+		window.addEventListener('keydown', typeAnywhere);
+		return () => window.removeEventListener('keydown', typeAnywhere);
+	});
+
 	// Live validation. The only thing that can lock the bar, and it can only
 	// do it when a `--directive` disagrees with the folder registry — see
 	// validation.ts for why nothing else about a draft is checkable.
