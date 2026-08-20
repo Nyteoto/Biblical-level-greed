@@ -76,8 +76,25 @@ export function pendingCount(env: QueueEnv): number {
 	return load(env).length;
 }
 
+/** A flush already running against this environment, so a second `online`
+ *  cannot start a concurrent one. Two overlapping flushes both `load()` the
+ *  same queue, so both would send every line in it — duplicate captures in an
+ *  append-only log, which nothing downstream can tell apart from two lines you
+ *  actually typed twice. Keyed on the env rather than held in one module
+ *  variable so that two environments (the app's, and a replay's) never wait on
+ *  each other. */
+const inflight = new WeakMap<QueueEnv, Promise<number>>();
+
 /** Try to send everything waiting. Returns how many actually went. */
-export async function flush(env: QueueEnv): Promise<number> {
+export function flush(env: QueueEnv): Promise<number> {
+	const already = inflight.get(env);
+	if (already) return already;
+	const run = drain(env).finally(() => inflight.delete(env));
+	inflight.set(env, run);
+	return run;
+}
+
+async function drain(env: QueueEnv): Promise<number> {
 	const queue = load(env);
 	if (queue.length === 0) return 0;
 
@@ -85,7 +102,8 @@ export async function flush(env: QueueEnv): Promise<number> {
 	const remaining: QueuedEntry[] = [];
 	let sent = 0;
 
-	for (const entry of queue) {
+	for (let i = 0; i < queue.length; i++) {
+		const entry = queue[i];
 		// Expired entries are dropped without being attempted and without
 		// telling anyone. Twenty-four hours late is not a capture any more.
 		if (env.now() - entry.ts > maxAge) continue;
@@ -99,8 +117,16 @@ export async function flush(env: QueueEnv): Promise<number> {
 			if (res.ok) sent++;
 			else remaining.push(entry);
 		} catch {
-			remaining.push(entry);
-			break; // still offline — see the note above
+			// Still offline — see the note above. Keep this entry *and every
+			// one behind it*: they were never attempted, and `save` below
+			// writes `remaining` as the whole queue, so anything missing from
+			// it is deleted. Taking the tail wholesale rather than pushing one
+			// entry is the difference between stopping and discarding, and
+			// getting it wrong cost the queue everything after the first
+			// failure — silently, in the module whose one job is that this
+			// cannot happen.
+			remaining.push(...queue.slice(i));
+			break;
 		}
 	}
 

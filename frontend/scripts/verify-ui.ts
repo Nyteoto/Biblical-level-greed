@@ -36,7 +36,15 @@ import { view, handleKey, caretStyle } from '../src/lib/trophic/capture-bar.ts';
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
-import { enqueue, flush, pendingCount, STORAGE_KEY } from '../src/lib/trophic/retry-queue.ts';
+import {
+	enqueue,
+	flush,
+	load,
+	pendingCount,
+	MAX_AGE_MS,
+	STORAGE_KEY,
+	type QueueEnv
+} from '../src/lib/trophic/retry-queue.ts';
 import { todayKey } from '../src/lib/trophic/day.ts';
 import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
 import { albumWeek, foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
@@ -640,6 +648,136 @@ async function localChecks(): Promise<string[]> {
 		}
 	}
 
+	// The retry queue, which has a corpus that cannot be satisfied (see below)
+	// and therefore had no oracle at all. It is the module that holds your
+	// text when the connection does not, so "no oracle" was the wrong number
+	// of them: `flush` was deleting every queued entry behind the one that
+	// failed, silently, and nothing in this runner could see it. These check
+	// the four rules the module's own header states, plus the two ways it can
+	// lose a line.
+	const queueEnv = (fetchImpl: QueueEnv['fetch'], now = () => 1000): QueueEnv => {
+		const store: Record<string, string> = {};
+		return {
+			getItem: (k) => store[k] ?? null,
+			setItem: (k, v) => {
+				store[k] = v;
+			},
+			fetch: fetchImpl,
+			now,
+			maxAgeMs: undefined
+		};
+	};
+	const bodies = (env: QueueEnv) => load(env).map((q) => q.body);
+	const fill = (env: QueueEnv, ...names: string[]) => {
+		for (const n of names) enqueue(env, '/api/capture/entries', n);
+	};
+
+	// **A dead connection keeps the whole queue.** The one that threw and
+	// every one behind it, in the order they were typed.
+	{
+		const env = queueEnv(async () => {
+			throw new Error('offline');
+		});
+		fill(env, 'A', 'B', 'C');
+		const sent = await flush(env);
+		if (sent !== 0 || bodies(env).join() !== 'A,B,C') {
+			failures.push(`  flush offline: kept ${JSON.stringify(bodies(env))}, sent ${sent}, expected all three kept`);
+		}
+	}
+
+	// The same once some have already gone: A leaves, B throws, C was never
+	// attempted and must still be there.
+	{
+		let n = 0;
+		const env = queueEnv(async () => {
+			n++;
+			if (n === 1) return { ok: true };
+			throw new Error('offline');
+		});
+		fill(env, 'A', 'B', 'C');
+		const sent = await flush(env);
+		if (sent !== 1 || bodies(env).join() !== 'B,C') {
+			failures.push(`  flush partial: kept ${JSON.stringify(bodies(env))}, sent ${sent}, expected B,C and sent 1`);
+		}
+	}
+
+	// **A server that answered keeps only what it refused, and carries on.**
+	// A 400 is retried like any other non-ok: an entry lost is worse than an
+	// entry retried, and the expiry is the backstop.
+	{
+		let n = 0;
+		const env = queueEnv(async () => ({ ok: ++n !== 2 }));
+		fill(env, 'A', 'B', 'C');
+		const sent = await flush(env);
+		if (sent !== 2 || bodies(env).join() !== 'B') {
+			failures.push(`  flush refusal: kept ${JSON.stringify(bodies(env))}, sent ${sent}, expected B and sent 2`);
+		}
+	}
+
+	// Everything sent leaves nothing behind.
+	{
+		const env = queueEnv(async () => ({ ok: true }));
+		fill(env, 'A', 'B');
+		await flush(env);
+		if (bodies(env).length !== 0) {
+			failures.push(`  flush all-ok: left ${JSON.stringify(bodies(env))}, expected empty`);
+		}
+	}
+
+	// **The expiry is strictly greater**, so exactly 24h old still sends.
+	{
+		let clock = 0;
+		const env = queueEnv(async () => ({ ok: true }), () => clock);
+		fill(env, 'old');
+		clock = MAX_AGE_MS; // exactly at the limit
+		if ((await flush(env)) !== 1) failures.push('  an entry exactly MAX_AGE_MS old was dropped; the test is strictly greater');
+
+		let tried = 0;
+		const env2 = queueEnv(async () => {
+			tried++;
+			return { ok: true };
+		}, () => clock);
+		clock = 0;
+		fill(env2, 'stale');
+		clock = MAX_AGE_MS + 1;
+		const sent = await flush(env2);
+		if (sent !== 0 || tried !== 0 || bodies(env2).length !== 0) {
+			failures.push(`  an expired entry was attempted (${tried}) or kept (${bodies(env2).length}); it should be dropped unattempted`);
+		}
+	}
+
+	// **Two flushes must not overlap.** Both would `load()` the same queue and
+	// send all of it, and two identical captures in an append-only log cannot
+	// be told from two you typed.
+	{
+		let sends = 0;
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		const env = queueEnv(async () => {
+			sends++;
+			await gate;
+			return { ok: true };
+		});
+		fill(env, 'A', 'B');
+		const first = flush(env);
+		const second = flush(env);
+		release();
+		await Promise.all([first, second]);
+		if (sends !== 2) {
+			failures.push(`  two concurrent flushes made ${sends} requests for 2 entries, expected 2`);
+		}
+	}
+
+	// Unreadable storage reads as an empty queue rather than throwing during
+	// boot — the whole app mounts behind this call.
+	{
+		const env = queueEnv(async () => ({ ok: true }));
+		env.setItem(STORAGE_KEY, 'not json at all');
+		if (pendingCount(env) !== 0 || (await flush(env)) !== 0) {
+			failures.push('  a corrupt queue in storage did not read as empty');
+		}
+	}
+
 	return failures;
 }
 
@@ -663,6 +801,13 @@ async function localChecks(): Promise<string[]> {
 // different localStorage objects. The notes on the file are accurate and the
 // port follows them; the fixtures are not reproducible from the source.
 // Regenerate the bundle and delete this entry if it starts passing.
+//
+// What this entry used to cost, and no longer does: an exemption silences the
+// whole file, so the module behind it had no oracle of any kind, and `flush`
+// spent months deleting every queued entry behind the first failure with
+// nothing able to notice. The rules the corpus cannot pin are pinned in
+// `localChecks` instead. **An exemption here is a debt owed to that
+// function** — never add one without paying it.
 
 const KNOWN_BAD: Record<string, string> = {
 	retry_queue:
