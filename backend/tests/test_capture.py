@@ -151,6 +151,96 @@ def test_empty_and_oversized_captures_are_refused(capture_store):
     assert log_lines() == []
 
 
+def test_the_shelf_counts_todos_the_way_todo_tally_does(capture_store):
+    """`_shelf_buckets` has sqlite count each entry's promises, which makes it
+    a second implementation of `todo_tally` — the thing this codebase says not
+    to have. It is allowed to exist because it is three times faster over the
+    whole log and because of this test, which is what stops the two drifting.
+
+    The case that separates a careless translation from a correct one is a
+    `check` naming a line that is not a todo, on an entry that has todos of
+    its own. A restored backup or an interrupted write produces exactly that,
+    and `todo_tally` ignores the stray one. The obvious sqlite spelling —
+    `json_array_length(todo_done)` — does not, and reports more promises kept
+    than were ever made. The intersection has to be real.
+
+    Note what this does *not* separate: which of the two lists the count
+    iterates. Both directions measure the same intersection, and both are
+    correct as long as neither list repeats a value. That was worth finding
+    out rather than asserting — the first version of this test claimed the
+    direction mattered and passed against a translation that reversed it.
+    """
+    folder = capture_store.create_folder("Bench")
+    tag = folder["tags"][0]
+
+    for text in (
+        f"--todo sand the top <{tag}>",
+        f"--todo oil it <{tag}>\n--todo wax it <{tag}>",
+        f"nothing promised here <{tag}>",
+    ):
+        capture_store.capture(text)
+
+    entries = capture_store.entries(limit=10)
+    for entry in entries:
+        for line in entry["todo_lines"][:1]:
+            capture_store.toggle_line(entry["id"], line)
+
+    # A stray check, straight into the log: a line index that is not a todo,
+    # on an entry that *does* carry todos. On an entry with none, the cheap
+    # `todo_lines = '[]'` guard answers 0 whatever the intersection says, and
+    # the case proves nothing.
+    promising = next(e for e in entries if len(e["todo_lines"]) > 1)
+    eventlog.append(eventlog.CHECK, promising["id"], line=99)
+    capture_store.reindex()
+
+    conn = capture_store.conn
+    truth = index.todo_tally(
+        [
+            {"todo_lines": e["todo_lines"], "todo_done": e["todo_done"]}
+            for e in capture_store.entries(limit=100)
+        ]
+    )
+    assert truth["made"] == 3 and truth["done"] == 2, truth
+
+    buckets = index._shelf_buckets(conn, None)
+    every = [row for rows in buckets.values() for row in rows]
+    assert {
+        "made": sum(r["made"] for r in every),
+        "done": sum(r["done"] for r in every),
+    } == truth
+
+    # And through the shelf itself, where the figure is actually read.
+    card = next(a for a in index.shelf(conn, None)["albums"] if a["id"] == folder["id"])
+    assert card["todos"] == truth
+
+
+def test_the_newest_first_reads_do_not_scan_the_whole_log(capture_store):
+    """`entries()` and `vocab()` both ask for the newest handful of a table
+    that only grows, and both are on hot paths — the log opens with one and
+    the capture bar re-reads the other after every send. Without an index on
+    `ts` sqlite serves them by scanning every row and sorting the lot in a
+    temp b-tree, which is invisible until there is a lot of history and then
+    is the slowest thing in the app.
+
+    Pinned as a query *plan* rather than a duration: a timing test on a
+    hundred rows would pass whatever the plan was, and the plan is the actual
+    claim.
+    """
+    capture_store.capture("a line <garden>")
+    conn = capture_store.conn
+
+    plan = " ".join(
+        row["detail"]
+        for row in conn.execute(
+            "EXPLAIN QUERY PLAN "
+            + index.SELECT_ENTRIES
+            + " ORDER BY ts DESC, id DESC LIMIT 20"
+        )
+    )
+    assert "entries_by_ts" in plan, plan
+    assert "TEMP B-TREE" not in plan, plan
+
+
 def test_the_frontend_mirrors_the_capture_cap():
     """The bar refuses a too-long draft before it sends, which is the only
     reason the draft survives being refused — the server's answer arrives after
