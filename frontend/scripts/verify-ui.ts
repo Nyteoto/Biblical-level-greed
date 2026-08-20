@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 
 import { tokenize, activeTrigger } from '../src/lib/trophic/tokenize.ts';
 import { buildTrie, prefixSearch, scoredSearch } from '../src/lib/trophic/trie.ts';
-import { validate } from '../src/lib/trophic/validation.ts';
+import { validate, CAP_WARN_AT, MAX_RAW_LEN } from '../src/lib/trophic/validation.ts';
 import { view, handleKey, caretStyle } from '../src/lib/trophic/capture-bar.ts';
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
@@ -443,7 +443,7 @@ function jsonish(v: unknown): unknown {
 // on its own. Kept here rather than in a test file of its own because the
 // frontend has exactly one runner and a second one would not get run.
 
-function localChecks(): string[] {
+async function localChecks(): Promise<string[]> {
 	const failures: string[] = [];
 
 	// Midnight east of Greenwich. The backend files an entry under the user's
@@ -508,6 +508,48 @@ function localChecks(): string[] {
 			failures.push(`  tagForPin(${JSON.stringify(folder)}) = ${JSON.stringify(got)}, ` +
 				`expected ${JSON.stringify(want)}`);
 		}
+	}
+
+	// The length rule, which the corpus knows nothing about — the source had no
+	// such issue type and its cap was enforced only by the server. It is here
+	// because of what happened when it was: the refusal came back inside the
+	// 220ms the draft takes to slide out of the box, the restore lost the race
+	// with the clear, and a two-thousand-word entry was gone with no copy of it
+	// anywhere. The bar refusing it first is what makes that unreachable, so
+	// the rule that does the refusing gets an oracle.
+	const capVocab: Vocab = { folders: [], tag_to_folder: {}, tags: [], patterns: [], places: [] };
+	const lengthCases: [string, string, number, boolean][] = [
+		// [what it is, draft, reserved, should lock]
+		['exactly at the cap', 'x'.repeat(MAX_RAW_LEN), 0, false],
+		['one over', 'x'.repeat(MAX_RAW_LEN + 1), 0, true],
+		// Trimmed before counting, the way `store.capture` counts it.
+		['padding does not count', `  ${'x'.repeat(MAX_RAW_LEN)}  `, 0, false],
+		// The pin's tag is appended on the way out and counts against the cap.
+		['the pin tips it over', 'x'.repeat(MAX_RAW_LEN - 2), 3, true],
+		// An empty draft reserves nothing: there is no line to append a tag to.
+		['empty with a pin on', '', MAX_RAW_LEN + 1, false]
+	];
+	for (const [what, draft, reserved, want] of lengthCases) {
+		for (const vocab of [capVocab, undefined]) {
+			const got = validate(draft, vocab, reserved);
+			if (got.locked !== want) {
+				failures.push(`  ${what} (vocab ${vocab ? 'loaded' : 'absent'}): locked=${got.locked}, expected ${want}`);
+			}
+			if (want && got.issues[0]?.type !== 'too-long') {
+				failures.push(`  ${what}: first issue was ${got.issues[0]?.type ?? 'none'}, expected too-long`);
+			}
+		}
+	}
+	// Length is reported first, so it is the one the bar prints: it is the only
+	// issue that stops the send outright, and `slice(0, 1)` shows one.
+	const both = validate(`--nope ${'x'.repeat(MAX_RAW_LEN)}`, capVocab);
+	if (both.issues[0]?.type !== 'too-long' || both.issues.length !== 2) {
+		failures.push(`  a draft both too long and misdirected reported ${both.issues.map((i) => i.type).join(', ')}`);
+	}
+	// The warning threshold has to leave room to act in and stay out of the way
+	// of an ordinary line.
+	if (!(CAP_WARN_AT < MAX_RAW_LEN && CAP_WARN_AT > MAX_RAW_LEN / 2)) {
+		failures.push(`  CAP_WARN_AT ${CAP_WARN_AT} is not inside the last half of ${MAX_RAW_LEN}`);
 	}
 
 	// The Log's quiet-stretch merge. No corpus covers it — the source has no
@@ -714,7 +756,7 @@ async function main(argv: string[]): Promise<number> {
 		fail += r.failed;
 		total += r.total;
 	}
-	const local = localChecks();
+	const local = await localChecks();
 	for (const line of local) console.log(line);
 	if (local.length) console.log(`  ${'local checks'.padEnd(20)} FAIL  ${local.length} problem(s)`);
 	else console.log(`  ${'local checks'.padEnd(20)} PASS  (no corpus, this port's own mistakes)`);

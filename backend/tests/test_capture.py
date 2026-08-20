@@ -9,6 +9,7 @@ anything here.
 from __future__ import annotations
 
 import json
+import re
 
 from backend.capture import eventlog, index
 from backend.capture.store import CaptureError, Store
@@ -148,6 +149,31 @@ def test_empty_and_oversized_captures_are_refused(capture_store):
     with pytest.raises(CaptureError):
         capture_store.capture("x" * (MAX_RAW_LEN + 1))
     assert log_lines() == []
+
+
+def test_the_frontend_mirrors_the_capture_cap():
+    """The bar refuses a too-long draft before it sends, which is the only
+    reason the draft survives being refused — the server's answer arrives after
+    the box has begun emptying. That only works while the two numbers agree,
+    and they are declared in two files in two languages, so nothing but this
+    notices when one of them moves.
+    """
+    from pathlib import Path
+
+    from backend.capture.config import MAX_RAW_LEN
+
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "src"
+        / "lib"
+        / "trophic"
+        / "validation.ts"
+    ).read_text(encoding="utf-8")
+
+    match = re.search(r"export const MAX_RAW_LEN = (\d+);", source)
+    assert match, "validation.ts no longer declares MAX_RAW_LEN"
+    assert int(match.group(1)) == MAX_RAW_LEN
 
 
 def test_dates_and_vocab_come_off_the_index(capture_store):

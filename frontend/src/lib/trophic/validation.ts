@@ -25,12 +25,21 @@
 //     Unifying them is the obvious cleanup and it is wrong.
 //   - **`locked` is every issue type, not a subset.** The field exists so an
 //     advisory fourth type can be added later without changing callers.
+//
+// The fourth type arrived, and it is not advisory: `too-long`. It is here
+// rather than left to the server because the server's refusal arrives after
+// the draft has already begun sliding out of the box, and a capture that is
+// refused *after* it has left the box is a capture the user has to remember.
+// Length is the one thing about a draft that can be checked without asking
+// anything, so it is checked while it is still being typed — which is also why
+// it is the one issue that does not need `vocab` and is computed before the
+// early return for it.
 
 import { tokenize } from './tokenize';
 import type { Vocab } from './api';
 
 export type ValidationIssue = {
-	type: 'missing-folder' | 'conflict' | 'missing-draw-folder';
+	type: 'missing-folder' | 'conflict' | 'missing-draw-folder' | 'too-long';
 	message: string;
 	/** Indices into `tokenize(draft)` — not character offsets. */
 	blinkIndices: number[];
@@ -46,12 +55,44 @@ export type Validation = {
 
 const DRAW_RE = /^--draw\s+-(.+)$/i;
 
-export function validate(draft: string, vocab: Vocab | undefined): Validation {
+/** The longest a capture may be, mirroring `backend/capture/config.py`. The
+ *  two have to agree: this one is what stops the send, that one is what makes
+ *  it true. */
+export const MAX_RAW_LEN = 20000;
+
+/** Where the counter starts showing itself: the last tenth of the room. Early
+ *  enough to change what you are writing, late enough that an ordinary line
+ *  never sees it. */
+export const CAP_WARN_AT = MAX_RAW_LEN - MAX_RAW_LEN / 10;
+
+export function validate(
+	draft: string,
+	vocab: Vocab | undefined,
+	/** Characters the send will add that the draft does not show — the pinned
+	 *  folder's tag, which is appended to the raw line on the way out. Counted
+	 *  here so the bar never reports room the server will not honour. */
+	reserved = 0
+): Validation {
+	// Length first, and outside the vocab guard: it is checkable with nothing
+	// loaded, and it is the only issue that stays true if the fetch never
+	// lands. No `blinkIndices` — there is no offending token, the whole draft
+	// is the problem, and the counter under the line already says so.
+	const length = draft.trim().length + (draft.trim() ? reserved : 0);
+	const issues: ValidationIssue[] = [];
+	if (length > MAX_RAW_LEN) {
+		issues.push({
+			type: 'too-long',
+			message: `${length.toLocaleString()} characters — ${(
+				length - MAX_RAW_LEN
+			).toLocaleString()} over what a capture holds`,
+			blinkIndices: []
+		});
+	}
+
 	// No vocab means the fetch has not landed. Never block on that.
-	if (!draft.trim() || !vocab) return { issues: [], locked: false };
+	if (!draft.trim() || !vocab) return { issues, locked: issues.length > 0 };
 
 	const tokens = tokenize(draft);
-	const issues: ValidationIssue[] = [];
 
 	const directiveToken = tokens.find((t) => t.kind === 'directive');
 	const directiveName = directiveToken?.value ?? null;
@@ -109,7 +150,10 @@ export function validate(draft: string, vocab: Vocab | undefined): Validation {
 
 	const locked = issues.some(
 		(i) =>
-			i.type === 'conflict' || i.type === 'missing-draw-folder' || i.type === 'missing-folder'
+			i.type === 'conflict' ||
+			i.type === 'missing-draw-folder' ||
+			i.type === 'missing-folder' ||
+			i.type === 'too-long'
 	);
 
 	return { issues, locked };

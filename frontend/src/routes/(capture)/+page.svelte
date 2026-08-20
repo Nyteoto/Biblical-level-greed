@@ -60,7 +60,7 @@
 	import { pinned } from '$lib/trophic/pinned.svelte';
 	import { startUploads } from '$lib/trophic/uploads.svelte';
 	import { browserEnv, enqueue, initRetryQueue, pendingCount } from '$lib/trophic/retry-queue';
-	import { validate } from '$lib/trophic/validation';
+	import { validate, CAP_WARN_AT, MAX_RAW_LEN } from '$lib/trophic/validation';
 
 	// Matches http(s), www., and bare domains — the source's regex, used to
 	// refuse links rather than store them.
@@ -88,6 +88,9 @@
 
 	let glowTimer: ReturnType<typeof setTimeout>;
 	let dimTimer: ReturnType<typeof setTimeout>;
+	/** The pending optimistic clear of the draft. Held so a refusal arriving
+	 *  inside the slide-out can cancel it — see `submit`. */
+	let clearTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Brings the chrome back and restarts the idle countdown. Assigned by the
 	 *  effect below, which is also the only thing that clears the timer. */
 	let wake: () => void = () => {};
@@ -260,16 +263,36 @@
 		return () => window.removeEventListener('keydown', typeAnywhere);
 	});
 
-	// Live validation. The only thing that can lock the bar, and it can only
-	// do it when a `--directive` disagrees with the folder registry — see
-	// validation.ts for why nothing else about a draft is checkable.
+	// Live validation. It locks the bar when a `--directive` disagrees with the
+	// folder registry, and when the draft is longer than a capture may be — see
+	// validation.ts for why those two and nothing else about a draft.
 	/** The one on screen: soonest due, which is the order the API hands them
 	 *  back in. */
 	const due = $derived(reminders[0] ?? null);
 
-	const validation = $derived(validate(draft, vocab));
+	// The pin's tag is appended on the way out, so it counts against the cap
+	// even though it is nowhere in the box: ` <tag>`, three characters plus the
+	// tag. Reserving it here is what stops the bar reporting room the server
+	// will then refuse. It over-counts by that much in the one case where the
+	// draft already carries the tag and `withPinnedTag` will append nothing —
+	// sixty characters out of twenty thousand, and always in the safe
+	// direction, which is worth not tokenizing the whole draft again to know.
+	const reserved = $derived(pinTag ? pinTag.length + 3 : 0);
+	const validation = $derived(validate(draft, vocab, reserved));
 	const blinkIndices = $derived(validation.issues.flatMap((i) => i.blinkIndices));
 	const fixable = $derived(validation.issues.find((i) => i.createFolder)?.createFolder);
+
+	// How much room is left, and whether to say so. Silent for an ordinary
+	// line and for most long ones: a counter standing on this screen all day
+	// would be a standing instruction, which is the thing the bar refuses to
+	// have. It appears in the last tenth, which is far enough out that there is
+	// still time to split the thought in two.
+	const used = $derived(draft.trim() ? draft.trim().length + reserved : 0);
+	const remaining = $derived(MAX_RAW_LEN - used);
+	// Not once the draft is over: past that point the refusal under the line
+	// states the same fact in the place that can also say what to do about it,
+	// and two figures saying one thing is the noise this app deletes.
+	const showCount = $derived(used >= CAP_WARN_AT && remaining >= 0);
 
 	async function createMissingFolder() {
 		if (!fixable) return;
@@ -294,6 +317,34 @@
 		} catch {
 			reminders = (await getReminders()).reminders;
 		}
+	}
+
+	/**
+	 * Give a refused capture back, whole.
+	 *
+	 * This is the one thing this app is not allowed to get wrong. A capture the
+	 * server declines is not a capture the user is finished with, so the text
+	 * goes back in the box, the files go back on it, and the session copy is
+	 * rewritten so a reload finds it too. `lastDraft` is set alongside because
+	 * the persistence effect skips a draft it has already seen, and a restore
+	 * that leaves an empty string in sessionStorage is a restore that a refresh
+	 * undoes.
+	 */
+	function restoreDraft(text: string, files: Attachment[]) {
+		if (clearTimer) {
+			clearTimeout(clearTimer);
+			clearTimer = undefined;
+		}
+		sliding = false;
+		draft = text;
+		lastDraft = text;
+		attachments = files;
+		try {
+			sessionStorage.setItem('capture-draft', text);
+		} catch {
+			/* ignore */
+		}
+		input?.focus();
 	}
 
 	function triggerShake() {
@@ -330,7 +381,15 @@
 
 		flashSent();
 		sliding = true;
-		setTimeout(() => {
+		// Held, because a refusal has to be able to cancel it. The draft is
+		// cleared optimistically at the end of the slide-out — that is what
+		// makes the bar feel instant — but the server can answer in less than
+		// the 220ms that takes. Cancelling the timer is what stops the answer
+		// and the clear from racing: without it a refusal restored the text
+		// into a box this callback then emptied, and the thought was gone with
+		// nothing on screen to say where it went. That happened.
+		clearTimer = setTimeout(() => {
+			clearTimer = undefined;
 			draft = '';
 			lastDraft = '';
 			attachments = [];
@@ -385,8 +444,13 @@
 					} could not be sent. Attach again when you are back.`;
 				}
 			} else {
-				if (!draft) draft = snapshot;
-				sent.forEach(release);
+				// A refusal from a server that answered. Put everything back —
+				// the text, the files that were going with it, and the copy in
+				// sessionStorage that a reload would read. Unconditionally, and
+				// whether or not the clear has already run: the draft on screen
+				// at this moment is either still the snapshot or already empty,
+				// and in both cases the snapshot is what belongs there.
+				restoreDraft(snapshot, sent);
 				error = `${e instanceof Error ? e.message : 'failed to save'} — restored your text`;
 				triggerShake();
 			}
@@ -717,6 +781,17 @@
 				/>
 			</svg>
 		</div>
+
+		<!-- How much room is left, and only near the end of it. It is a gauge
+		     rather than a message, so it sits at the end of the line instead of
+		     in the stack of messages below, and it is the one grey figure here:
+		     the accent is the refusal's, and a counter that turns red before
+		     anything has been refused is the app nagging. -->
+		{#if showCount}
+			<p class="-mt-1 text-right font-mono text-[11px] text-neutral-600">
+				{remaining.toLocaleString()} characters left
+			</p>
+		{/if}
 
 		<!-- The syntax keys. The only standing thing under the line, and they do
 		     something rather than say something. -->

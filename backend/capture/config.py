@@ -22,10 +22,24 @@ INDEX_PATH = Path(
     os.environ.get("PGS_CAPTURE_INDEX_PATH", CAPTURE_DIR / "index.sqlite")
 )
 
-# The source app caps a capture at 2000 characters. Kept, not because storage
-# is short here, but because the capture bar is for a thought you can hold in
-# your head — anything longer is a note, and notes have their own home.
-MAX_RAW_LEN = 2000
+# The longest a capture may be.
+#
+# The source's cap was 2000 characters, and it was kept here with the reasoning
+# that "anything longer is a note, and notes have their own home". That stopped
+# being true: the markdown notes system was removed when capture became the
+# app, and text now enters through the capture bar and nowhere else. A cap
+# whose justification was a door that no longer exists is just a wall.
+#
+# So it is 20000 — around three thousand words, which is a long entry rather
+# than a document. It is still a cap, because the journal renders a day as a
+# feed of lines and a line without any bound would be rendered somewhere it was
+# never designed for. It is no longer a cap you can reach by writing carefully
+# about something for an evening.
+#
+# The frontend mirrors this number (`validation.ts`) and refuses locally before
+# a send, so crossing it costs a live counter rather than a lost draft. Raising
+# it here means raising it there too.
+MAX_RAW_LEN = 20000
 
 # The source's folder-name cap, kept for the same reason it exists there: a
 # folder name is read at a glance in a list, and one that wraps is not.
