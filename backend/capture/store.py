@@ -186,7 +186,9 @@ class Store:
 
     # -- writes ------------------------------------------------------------
 
-    def capture(self, raw_text: str, media: Iterable[str] = ()) -> dict:
+    def capture(
+        self, raw_text: str, media: Iterable[str] = (), reply_to: str | None = None
+    ) -> dict:
         """Append one captured line. Log first, then mirror into the index —
         if the process dies between the two, a reindex recovers the truth.
 
@@ -195,6 +197,14 @@ class Store:
         nothing would be written into an append-only log and stay wrong. An
         entry may carry media and no text — a clip is a capture on its own —
         but it may not be empty of both.
+
+        `reply_to` is the entry this one answers — a `--reply` to a reminder
+        that had come due. Two things follow from it, and the second is the
+        reason it belongs here rather than in two calls: the link is written on
+        the event, and **the reminder being answered is dismissed**, because
+        answering a prompt is the most complete way of having dealt with it and
+        being asked again would be the app not listening. One append for the
+        capture, one for the dismissal, both inside the lock.
         """
         text = raw_text.strip()
         attached = [ref for ref in media if ref]
@@ -229,12 +239,40 @@ class Store:
                         )
                     )
 
+            answering = None
+            if reply_to:
+                if index.get(self.conn, reply_to) is None:
+                    raise CaptureError(f"no such entry to reply to: {reply_to}")
+                # Which of that entry's reminders is being answered: the oldest
+                # one that has come due and not been dismissed — the same one
+                # the capture screen was showing when the reply was typed. It
+                # is resolved here rather than sent by the client so the two
+                # cannot disagree about which prompt this answers.
+                answering = self._due_on(reply_to)
+
             event = eventlog.append(
-                eventlog.CAPTURE, eventlog.new_id(), text=text, media=attached
+                eventlog.CAPTURE,
+                eventlog.new_id(),
+                text=text,
+                media=attached,
+                reply_to=reply_to or None,
             )
             index.add_capture(self.conn, event)
+            if answering is not None:
+                eventlog.append(
+                    eventlog.DISMISS, reply_to, line=answering["line"]
+                )
+                index.dismiss_reminder(self.conn, reply_to, answering["line"])
             self.version += 1
             return index.get(self.conn, event["id"])  # type: ignore[return-value]
+
+    def _due_on(self, entry_id: str) -> dict | None:
+        """The oldest undismissed reminder that has come due on one entry."""
+        as_of = now().astimezone(timezone.utc).isoformat()
+        for reminder in index.due_reminders(self.conn, as_of):
+            if reminder["entry_id"] == entry_id:
+                return reminder
+        return None
 
     def toggle_line(self, entry_id: str, line: int) -> dict:
         """Tick or untick one `--todo` line.
@@ -393,12 +431,15 @@ class Store:
             )
             index.add_folder(self.conn, event)
 
-            # A folder answers to its own name. The source arranges the same
-            # thing lazily — the first entry filed by `--work` into a folder
-            # with no tags upserts `work` as one — but doing it at creation
-            # means the rule is "a tag maps to a folder" with no second path,
-            # and `--work` needs no special case anywhere downstream.
-            self._map_tag(folder_id, clean, steal=False)
+            # **A folder claims no tag of its own.** It used to claim the tag of
+            # its own name here, so that `--work` reached the folder Work
+            # through the ordinary mapping and needed no special case anywhere.
+            # The special case is cheaper than what that cost: a word per folder
+            # in the registry that nobody had ever typed, in the one list that
+            # is supposed to hold the words you chose to point somewhere. A
+            # directive resolves against the folder's *name* now, at read time —
+            # see `_BY_DIRECTIVE` in index.py — so nothing downstream lost
+            # anything and the registry starts empty.
             for tag in tags:
                 self._map_tag(folder_id, tag, steal=True)
 
@@ -412,15 +453,13 @@ class Store:
                 raise CaptureError(f"no such folder: {folder_id}")
             clean = self._checked_name(name, except_id=folder_id)
 
-            # Nail the old name down before letting go of it. Entries written
-            # `--oldname` reach this folder through the tag of that name; if
-            # the rename left it unclaimed they would quietly fall out of the
-            # folder they were filed into, which no rename should ever do.
-            self._map_tag(folder_id, before["name"], steal=False)
-
+            # The old name keeps answering, and nothing here has to arrange
+            # that: a folder's names accumulate in `folder_names`, so entries
+            # written `--oldname` reach it exactly as they did. That is the one
+            # thing a rename must not change, and it costs no tag and no
+            # registry entry — see `folder_names` in index.py.
             eventlog.append(eventlog.RENAME_FOLDER, folder_id, text=clean)
             index.rename_folder(self.conn, folder_id, clean)
-            self._map_tag(folder_id, clean, steal=False)
 
             self.version += 1
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
@@ -574,6 +613,67 @@ class Store:
             index.rename_group(self.conn, year, name, new_name)
             self.version += 1
             return index.shelf(self.conn, year)
+
+    def order_groups(self, year: str, order: list[str]) -> dict:
+        """Arrange one year's group headings.
+
+        The whole order arrives at once rather than "this one moved to third",
+        for the reason written beside `order-groups` in eventlog.py: an order
+        is idempotent and a move is not. Names the shelf does not have are
+        refused rather than ignored — a reorder naming a group that is not
+        there means the caller is looking at a shelf that has since changed,
+        and silently arranging the rest of it would be the wrong half of what
+        they asked for.
+
+        Groups the caller *omits* are not an error. They keep their relative
+        order behind the ones named, which is what a partial arrangement means
+        and what makes this survive a group appearing between the read and the
+        write.
+        """
+        if not YEAR_RE.match(year):
+            raise CaptureError(f"not a year: {year!r}")
+        order = [self._group_name(name) for name in order]
+
+        with self._lock:
+            _, names = index.groups_for(self.conn, year)
+            missing = [name for name in order if name not in names]
+            if missing:
+                raise CaptureError(f"no such group in {year}: {missing[0]!r}")
+            eventlog.append(eventlog.ORDER_GROUPS, year, order=order)
+            index.order_groups(self.conn, year, order)
+            self.version += 1
+            return index.shelf(self.conn, year)
+
+    def lift_tag(self, tag: str, lifted: bool) -> list[str]:
+        """Stop drawing a tag's brackets, or draw them again.
+
+        Presentation, and only presentation. The raw line is untouched — it is
+        untouchable — and so is where it files: `<garden>` lifted still lands
+        in whatever folder has claimed `garden`. What changes is that the app
+        reads that word back as the prose it has become, which is the whole of
+        what a tag you have stopped thinking of as a tag needs.
+
+        Only `<tags>` can be lifted; see `lift-tag` in eventlog.py for why a
+        `\\pattern`, an `@place` and a `{time}` cannot be.
+        """
+        tag = parser.normalize_tag(tag)
+        if not tag:
+            raise CaptureError("a tag to lift needs a name")
+
+        with self._lock:
+            already = tag in index.lifted_tags(self.conn)
+            if already != lifted:
+                eventlog.append(
+                    eventlog.LIFT_TAG if lifted else eventlog.UNLIFT_TAG, tag
+                )
+                index.lift_tag(self.conn, tag, lifted)
+                self.version += 1
+            return index.lifted_tags(self.conn)
+
+    def tags(self) -> list[dict]:
+        """Every tag written, where it lands, and whether it is lifted."""
+        with self._lock:
+            return index.tag_census(self.conn)
 
     def delete_group(self, year: str, name: str) -> dict:
         """Take a group off one year's shelf, returning its folders to the

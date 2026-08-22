@@ -29,6 +29,10 @@ class CaptureIn(BaseModel):
     # Paths under data/media, uploaded before this call. A capture may be
     # nothing but a clip, so the text is allowed to be empty when these are not.
     media: list[str] = []
+    # The entry this line answers, when it was sent with `--reply`. The client
+    # strips the command off the text before sending — the same as the source —
+    # so what is stored is the thought and this is what it is a thought about.
+    reply_to: str | None = None
 
 
 class EntryPatch(BaseModel):
@@ -115,7 +119,7 @@ def list_entries(
 def create_entry(body: CaptureIn) -> dict:
     try:
         return {
-            "entry": store.capture(body.raw_text, body.media),
+            "entry": store.capture(body.raw_text, body.media, body.reply_to),
             "version": store.version,
         }
     except CaptureError as exc:
@@ -162,6 +166,11 @@ def list_reminders() -> dict:
     Derived, not stored: a reminder is a `{time}` on a line plus the moment
     that line was written. Nothing was written when the reminder was made,
     because the reminder was never made — it was always implied by the entry.
+
+    A list where the source returns a single row. The capture screen shows one
+    prompt either way — see the strip in `(capture)/+page.svelte` — but it also
+    says how many are behind it, and a second single-row route would be two
+    ways to ask one question.
     """
     return {"reminders": store.due_reminders(), "version": store.version}
 
@@ -362,6 +371,50 @@ def delete_group(body: GroupEdit) -> dict:
         return {**store.delete_group(body.year, body.name), "version": store.version}
     except CaptureError as exc:
         raise HTTPException(_status(exc), str(exc)) from exc
+
+
+class GroupOrder(BaseModel):
+    """The whole arrangement of one year's shelf, not a move. See
+    `order-groups` in eventlog.py: an order replayed twice is the same shelf,
+    and a move replayed twice is not."""
+
+    year: str
+    order: list[str] = []
+
+
+@router.post("/groups/order")
+def order_groups(body: GroupOrder) -> dict:
+    """Arrange one year's group headings. Answers with the whole shelf."""
+    try:
+        return {**store.order_groups(body.year, body.order), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+class TagLift(BaseModel):
+    tag: str
+    lifted: bool = True
+
+
+@router.post("/tags/lift")
+def lift_tag(body: TagLift) -> dict:
+    """Stop drawing a tag's brackets, or draw them again.
+
+    Presentation only: nothing about where the line files changes, and the raw
+    line is untouchable in any case. Answers with the whole lifted set, because
+    that is what every screen rendering a captured line holds.
+    """
+    try:
+        return {"lifted": store.lift_tag(body.tag, body.lifted), "version": store.version}
+    except CaptureError as exc:
+        raise HTTPException(_status(exc), str(exc)) from exc
+
+
+@router.get("/tags")
+def list_tags() -> dict:
+    """Every tag written, commonest first, with where it lands and whether it
+    has been lifted. The Settings screen's list."""
+    return {"tags": store.tags(), "version": store.version}
 
 
 @router.get("/shelf")

@@ -64,7 +64,7 @@
 		<span
 			class="text-[10px] font-bold tracking-[0.14em] {m.month === live
 				? 'text-accent-700'
-				: 'text-neutral-700'}"
+				: 'text-neutral-600'}"
 		>
 			{MONTH_ABBR[m.month]}
 		</span>
@@ -82,7 +82,7 @@
 	{#if previousYear}
 		<a
 			href="/log"
-			class="mt-auto text-[10px] font-bold tracking-[0.14em] text-neutral-700 transition-colors hover:text-ink"
+			class="mt-auto text-[10px] font-bold tracking-[0.14em] text-neutral-600 transition-colors hover:text-neutral-800"
 			style="writing-mode:vertical-rl;transform:rotate(180deg)"
 			title="back to the year shelf"
 		>

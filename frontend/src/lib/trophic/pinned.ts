@@ -41,12 +41,20 @@ export function withPinnedTag(text: string, tag: string): string {
 /**
  * Which tag a pin on this folder should write.
  *
- * Its own name, normalised the way `parser.normalize_tag` does it — trimmed
- * and lowercased, spaces kept, because that is the tag a folder claims when it
- * is created. If something else had already claimed that tag the folder never
- * got it, so fall back to whatever does point here. Null means nothing does,
- * and a folder no tag reaches cannot be pinned: the line would be written and
- * land nowhere, which is worse than refusing the pin.
+ * Its own name first, normalised the way `parser.normalize_tag` does it —
+ * trimmed and lowercased, spaces kept — then whatever else points here. Null
+ * means nothing does, and **a folder no tag reaches cannot be pinned**: the
+ * line would be written and land nowhere, which is worse than refusing.
+ *
+ * That last case used to be rare and is now the default, because a folder no
+ * longer claims the tag of its own name when it is created. Give the folder a
+ * word and it can be pinned; until then the menu says so and the row is dead.
+ *
+ * **The pin cannot write the `--directive` instead**, which is the obvious
+ * fix and is wrong: a directive names one folder, so a draft carrying a pinned
+ * `--garden` and any `<tag>` mapped somewhere else trips the conflict check in
+ * `validation.ts` and locks the bar. A tag composes with other tags; a
+ * directive does not compose with anything.
  */
 export function tagForPin(folder: { name: string; tags: string[] }): string | null {
 	const own = folder.name.trim().toLowerCase();

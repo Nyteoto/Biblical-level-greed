@@ -43,9 +43,12 @@
 	import type { Shot } from '$lib/trophic/media';
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import {
+		deleteGroup,
 		getAlbum,
 		getShelf,
 		nameChapter,
+		orderGroups,
+		renameGroup,
 		toggleLine,
 		type AlbumView,
 		type Chapter,
@@ -53,6 +56,7 @@
 		type Shelf
 	} from '$lib/trophic/api';
 	import ChapterPanel from '$lib/trophic/ChapterPanel.svelte';
+	import GroupPanel from '$lib/trophic/GroupPanel.svelte';
 
 	const id = $derived(page.params.id!);
 	const month = $derived(page.params.month!); // `YYYY-MM`
@@ -71,6 +75,9 @@
 	 *  works on one screen and draws the null ring on the next is worse than one
 	 *  that was never offered. */
 	let chapterPanel = $state<{ chapter: Chapter; x: number; y: number } | null>(null);
+	/** And the group heading's, for the same reason: the sidebar is one object
+	 *  and its rows answer a hold with the same thing on every screen it is on. */
+	let groupPanel = $state<{ name: string; x: number; y: number } | null>(null);
 
 	$effect(() => {
 		logSettings.hydrate();
@@ -112,6 +119,13 @@
 	function step(delta: number) {
 		const next = monthsWithSomething[index + delta];
 		if (next) goto(href(next));
+	}
+
+	/** Follow a thread from a month. It leaves for the album rather than
+	 *  scrolling this screen: the other end of a thread is very often in a
+	 *  different month, and the album is the screen that holds the whole year. */
+	function jumpTo(entryId: string) {
+		goto(`/folders/${id}?year=${year}&entry=${entryId}`);
 	}
 
 	async function onToggle(entry: Entry, line: number) {
@@ -175,6 +189,16 @@
 				{month}
 				oncollapse={() => (collapsed = true)}
 				onholdchapter={(chapter, x, y) => (chapterPanel = { chapter, x, y })}
+				onholdgroup={(name, x, y) => (groupPanel = { name, x, y })}
+				onorder={async (order) => {
+					const on = shelf?.year;
+					if (!on) return;
+					// Applied here first, so the headings do not snap back to where
+					// they were for the length of the round trip.
+					shelf!.groups = order;
+					await orderGroups(on, order);
+					await refresh();
+				}}
 			/>
 		{/if}
 
@@ -230,6 +254,7 @@
 									day={row.day}
 									onopen={(s, i) => (lightbox = { shots: s, index: i })}
 									ontoggle={onToggle}
+									onjump={jumpTo}
 								/>
 							{:else if expanded.has(row.days[0].key)}
 								{#each row.days as day (day.key)}
@@ -237,6 +262,7 @@
 										{day}
 										onopen={(s, i) => (lightbox = { shots: s, index: i })}
 										ontoggle={onToggle}
+									onjump={jumpTo}
 									/>
 								{/each}
 								<button
@@ -285,6 +311,33 @@
 			await refresh();
 		}}
 		onclose={() => (chapterPanel = null)}
+	/>
+{/if}
+
+{#if groupPanel && shelf?.year}
+	{@const held = groupPanel}
+	{@const on = shelf.year}
+	<GroupPanel
+		x={held.x}
+		y={held.y}
+		name={held.name}
+		year={on}
+		count={shelf.albums.filter((a) => a.group === held.name).length}
+		onrename={async (to) => {
+			// The request first, the teardown second: clearing `groupPanel` tears
+			// down this block and the `@const` bindings this call reads.
+			const work = renameGroup(on, held.name, to);
+			groupPanel = null;
+			await work;
+			await refresh();
+		}}
+		ondelete={async () => {
+			const work = deleteGroup(on, held.name);
+			groupPanel = null;
+			await work;
+			await refresh();
+		}}
+		onclose={() => (groupPanel = null)}
 	/>
 {/if}
 

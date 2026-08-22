@@ -60,6 +60,8 @@
 	import { pinned } from '$lib/trophic/pinned.svelte';
 	import { startUploads } from '$lib/trophic/uploads.svelte';
 	import { browserEnv, enqueue, initRetryQueue, pendingCount } from '$lib/trophic/retry-queue';
+	import { isReply, stripReply } from '$lib/trophic/reply';
+	import ColorizedText from '$lib/trophic/ColorizedText.svelte';
 	import { validate, CAP_WARN_AT, MAX_RAW_LEN } from '$lib/trophic/validation';
 
 	// Matches http(s), www., and bare domains — the source's regex, used to
@@ -269,6 +271,10 @@
 	/** The one on screen: soonest due, which is the order the API hands them
 	 *  back in. */
 	const due = $derived(reminders[0] ?? null);
+	/** Whether what is in the box is addressed to the reminder above it. The
+	 *  strip says so while it is true, because `--reply` scrolls out of sight
+	 *  the moment the thought is longer than the box. */
+	const replying = $derived(isReply(draft));
 
 	// The pin's tag is appended on the way out, so it counts against the cap
 	// even though it is nowhere in the box: ` <tag>`, three characters plus the
@@ -370,6 +376,24 @@
 			return;
 		}
 
+		// `--reply` has to have something to answer. The source refuses in the
+		// same place and with the same words: the command is only meaningful
+		// against the prompt standing above the box, and a reply sent into
+		// nothing would be an ordinary entry wearing a word it did not mean.
+		if (replying && !due) {
+			error = 'no pending reminder to reply to';
+			triggerShake();
+			return;
+		}
+		// The thought, with the command taken off, and the reminder it answers.
+		const answer = replying ? stripReply(draft) : text;
+		const answering = replying && due ? due.entry_id : undefined;
+		// `--reply` and nothing else is someone still typing.
+		if (!answer && attachments.length === 0) {
+			triggerShake();
+			return;
+		}
+
 		error = null;
 
 		const snapshot = draft;
@@ -404,10 +428,10 @@
 
 		// The pin's tag goes in here, at the last moment, so what is stored is a
 		// line that reads exactly as if it had been typed with the tag on it.
-		const line = pinTag ? withPinnedTag(text, pinTag) : text;
+		const line = pinTag ? withPinnedTag(answer, pinTag) : answer;
 
 		try {
-			const { entry } = await capture(line);
+			const { entry } = await capture(line, [], answering);
 			// The vocabulary just grew by whatever was in that line.
 			vocab = await getVocab();
 			// The folder as the line was written: the pinned one, else the first
@@ -415,6 +439,16 @@
 			if (sent.length > 0) startUploads(entry.id, sent, entry.folders?.[0] ?? '');
 			// A line carrying a `--todo` changes what the banner says and how
 			// much room is left under the cap. Cheap, and only on a real send.
+			// The reminder this answered was dismissed by the same call, so the
+			// strip above the box is now showing something that has been dealt
+			// with. Re-read it, and the next one in the queue surfaces.
+			if (answering) {
+				getReminders()
+					.then((r) => (reminders = r.reminders))
+					.catch(() => {
+						/* the strip is stale for a moment; the next read fixes it */
+					});
+			}
 			if (entry.todo_lines.length > 0) {
 				// And the strip says so. The refresh is what makes it true; the
 				// announcement is what makes it noticed, and the wake is what
@@ -433,7 +467,7 @@
 			// is the user's problem, and it gives the text back — losing a
 			// captured thought is the one thing this app cannot do.
 			if (e instanceof NetworkError) {
-				enqueue(browserEnv(), CAPTURE_URL, captureBody(line));
+				enqueue(browserEnv(), CAPTURE_URL, captureBody(line, [], answering));
 				queued = pendingCount(browserEnv());
 				// The files have nowhere to go: there is no entry id yet, and
 				// the queue replays a body, not an upload. Give them back.
@@ -600,7 +634,9 @@
 						type="button"
 						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors hover:bg-neutral-200 disabled:opacity-50 disabled:hover:bg-transparent"
 						disabled={!tag}
-						title={tag ? `captures land as <${tag}>` : 'no tag points at this folder'}
+						title={tag
+							? `captures land as <${tag}>`
+							: 'no tag points here yet — map one and this folder can be pinned'}
 						onclick={() => {
 							pin.set(f.id);
 							pinMenu = false;
@@ -634,34 +670,57 @@
 		     stacked cards with the writing box pushed off the bottom. Dismissing
 		     the top one brings up the next. -->
 		{#if due}
+			<!-- Two things can be done with a prompt: answer it or dismiss it.
+			     The answer is `--reply`, and the strip says so — the command is
+			     the only part of this app's syntax you cannot discover by
+			     typing a sigil and reading the panel, because it belongs to
+			     this moment rather than to the vocabulary.
+
+			     While the draft *is* a reply the strip lights and says what it
+			     is attached to. That is the whole feedback: `--reply` scrolls
+			     out of the box the moment the thought runs past one line, and
+			     without it there is nothing on screen saying where this is
+			     about to go. -->
 			<div
-				class="flex items-baseline gap-4 rounded-[12px] bg-surface px-4 py-3 shadow-sm"
+				class="flex flex-col gap-1.5 rounded-[12px] bg-surface px-4 py-3 shadow-sm transition-shadow"
+				class:answering={replying}
 				style="animation:landing-fade-in 0.3s ease-out"
 			>
-				<span class="min-w-0 flex-1 truncate font-mono text-[13px]">
-					{due.line_text}
-				</span>
-				{#if reminders.length > 1}
-					<!-- Said rather than hidden. One strip is the shape; a person who
-					     has been away for a month still has to be able to tell that
-					     there is a queue behind it. -->
-					<span class="shrink-0 text-[11px] text-neutral-700">
-						+{reminders.length - 1} more
+				<div class="flex items-baseline gap-4">
+					<span class="min-w-0 flex-1 truncate font-mono text-[13px]">
+						<ColorizedText text={due.line_text} />
 					</span>
-				{/if}
-				<span class="shrink-0 text-[11px] text-neutral-700">
-					{new Date(due.due_at).toLocaleDateString(undefined, {
-						month: 'short',
-						day: 'numeric'
-					})}
+					{#if reminders.length > 1}
+						<!-- Said rather than hidden. One strip is the shape; a person who
+						     has been away for a month still has to be able to tell that
+						     there is a queue behind it. -->
+						<span class="shrink-0 text-[11px] text-neutral-700">
+							+{reminders.length - 1} more
+						</span>
+					{/if}
+					<span class="shrink-0 text-[11px] text-neutral-700">
+						{new Date(due.due_at).toLocaleDateString(undefined, {
+							month: 'short',
+							day: 'numeric'
+						})}
+					</span>
+					<button
+						type="button"
+						class="shrink-0 text-[11px] font-semibold text-neutral-700 transition-colors hover:text-accent-700"
+						onclick={() => dismiss(due)}
+					>
+						dismiss
+					</button>
+				</div>
+				<span class="text-[11px] text-neutral-700">
+					{#if replying}
+						<span class="font-semibold text-accent-700">replying</span> — this answers
+						the line above, and takes it off the strip
+					{:else}
+						type <span class="font-semibold">--reply</span> then your thought to answer
+						it
+					{/if}
 				</span>
-				<button
-					type="button"
-					class="shrink-0 text-[11px] font-semibold text-neutral-700 transition-colors hover:text-accent-700"
-					onclick={() => dismiss(due)}
-				>
-					dismiss
-				</button>
 			</div>
 		{/if}
 

@@ -49,13 +49,19 @@ def test_nothing_derived_is_written_to_the_log(capture_store):
     assert set(log_lines()[0]) == {"ts", "day", "kind", "id", "text"}
 
 
-def test_the_directive_files_the_entry_under_its_own_name(capture_store):
-    """`--work-log` is stripped from the text but must not vanish silently —
-    it files the entry exactly where `<work-log>` would have."""
+def test_the_directive_is_kept_beside_the_tags_not_among_them(capture_store):
+    """`--work-log` is stripped from the text but must not vanish silently.
+
+    It is not a tag, though, and that is the whole distinction: a tag is a word
+    you chose and pointed somewhere, a directive names a folder outright. The
+    word survives in its own field — and on the raw line, as everything does —
+    so a folder called Work log picks this entry up whenever it is made, which
+    is what the source loses by resolving the directive at write time."""
     entry = capture_store.capture("--work-log shipped the parser")
 
     assert entry["clean_text"] == "shipped the parser"
-    assert entry["folders"] == ["work-log"]
+    assert entry["folders"] == []
+    assert entry["directive"] == "work-log"
 
 
 def test_deleting_the_index_loses_nothing(capture_store):
@@ -170,7 +176,7 @@ def test_the_shelf_counts_todos_the_way_todo_tally_does(capture_store):
     out rather than asserting — the first version of this test claimed the
     direction mattered and passed against a translation that reversed it.
     """
-    folder = capture_store.create_folder("Bench")
+    folder = capture_store.create_folder("Bench", ["bench"])
     tag = folder["tags"][0]
 
     for text in (
@@ -279,6 +285,7 @@ def test_dates_and_vocab_come_off_the_index(capture_store):
         "times": ["tmr"],
         "patterns": ["win"],
         "places": ["helsinki"],
+        "lifted": [],
     }
 
 
@@ -320,7 +327,9 @@ def test_the_index_derives_the_same_thing_the_parser_does(capture_store):
     """`derive` is the only place the parser's output is reshaped; keep it a
     pure function of the raw text so a rebuild is deterministic."""
     assert index.derive("<a> <a> \\x --b") == index.derive("<a> <a> \\x --b")
-    assert index.derive("<a> --b")["folders"] == ["a", "b"]
+    # The directive is beside the tags, never among them.
+    assert index.derive("<a> --b")["folders"] == ["a"]
+    assert index.derive("<a> --b")["directive"] == "b"
 
 
 # ── The todo cap ──────────────────────────────────────────────────────────

@@ -36,7 +36,27 @@
 // early return for it.
 
 import { tokenize } from './tokenize';
+import { COMMANDS } from './capture-bar';
 import type { Vocab } from './api';
+
+/**
+ * **A command is not a missing folder.** `tokenize.ts` reserves the source's
+ * nav words — `codex`, `folders`, `settings`, `assign`, `logout`, `dev`,
+ * `draw` — but not `reply`, so `--reply` arrives here as an ordinary directive
+ * and got the full treatment: "folder reply doesn't exist", blinking red, bar
+ * locked. It is a command, and the one command that has to be typed at the
+ * front of a thought you are in the middle of writing.
+ *
+ * The tokenizer is not the place to fix that: it is copied verbatim from the
+ * file the corpus was generated from and 395 fixtures pin it, `--reply` as a
+ * directive token among them. So the token stays what it is and the *meaning*
+ * is decided here, where this port is allowed to have an opinion.
+ *
+ * `todo` is in the list for completeness rather than necessity — the tokenizer
+ * already gives `--todo` its own kind, so it never reaches the directive
+ * branch. Listing it anyway is what stops the next reader wondering whether
+ * that is on purpose.
+ */
 
 export type ValidationIssue = {
 	type: 'missing-folder' | 'conflict' | 'missing-draw-folder' | 'too-long';
@@ -115,7 +135,7 @@ export function validate(
 		return { issues, locked: issues.length > 0 };
 	}
 
-	if (directiveName) {
+	if (directiveName && !COMMANDS.includes(directiveName)) {
 		const folder = vocab.folders.find((f) => f.name.toLowerCase() === directiveName);
 		if (!folder) {
 			const idx = tokens.findIndex((t) => t.kind === 'directive');
@@ -131,7 +151,7 @@ export function validate(
 	// `--work <garden>` when <garden> belongs to Home: the line claims two
 	// destinations. Both halves of the disagreement blink, so it is visible
 	// which tag caused it rather than only that something did.
-	if (directiveName) {
+	if (directiveName && !COMMANDS.includes(directiveName)) {
 		const directiveFolder = vocab.folders.find((f) => f.name.toLowerCase() === directiveName);
 		if (directiveFolder) {
 			tokens.forEach((token, index) => {

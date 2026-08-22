@@ -43,7 +43,7 @@ from pathlib import Path
 
 from . import eventlog
 from .config import DATE_LOCALE, INDEX_PATH, ensure_dirs
-from .parser import parse_entry
+from .parser import normalize_tag, parse_entry
 from .reminder import resolve_reminders
 
 # The unfiled pile, as a subject an event can name. It is an album you can open
@@ -59,8 +59,10 @@ TABLES = (
     "folders",
     "folder_tags",
     "entry_folders",
+    "folder_names",
     "folder_groups",
     "chapter_names",
+    "lifted_tags",
 )
 
 SCHEMA = """
@@ -81,8 +83,28 @@ CREATE TABLE IF NOT EXISTS entries (
     todo_done  TEXT NOT NULL DEFAULT '[]',
     -- Paths under data/media, as a JSON array. Stored rather than derived:
     -- an attachment is a fact about the entry, like the raw line.
-    media      TEXT NOT NULL DEFAULT '[]'
+    media      TEXT NOT NULL DEFAULT '[]',
+    -- The `--directive`, lowercased, or empty. Derived like everything else on
+    -- this row; it is a column rather than one more word in `folders` because
+    -- a directive names a *folder* and a tag names a word, and only one of
+    -- them belongs in the registry. See `_BY_DIRECTIVE`.
+    directive  TEXT NOT NULL DEFAULT '',
+    -- The entry this one answers, or ''. **Stored, not derived** — the only
+    -- other column here that is, besides `media`, and for the same reason: the
+    -- line said `--reply`, it did not say to what. See `capture` in
+    -- eventlog.py.
+    reply_to   TEXT NOT NULL DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS entries_by_directive ON entries (directive);
+-- The reverse of `reply_to`: what answered this entry. A query rather than a
+-- second column, so the pair cannot disagree.
+--
+-- On `(reply_to, ts)` rather than `reply_to` alone: the read takes the *oldest*
+-- answer, and an index that stops at `reply_to` leaves sqlite sorting the
+-- matches in a temp b-tree once per row of every entry read. Pinned by
+-- `test_the_newest_first_reads_do_not_scan_the_whole_log`, which is how that
+-- was noticed rather than shipped.
+CREATE INDEX IF NOT EXISTS entries_by_reply_to ON entries (reply_to, ts);
 CREATE INDEX IF NOT EXISTS entries_by_day ON entries (day, ts);
 -- Newest-first, which is how the log reads and how the capture bar rebuilds
 -- its vocabulary. Both queries are `ORDER BY ts DESC ... LIMIT n` with no
@@ -132,6 +154,27 @@ CREATE TABLE IF NOT EXISTS folders (
     overview_media TEXT NOT NULL DEFAULT ''
 );
 
+-- Every name a folder has ever answered to, normalised the way a tag is. What
+-- a `--directive` matches against.
+--
+-- **Every name, not just the current one, and that is the point.** Entries
+-- written `--admin` reach the folder by its name; renaming it to Paperwork
+-- would drop them out of the folder they were filed into, which no rename
+-- should ever do. The old name stays here and goes on answering.
+--
+-- `name_key` is the primary key, so a name belongs to one folder — the same
+-- shape as `folder_tags`, for the same reason. A folder taking a name takes it
+-- *back* from whatever used to answer to it: a name means what it means now,
+-- and the fold applies that rule on every replay so it cannot drift.
+--
+-- A separate table rather than `lower(name)` in the query because sqlite's
+-- `lower()` is ASCII-only and a folder is not required to be.
+CREATE TABLE IF NOT EXISTS folder_names (
+    name_key  TEXT PRIMARY KEY,
+    folder_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS folder_names_by_folder ON folder_names (folder_id);
+
 -- A folder's group, per year. The primary key is the pair because that is
 -- exactly the fact: a folder has one group *in a year*, and the same folder in
 -- another year is free to sit somewhere else. `seq` is the fold counter at the
@@ -175,19 +218,36 @@ CREATE TABLE IF NOT EXISTS entry_folders (
     PRIMARY KEY (entry_id, folder_id)
 );
 CREATE INDEX IF NOT EXISTS entry_folders_by_folder ON entry_folders (folder_id);
+
+-- Tags whose brackets the app has stopped drawing. One column, because there
+-- is nothing to say about a lifted tag except that it is one.
+--
+-- It is not a column on `folder_tags`: lifting is a fact about a *word*, and
+-- most of the words it is wanted for are tags no folder ever claimed. A tag can
+-- be lifted, mapped later and unmapped again without any of that touching this
+-- table, which is the point — see `lift-tag` in eventlog.py.
+CREATE TABLE IF NOT EXISTS lifted_tags (
+    tag TEXT PRIMARY KEY
+);
 """
 
 COLUMNS = (
     "id, ts, day, raw_text, clean_text, folders, times, patterns, places, "
-    "todo_lines, todo_done, media"
+    "todo_lines, todo_done, media, directive, reply_to"
 )
+PLACEHOLDERS = ", ".join("?" * len(COLUMNS.split(",")))
 
 # Reads carry the manual filing along with the entry: it is one more thing the
 # row means, and the log view needs it to tick the right folder in the assign
 # menu. `group_concat` is safe here because ids are hex.
 SELECT_ENTRIES = (
     f"SELECT {COLUMNS}, (SELECT group_concat(folder_id) FROM entry_folders "
-    "WHERE entry_id = entries.id) AS manual FROM entries"
+    "WHERE entry_id = entries.id) AS manual, "
+    # What answered this line, if anything. Carried on the read because the log
+    # draws the thread from both ends — a reply points back and the original
+    # points forward — and asking per row would be a query per line on screen.
+    "(SELECT r.id FROM entries r WHERE r.reply_to = entries.id "
+    " ORDER BY r.ts LIMIT 1) AS replied_by FROM entries"
 )
 
 
@@ -221,23 +281,27 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
 def derive(raw_text: str) -> dict:
     """Run the parser and shape its output for storage.
 
-    The `--directive` joins `folders` rather than living in a field of its
-    own, so `--work` files the entry under the tag `work`, exactly where
-    `<work>` would have put it. That is what makes the directive need no
-    special case downstream: a folder claims the tag of its own name when it
-    is created, so the directive reaches the folder through the ordinary tag
-    mapping, and when no folder answers to that name the tag simply waits in
-    the unassigned pool like any other. The source instead resolves the
-    directive against the folder table at write time and drops it if nothing
-    matches — which loses it, and is the one place the port refuses to follow.
+    **The `--directive` is its own field and is not a tag.** It used to join
+    `folders`, so `--work` filed the entry under the tag `work` and reached the
+    folder through the ordinary mapping — which worked because every folder
+    claimed the tag of its own name the moment it was created. That claim is
+    gone: it filled the registry with a word per folder that nobody had ever
+    typed, and the registry is supposed to hold the words *you* chose, the
+    non-obvious ones you want pointed somewhere. A directive is the other
+    gesture — naming the folder outright — so it resolves against the folder's
+    name at read time instead, and stores nothing. See `_BY_DIRECTIVE`.
+
+    Nothing is lost by the change, which is what the source got wrong and this
+    still refuses to follow: it resolves the directive at *write* time and
+    drops it when no folder matches. Here the word is on the raw line forever
+    and in this column on every rebuild, so a folder created next year picks up
+    every `--directive` that has been waiting for it.
     """
     parsed = parse_entry(raw_text)
-    folders = list(parsed.folders)
-    if parsed.directive and parsed.directive not in folders:
-        folders.append(parsed.directive)
     return {
         "clean_text": parsed.clean_text,
-        "folders": folders,
+        "folders": list(parsed.folders),
+        "directive": parsed.directive or "",
         "times": parsed.times,
         "patterns": parsed.patterns,
         "places": parsed.places,
@@ -295,8 +359,30 @@ def _row(event: dict, done: list[int], media: list[str] | None = None) -> tuple[
         json.dumps(d["todo_lines"]),
         json.dumps(sorted(done)),
         json.dumps(list(event.get("media", []) if media is None else media), ensure_ascii=False),
+        d["directive"],
+        event.get("reply_to", ""),
     )
     return row, d["folders"]
+
+
+def order_seqs(drawn: list[str], order: list[str]) -> dict[str, int]:
+    """The new `seq` for every group on one year's shelf, as one rule.
+
+    `drawn` is the year's groups in the order they are drawn now; `order` is
+    what the `order-groups` event asked for. The named ones take the front, in
+    the order given; everything the event did not mention keeps its relative
+    place behind them, and a name that no longer stands on this shelf is
+    dropped rather than reserving a slot.
+
+    Written once because `fold` and the targeted mirror below both need the
+    same answer, and an ordering the replay disagreed with would reshuffle the
+    shelf on the next launch — which is exactly the failure the `seq` column
+    exists to prevent.
+    """
+    here = set(drawn)
+    named = [name for name in dict.fromkeys(order) if name in here]
+    rest = [name for name in drawn if name not in set(named)]
+    return {name: slot for slot, name in enumerate(named + rest)}
 
 
 def fold(events: list[dict]) -> dict:
@@ -318,12 +404,27 @@ def fold(events: list[dict]) -> dict:
     # (folder, year) -> (group name, the seq that group was first named at)
     groups: dict[tuple[str, str], str] = {}
     group_seq: dict[tuple[str, str], int] = {}
+    # Tags the reader draws without their brackets. A set, folded last-wins
+    # like everything else here.
+    lifted: set[str] = set()
+    # Every name a folder has answered to -> the folder answering. Keyed on the
+    # name, so taking a name takes it back from whoever held it; see
+    # `folder_names`.
+    names: dict[str, str] = {}
     # (folder, year, month) -> the name given to the chapter anchored there.
     chapter_names: dict[tuple[str, str, int], str] = {}
 
     for seq, event in enumerate(events):
         kind = event["kind"]
         subject = event["id"]
+
+        def claim_name(folder_id: str, name: str) -> None:
+            """`folder_id` answers to `name` from here on, and nothing else
+            does. The same rule the targeted mirror keeps, in the same order —
+            see `_claim_name`."""
+            key = normalize_tag(name)
+            if key:
+                names[key] = folder_id
 
         if kind == eventlog.CAPTURE:
             # Last-wins on the capture's own list; attachments accumulate on
@@ -346,6 +447,7 @@ def fold(events: list[dict]) -> dict:
             dismissed.setdefault(subject, set()).add(int(event.get("line", 0)))
 
         elif kind == eventlog.CREATE_FOLDER:
+            claim_name(subject, event.get("text", ""))
             folders[subject] = {
                 "name": event.get("text", ""),
                 "color": event.get("color", ""),
@@ -357,6 +459,9 @@ def fold(events: list[dict]) -> dict:
         elif kind == eventlog.RENAME_FOLDER:
             if subject in folders:
                 folders[subject]["name"] = event.get("text", "")
+                # The old name is not dropped: entries written `--oldname`
+                # reach this folder by it, and a rename must not un-file them.
+                claim_name(subject, event.get("text", ""))
         elif kind == eventlog.SET_STATE:
             if subject in folders:
                 folders[subject]["state"] = event.get("text", "")
@@ -394,6 +499,17 @@ def fold(events: list[dict]) -> dict:
                 # wherever the group being renamed happened to sit.
                 if hit and was is not None:
                     group_seq.setdefault((year, new), was)
+        elif kind == eventlog.ORDER_GROUPS:
+            # `id` is the year: what is being arranged is the shelf, not any
+            # one of the groups standing on it.
+            year = subject
+            here: dict[str, int] = {}
+            for (folder_id, in_year), name in groups.items():
+                if in_year == year:
+                    here.setdefault(name, group_seq.get((year, name), 0))
+            drawn = sorted(here, key=lambda name: (here[name], name))
+            for name, slot in order_seqs(drawn, event.get("order") or []).items():
+                group_seq[(year, name)] = slot
         elif kind == eventlog.DELETE_GROUP:
             year = event.get("year") or ""
             if year:
@@ -415,6 +531,7 @@ def fold(events: list[dict]) -> dict:
                     chapter_names.pop((subject, year, month), None)
         elif kind == eventlog.DELETE_FOLDER:
             folders.pop(subject, None)
+            names = {key: fid for key, fid in names.items() if fid != subject}
             groups = {k: v for k, v in groups.items() if k[0] != subject}
             chapter_names = {k: v for k, v in chapter_names.items() if k[0] != subject}
             # Cascade, the same one Prisma declares on FolderTag and the same
@@ -425,6 +542,16 @@ def fold(events: list[dict]) -> dict:
             }
             for filed in manual.values():
                 filed.discard(subject)
+
+        elif kind == eventlog.LIFT_TAG:
+            # No `if subject in folders` guard, and deliberately: a tag is not a
+            # folder's property. Most tags worth lifting are ones nothing ever
+            # claimed, and a tag lifted today must stay lifted through the
+            # folder that later claims it being created, renamed and deleted.
+            if subject:
+                lifted.add(subject)
+        elif kind == eventlog.UNLIFT_TAG:
+            lifted.discard(subject)
 
         elif kind == eventlog.MAP_TAG:
             tag = event.get("tag")
@@ -459,6 +586,8 @@ def fold(events: list[dict]) -> dict:
         "groups": groups,
         "group_seq": group_seq,
         "chapter_names": chapter_names,
+        "lifted": lifted,
+        "names": names,
     }
 
 
@@ -489,7 +618,7 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.executescript(SCHEMA)
         conn.executemany(
-            f"INSERT INTO entries ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO entries ({COLUMNS}) VALUES ({PLACEHOLDERS})",
             rows,
         )
         conn.executemany(
@@ -530,6 +659,21 @@ def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
             ],
         )
         conn.executemany(
+            "INSERT INTO folder_names (name_key, folder_id) VALUES (?, ?)",
+            # A name whose folder is gone goes with it: `delete-folder` drops
+            # them in the fold, and a name restored out of order from a backup
+            # must not resurrect one either.
+            [
+                (key, fid)
+                for key, fid in state["names"].items()
+                if fid in state["folders"]
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO lifted_tags (tag) VALUES (?)",
+            [(tag,) for tag in sorted(state["lifted"])],
+        )
+        conn.executemany(
             "INSERT INTO chapter_names (folder_id, year, month, name) "
             "VALUES (?, ?, ?, ?)",
             [
@@ -558,7 +702,7 @@ def add_capture(conn: sqlite3.Connection, event: dict) -> None:
     with conn:
         conn.execute(
             f"INSERT OR REPLACE INTO entries ({COLUMNS}) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            f"VALUES ({PLACEHOLDERS})",
             row,
         )
         conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", (event["id"],))
@@ -621,6 +765,16 @@ def home_folder(conn: sqlite3.Connection, entry_id: str) -> str | None:
         "SELECT ft.folder_id AS folder_id FROM entry_tags et "
         "JOIN folder_tags ft ON ft.tag = et.tag "
         "WHERE et.entry_id = ? ORDER BY et.tag LIMIT 1",
+        (entry_id,),
+    ).fetchone()
+    if row:
+        return row["folder_id"]
+    # And the directive, which names its folder outright — last only because a
+    # mapped tag is the more specific statement when an entry carries both.
+    row = conn.execute(
+        "SELECT fn.folder_id AS folder_id FROM entries e "
+        "JOIN folder_names fn ON fn.name_key = e.directive "
+        "WHERE e.id = ? AND e.directive <> '' LIMIT 1",
         (entry_id,),
     ).fetchone()
     return row["folder_id"] if row else None
@@ -800,11 +954,35 @@ def add_folder(conn: sqlite3.Connection, event: dict) -> None:
             "VALUES (?, ?, ?, ?, '', '', '')",
             (event["id"], event.get("text", ""), event.get("color", ""), event["ts"]),
         )
+        _claim_name(conn, event["id"], event.get("text", ""))
 
 
 def rename_folder(conn: sqlite3.Connection, folder_id: str, name: str) -> None:
+    """Mirror of the `rename-folder` branch of `fold`.
+
+    The old name is *kept* — see `folder_names`. Entries written `--oldname`
+    go on reaching this folder, which is the one thing a rename must not
+    change.
+    """
     with conn:
         conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
+        _claim_name(conn, folder_id, name)
+
+
+def _claim_name(conn: sqlite3.Connection, folder_id: str, name: str) -> None:
+    """This folder answers to `name` from now on, and nothing else does.
+
+    `INSERT OR REPLACE` on the name key is the taking-back: a name belongs to
+    one folder, so a second folder called Admin takes `admin` off the one that
+    used to be called it. The fold does the same thing in the same order.
+    """
+    key = normalize_tag(name)
+    if not key:
+        return
+    conn.execute(
+        "INSERT OR REPLACE INTO folder_names (name_key, folder_id) VALUES (?, ?)",
+        (key, folder_id),
+    )
 
 
 def set_folder_state(conn: sqlite3.Connection, folder_id: str, state: str) -> None:
@@ -872,6 +1050,27 @@ def rename_group(conn: sqlite3.Connection, year: str, old: str, new: str) -> Non
             )
 
 
+def order_groups(conn: sqlite3.Connection, year: str, order: list[str]) -> None:
+    """Mirror of the `order-groups` branch of `fold`. Rewrites `seq` for every
+    group standing on one year's shelf, by the one rule in `order_seqs`."""
+    with conn:
+        _, drawn = groups_for(conn, year)
+        for name, slot in order_seqs(drawn, order).items():
+            conn.execute(
+                "UPDATE folder_groups SET seq = ? WHERE year = ? AND name = ?",
+                (slot, year, name),
+            )
+
+
+def lift_tag(conn: sqlite3.Connection, tag: str, lifted: bool) -> None:
+    """Mirror of the `lift-tag` / `unlift-tag` branches of `fold`."""
+    with conn:
+        if lifted:
+            conn.execute("INSERT OR IGNORE INTO lifted_tags (tag) VALUES (?)", (tag,))
+        else:
+            conn.execute("DELETE FROM lifted_tags WHERE tag = ?", (tag,))
+
+
 def delete_group(conn: sqlite3.Connection, year: str, name: str) -> None:
     """Mirror of the `delete-group` branch of `fold`. Un-groups its folders and
     nothing else — no folder and no entry is touched, and there is nothing else
@@ -887,6 +1086,7 @@ def drop_folder(conn: sqlite3.Connection, folder_id: str) -> None:
         conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
         conn.execute("DELETE FROM folder_tags WHERE folder_id = ?", (folder_id,))
         conn.execute("DELETE FROM entry_folders WHERE folder_id = ?", (folder_id,))
+        conn.execute("DELETE FROM folder_names WHERE folder_id = ?", (folder_id,))
         conn.execute("DELETE FROM folder_groups WHERE folder_id = ?", (folder_id,))
 
 
@@ -938,6 +1138,16 @@ def _as_entry(row: sqlite3.Row) -> dict:
         "todo_lines": json.loads(row["todo_lines"]),
         "todo_done": json.loads(row["todo_done"]),
         "media": json.loads(row["media"]),
+        # The folder this line named outright, or "". Beside `folders` rather
+        # than in it: a tag is a word you chose and a directive is a folder you
+        # named, and only the first belongs in the registry.
+        "directive": row["directive"] if "directive" in row.keys() else "",
+        # The thread, both ways. `reply_to` is what this line answers;
+        # `replied_by` is what answered it. Only the first is stored.
+        "reply_to": row["reply_to"] if "reply_to" in row.keys() else "",
+        "replied_by": (
+            row["replied_by"] if "replied_by" in row.keys() and row["replied_by"] else ""
+        ),
         "manual_folders": sorted(manual.split(",")) if manual else [],
     }
 
@@ -1003,11 +1213,8 @@ def folders(conn: sqlite3.Connection, counts: bool = True) -> list[dict]:
         {
             row["folder_id"]: row["n"]
             for row in conn.execute(
-                "SELECT folder_id, count(*) AS n FROM ("
-                "  SELECT folder_id, entry_id FROM folder_tags JOIN entry_tags USING (tag)"
-                "  UNION"
-                "  SELECT folder_id, entry_id FROM entry_folders"
-                ") GROUP BY folder_id"
+                f"SELECT folder_id, count(*) AS n FROM ({_ALL_MEMBERSHIP}) "
+                "GROUP BY folder_id"
             ).fetchall()
         }
         if counts
@@ -1063,19 +1270,15 @@ def folder_name_taken(
 def folder_entries(conn: sqlite3.Connection, folder_id: str) -> list[dict]:
     """Everything in a folder, newest first.
 
-    The union is the whole membership rule: tagged into it, or filed into it
-    by hand. Neither half is stored as membership — see the module docstring.
+    `_MEMBERSHIP` is the whole rule and this used to spell its own copy of it,
+    which is how it came to be the one read that had never heard of a
+    directive. Nothing here is stored as membership — see the module docstring.
     """
     return [
         _as_entry(row)
         for row in conn.execute(
-            f"{SELECT_ENTRIES} WHERE id IN ("
-            "  SELECT entry_id FROM entry_tags WHERE tag IN ("
-            "    SELECT tag FROM folder_tags WHERE folder_id = ?)"
-            "  UNION"
-            "  SELECT entry_id FROM entry_folders WHERE folder_id = ?"
-            ") ORDER BY ts DESC, id DESC",
-            (folder_id, folder_id),
+            f"{SELECT_ENTRIES} WHERE id IN ({_MEMBERSHIP}) ORDER BY ts DESC, id DESC",
+            (folder_id, folder_id, folder_id),
         ).fetchall()
     ]
 
@@ -1110,9 +1313,42 @@ def unassigned_tags(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         "SELECT tag, count(*) AS n FROM entry_tags "
         "WHERE tag NOT IN (SELECT tag FROM folder_tags) "
+        # A lifted tag has been told it is a word rather than a tag, and a word
+        # does not need filing. Leaving it here would have this screen go on
+        # asking about the one thing the user has already answered.
+        "  AND tag NOT IN (SELECT tag FROM lifted_tags) "
         "GROUP BY tag"
     ).fetchall()
     return _counted({r["tag"]: r["n"] for r in rows}, "tag")
+
+
+def tag_census(conn: sqlite3.Connection) -> list[dict]:
+    """Every tag the user has actually written, commonest first, with where it
+    lands and whether it has been lifted.
+
+    Written, not merely mapped: a folder claims the tag of its own name the
+    moment it is created, so the mapping knows tags nobody has typed yet — and
+    lifting is about *appearances in a line*, which a tag with no lines does
+    not have. A tag that has been lifted stays on the list whatever became of
+    its entries, because otherwise there would be no way back.
+    """
+    counts = {
+        row["tag"]: row["n"]
+        for row in conn.execute(
+            "SELECT tag, count(*) AS n FROM entry_tags GROUP BY tag"
+        ).fetchall()
+    }
+    owner = {
+        row["tag"]: row["folder_id"]
+        for row in conn.execute("SELECT tag, folder_id FROM folder_tags").fetchall()
+    }
+    lifted = set(lifted_tags(conn))
+    for tag in lifted:
+        counts.setdefault(tag, 0)
+    return [
+        {**row, "folder": owner.get(row["tag"], ""), "lifted": row["tag"] in lifted}
+        for row in _counted(counts, "tag")
+    ]
 
 
 def dates(conn: sqlite3.Connection) -> dict[str, int]:
@@ -1134,23 +1370,60 @@ def dates(conn: sqlite3.Connection) -> dict[str, int]:
 # `year=None` means "no year filter", which is what the setting turns the whole
 # screen into when the user does not want the yearly restart.
 
-# The membership rule, spelled once: tagged in, or filed in by hand. Both halves
-# are parameterised by the same folder id, so callers pass it twice.
+# The membership rule, spelled once: tagged in, named by a directive, or filed
+# in by hand. Every half is parameterised by the same folder id, so callers pass
+# it three times.
+#
+# **The directive is the newest of the three and it replaced a stored thing.**
+# A `--directive` used to travel as a tag — `derive()` appended it to the
+# entry's tag list, and every folder claimed the tag of its own name at
+# creation, so `--work` arrived through the ordinary mapping. It worked, and it
+# put a word in the registry for every folder that nobody had ever typed. The
+# registry is meant to hold the words the user chose — the non-obvious ones
+# they want pointed somewhere — so the claim is gone and the directive resolves
+# against the folder's name here instead, at read time, storing nothing.
+#
+# The two routes stay different on purpose. A tag is semantic and arbitrary and
+# goes where you say it goes; a directive names the folder outright and needs
+# no mapping to be understood. Both still resolve, neither is stored.
+_BY_DIRECTIVE = (
+    "SELECT id FROM entries WHERE directive <> '' AND directive IN "
+    "  (SELECT name_key FROM folder_names WHERE folder_id = ?)"
+)
+
 _MEMBERSHIP = (
     "SELECT entry_id FROM entry_tags WHERE tag IN "
     "  (SELECT tag FROM folder_tags WHERE folder_id = ?) "
     "UNION "
-    "SELECT entry_id FROM entry_folders WHERE folder_id = ?"
+    "SELECT entry_id FROM entry_folders WHERE folder_id = ? "
+    "UNION "
+    f"{_BY_DIRECTIVE}"
 )
 
 # The other side of it: an entry no folder claims. Not "has no tags" — a tag
 # nothing has been mapped to leaves its entry unfiled, which is exactly the
-# pile the shelf's dashed card is offering to sort out.
+# pile the shelf's dashed card is offering to sort out. A directive naming no
+# folder leaves it there too, and the word is not lost: it is on the raw line
+# and in the `directive` column, so the folder made for it next year collects
+# every entry that has been waiting.
 _UNFILED = (
     "SELECT id FROM entries WHERE id NOT IN ("
     "  SELECT entry_id FROM entry_tags WHERE tag IN (SELECT tag FROM folder_tags)"
     "  UNION SELECT entry_id FROM entry_folders"
+    "  UNION SELECT id FROM entries WHERE directive <> '' "
+    "    AND directive IN (SELECT name_key FROM folder_names)"
     ")"
+)
+
+# The same three routes as one table of (folder, entry) pairs, for the reads
+# that want every folder's membership at once rather than one folder's.
+_ALL_MEMBERSHIP = (
+    "SELECT folder_id, entry_id FROM folder_tags JOIN entry_tags USING (tag)"
+    " UNION "
+    "SELECT folder_id, entry_id FROM entry_folders"
+    " UNION "
+    "SELECT fn.folder_id AS folder_id, e.id AS entry_id FROM folder_names fn"
+    "  JOIN entries e ON e.directive = fn.name_key"
 )
 
 
@@ -1312,7 +1585,7 @@ def _album_rows(
         sql = f"SELECT {columns} FROM entries WHERE id IN ({_UNFILED})"
     else:
         sql = f"SELECT {columns} FROM entries WHERE id IN ({_MEMBERSHIP})"
-        args = [folder_id, folder_id] + args
+        args = [folder_id, folder_id, folder_id] + args
     return conn.execute(sql + clause, args).fetchall()
 
 
@@ -1377,8 +1650,15 @@ def _shelf_buckets(
         "SELECT ef.entry_id AS entry_id, ef.folder_id AS folder_id"
         "  FROM entry_folders ef"
         "  JOIN entries e ON e.id = ef.entry_id"
+        f" WHERE 1=1{clause}"
+        # The third route, joined the same way: an entry whose directive names
+        # this folder. See `_BY_DIRECTIVE`.
+        " UNION "
+        "SELECT e.id AS entry_id, fn.folder_id AS folder_id"
+        "  FROM entries e"
+        "  JOIN folder_names fn ON fn.name_key = e.directive"
         f" WHERE 1=1{clause}",
-        args + args,
+        args + args + args,
     ).fetchall():
         membership.setdefault(row["entry_id"], []).append(row["folder_id"])
 
@@ -1432,7 +1712,7 @@ def album_entries(
         sql = f"{SELECT_ENTRIES} WHERE id IN ({_UNFILED})"
     else:
         sql = f"{SELECT_ENTRIES} WHERE id IN ({_MEMBERSHIP})"
-        args = [folder_id, folder_id] + args
+        args = [folder_id, folder_id, folder_id] + args
     sql += clause + " ORDER BY ts DESC, id DESC"
     return [_as_entry(row) for row in conn.execute(sql, args).fetchall()]
 
@@ -1732,6 +2012,10 @@ def vocab(conn: sqlite3.Connection, recent: int = 500) -> dict:
         for row in conn.execute("SELECT tag, folder_id FROM folder_tags").fetchall()
     }
     tags.update(mapping)
+    # A lifted tag is still a tag: it files where it always did and the
+    # autocomplete should still offer it. Only its brackets stop being drawn.
+    lifted = lifted_tags(conn)
+    tags.update(lifted)
 
     return {
         # `counts=False`: the capture bar needs a folder's id, name and colour
@@ -1747,4 +2031,17 @@ def vocab(conn: sqlite3.Connection, recent: int = 500) -> dict:
         "times": sorted(times),
         "patterns": sorted(patterns),
         "places": sorted(places),
+        # Which tags the reader draws without their brackets. It rides along
+        # with the vocabulary rather than on a request of its own because
+        # every screen that renders a captured line needs it before it can
+        # draw one, and the capture bar already asks for this on load.
+        "lifted": lifted,
     }
+
+
+def lifted_tags(conn: sqlite3.Connection) -> list[str]:
+    """Every tag that has been lifted out of its brackets, sorted."""
+    return [
+        row["tag"]
+        for row in conn.execute("SELECT tag FROM lifted_tags ORDER BY tag").fetchall()
+    ]

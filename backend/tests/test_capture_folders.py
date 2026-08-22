@@ -48,6 +48,15 @@ def assert_index_is_disposable(store: Store) -> None:
         assert fresh.vocab() == store.vocab()
         assert fresh.unassigned_tags() == store.unassigned_tags()
         assert fresh.entries(limit=500) == store.entries(limit=500)
+        # Membership itself, and not only the registry behind it. The targeted
+        # writes and the replay have to agree about *what is in each folder* —
+        # which is the half that broke when a third route in appeared and one
+        # read had its own copy of the rule.
+        for folder in store.folders():
+            assert (
+                fresh.folder_detail(folder["id"])["entries"]
+                == store.folder_detail(folder["id"])["entries"]
+            )
     finally:
         fresh.close()
 
@@ -63,22 +72,56 @@ def test_a_new_folder_is_given_the_next_palette_colour(capture_store):
     assert second["color"] == "#f472b6"
 
 
-def test_a_folder_answers_to_its_own_name(capture_store):
-    """The one deliberate addition to the source's model. It is what lets
-    `--work` and `<work>` mean the same thing with no special case."""
+def test_a_new_folder_claims_no_tag_at_all(capture_store):
+    """The registry holds the words the user chose, and nothing else.
+
+    A folder used to claim the tag of its own name at creation, so that a
+    `--directive` reached it through the ordinary mapping. What that cost was a
+    word per folder in the registry that nobody had ever typed — noise in the
+    one list whose whole job is to say which non-obvious words point where.
+    """
     folder = capture_store.create_folder("Work")
 
-    assert folder["tags"] == ["work"]
-    assert capture_store.vocab()["tag_to_folder"] == {"work": folder["id"]}
+    assert folder["tags"] == []
+    assert capture_store.vocab()["tag_to_folder"] == {}
+    assert capture_store.tags() == []
 
 
-def test_the_directive_and_the_tag_reach_the_same_folder(capture_store):
+def test_the_directive_reaches_the_folder_by_its_name_and_the_tag_does_not(capture_store):
+    """The two routes, and why they are not the same route.
+
+    A directive names the folder outright, so it resolves against the folder's
+    name and needs no mapping. A tag is a word you chose — `<work>` means
+    whatever you have said it means, and until you say so it means nothing.
+    That is the whole point of the mapping screen, and it is why creating a
+    folder called Work must not quietly decide that `<work>` belongs to it.
+    """
     folder = capture_store.create_folder("Work")
     by_tag = capture_store.capture("<work> shipped the parser")
     by_directive = capture_store.capture("--work shipped the folders")
 
     inside = [e["id"] for e in capture_store.folder_detail(folder["id"])["entries"]]
+    assert inside == [by_directive["id"]]
+
+    # And the tag arrives the moment it is pointed here — retroactively, like
+    # every other mapping.
+    capture_store.map_tag(folder["id"], "work")
+    inside = [e["id"] for e in capture_store.folder_detail(folder["id"])["entries"]]
     assert sorted(inside) == sorted([by_tag["id"], by_directive["id"]])
+
+
+def test_a_directive_naming_nothing_waits_rather_than_being_lost(capture_store):
+    """The source resolves the directive at write time and drops it when no
+    folder answers. Here the word is on the raw line and in its own column, so
+    the folder made for it next year collects everything that was waiting."""
+    entry = capture_store.capture("--greenhouse the frame is up")
+
+    assert capture_store.entry(entry["id"])["directive"] == "greenhouse"
+    assert capture_store.unassigned_tags() == []  # a directive is not a loose tag
+
+    folder = capture_store.create_folder("Greenhouse")
+    inside = [e["id"] for e in capture_store.folder_detail(folder["id"])["entries"]]
+    assert inside == [entry["id"]]
 
 
 def test_mapping_a_tag_is_retroactive(capture_store):
@@ -101,25 +144,41 @@ def test_a_tag_belongs_to_one_folder_and_mapping_moves_it(capture_store):
 
     capture_store.map_tag(home["id"], "garden")
 
-    assert capture_store.folders()[0]["tags"] == ["work"]
-    assert sorted(capture_store.folders()[1]["tags"]) == ["garden", "home"]
+    assert capture_store.folders()[0]["tags"] == []
+    assert capture_store.folders()[1]["tags"] == ["garden"]
 
 
-def test_naming_a_folder_never_steals_a_tag_that_is_already_filed(capture_store):
-    """A folder claims its own name only if nothing else has it. Otherwise
-    creating a folder could silently empty another one."""
+def test_naming_a_folder_after_a_mapped_tag_disturbs_nothing(capture_store):
+    """Creating a folder called Garden while `<garden>` points at Work used to
+    risk emptying Work; a folder claims nothing now, so there is nothing to
+    steal. The two routes go on meaning what they said: the tag goes where it
+    was pointed, the directive goes to the folder it names."""
     work = capture_store.create_folder("Work")
     capture_store.map_tag(work["id"], "garden")
+    tagged = capture_store.capture("<garden> the beds along the east wall")
 
     garden = capture_store.create_folder("Garden")
+    named = capture_store.capture("--garden the beds along the east wall")
 
     assert garden["tags"] == []
     assert capture_store.vocab()["tag_to_folder"]["garden"] == work["id"]
+    assert [e["id"] for e in capture_store.folder_detail(work["id"])["entries"]] == [
+        tagged["id"]
+    ]
+    assert [e["id"] for e in capture_store.folder_detail(garden["id"])["entries"]] == [
+        named["id"]
+    ]
 
 
 def test_renaming_keeps_the_old_name_working(capture_store):
-    """Entries filed by `--admin` reach the folder through the tag `admin`. A
-    rename that let go of it would drop them out of the folder they are in."""
+    """Entries written `--admin` reach the folder by its name, so a rename
+    would drop them out of the folder they were filed into — which no rename
+    should ever do. A folder goes on answering to every name it has had.
+
+    And it costs nothing in the registry: the names are their own derived
+    table, not tags. A rename used to claim both the old name and the new one
+    as tags, which is two more words nobody typed.
+    """
     folder = capture_store.create_folder("Admin")
     entry = capture_store.capture("--admin filed the tax return")
 
@@ -127,8 +186,45 @@ def test_renaming_keeps_the_old_name_working(capture_store):
 
     after = capture_store.folder_detail(folder["id"])
     assert after["folder"]["name"] == "Paperwork"
-    assert sorted(after["folder"]["tags"]) == ["admin", "paperwork"]
+    assert after["folder"]["tags"] == []
     assert [e["id"] for e in after["entries"]] == [entry["id"]]
+
+    # And the new name answers too, from here on.
+    later = capture_store.capture("--paperwork and the receipts")
+    inside = [e["id"] for e in capture_store.folder_detail(folder["id"])["entries"]]
+    assert sorted(inside) == sorted([entry["id"], later["id"]])
+    assert_index_is_disposable(capture_store)
+
+
+def test_a_name_answers_for_one_folder_and_the_newest_claim_wins(capture_store):
+    """A name belongs to one folder, the way a tag does. Making a new folder
+    called Admin takes `--admin` back from the one that used to be called it —
+    a name means what it means now, and a directive that resolved to two
+    folders would be the second kind of membership this model cannot have."""
+    old = capture_store.create_folder("Admin")
+    entry = capture_store.capture("--admin filed the tax return")
+    capture_store.rename_folder(old["id"], "Paperwork")
+
+    fresh = capture_store.create_folder("Admin")
+
+    assert capture_store.folder_detail(old["id"])["entries"] == []
+    assert [e["id"] for e in capture_store.folder_detail(fresh["id"])["entries"]] == [
+        entry["id"]
+    ]
+    assert_index_is_disposable(capture_store)
+
+
+def test_deleting_a_folder_lets_go_of_its_names(capture_store):
+    """The cascade `folder_tags` already had. A name pointing at a folder that
+    is gone would make the entry look filed into nothing."""
+    folder = capture_store.create_folder("Admin")
+    entry = capture_store.capture("--admin filed the tax return")
+
+    capture_store.delete_folder(folder["id"])
+
+    assert capture_store.entries(limit=10)[0]["id"] == entry["id"]
+    assert capture_store.entry(entry["id"])["directive"] == "admin"
+    assert_index_is_disposable(capture_store)
 
 
 def test_deleting_a_folder_keeps_every_word_that_was_in_it(capture_store):
@@ -147,7 +243,7 @@ def test_deleting_a_folder_keeps_every_word_that_was_in_it(capture_store):
 
 def test_a_folder_counts_what_the_union_says_is_in_it(capture_store):
     """The chip's number. Tagged in and filed in by hand, counted once."""
-    folder = capture_store.create_folder("Work")
+    folder = capture_store.create_folder("Work", ["work"])
     capture_store.capture("standup <work>")
     capture_store.capture("also standup <work>")
     filed = capture_store.capture("no tag on this one")
@@ -251,7 +347,7 @@ def test_a_state_for_a_deleted_folder_is_dropped_not_resurrected(capture_store):
 def test_filing_an_entry_by_hand_adds_a_place_rather_than_replacing_one(
     capture_store,
 ):
-    work = capture_store.create_folder("Work")
+    work = capture_store.create_folder("Work", ["work"])
     reading = capture_store.create_folder("Reading")
     entry = capture_store.capture("<work> a thought that also belongs elsewhere")
 
@@ -304,7 +400,7 @@ def test_a_mapped_tag_joins_the_vocabulary_before_it_is_ever_written(
     folder = capture_store.create_folder("Work")
     capture_store.map_tag(folder["id"], "deploy")
 
-    assert capture_store.vocab()["tags"] == ["deploy", "work"]
+    assert capture_store.vocab()["tags"] == ["deploy"]
 
 
 # ── Names ─────────────────────────────────────────────────────────────────
@@ -347,12 +443,10 @@ def test_every_folder_change_is_an_append(capture_store):
     capture_store.delete_folder(folder["id"])
 
     assert log_kinds() == [
-        "create-folder",
-        "map-tag",  # the folder claiming its own name
+        "create-folder",  # and no map-tag: a folder claims no name of its own
         "map-tag",
         "unmap-tag",
-        "rename-folder",
-        "map-tag",  # the new name; the old one was already held
+        "rename-folder",  # nothing was written `--work`, so nothing is claimed
         "capture",
         "assign",
         "unassign",
@@ -434,7 +528,7 @@ def test_an_unmap_that_arrives_late_cannot_steal_a_tag_back(capture_store):
 
 
 def test_the_folder_screen_counts_sentiments_over_what_is_in_it(capture_store):
-    folder = capture_store.create_folder("Work")
+    folder = capture_store.create_folder("Work", ["work"])
     capture_store.capture("<work> \\win \\shipped")
     capture_store.capture("<work> \\win")
     capture_store.capture("<home> \\win")  # not in this folder
@@ -967,3 +1061,322 @@ def test_the_group_edits_travel_over_the_wire(client):
         ).status_code
         == 404
     )
+
+
+# ── Arranging the shelf ───────────────────────────────────────────────────
+#
+# Groups are drawn in the order they were first named until the user says
+# otherwise. What follows covers the saying-otherwise: one event carrying the
+# whole order, for the reason `order-groups` gives in eventlog.py.
+
+
+def three_groups(store):
+    """Three folders under three headings, in first-named order."""
+    for tag in ("one", "two", "three"):
+        store.capture(f"a line <{tag}>")
+    ids = [store.create_folder(name.title(), [name])["id"] for name in ("one", "two", "three")]
+    year = store.shelf(None)["years"][0]
+    for folder_id, group in zip(ids, ("First", "Second", "Third")):
+        store.set_folder_group(folder_id, year, group)
+    assert store.shelf(year)["groups"] == ["First", "Second", "Third"]
+    return year, ids
+
+
+def test_the_groups_can_be_arranged_by_hand(capture_store):
+    year, _ = three_groups(capture_store)
+
+    shelf = capture_store.order_groups(year, ["Third", "First", "Second"])
+
+    assert shelf["groups"] == ["Third", "First", "Second"]
+    assert capture_store.shelf(year)["groups"] == ["Third", "First", "Second"]
+
+
+def test_an_arrangement_survives_the_index_being_deleted(capture_store):
+    year, _ = three_groups(capture_store)
+    capture_store.order_groups(year, ["Third", "Second", "First"])
+
+    assert_index_is_disposable(capture_store)
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.shelf(year)["groups"] == ["Third", "Second", "First"]
+    finally:
+        fresh.close()
+
+
+def test_a_group_the_arrangement_did_not_name_keeps_its_place(capture_store):
+    """A partial order is not an error. What it does not mention keeps its
+    relative order behind what it does — which is what makes an arrangement
+    written against a shelf that has since grown still mean something."""
+    year, _ = three_groups(capture_store)
+
+    shelf = capture_store.order_groups(year, ["Third"])
+
+    assert shelf["groups"] == ["Third", "First", "Second"]
+
+
+def test_the_same_arrangement_twice_is_the_same_shelf(capture_store):
+    """The property a move would not have: a duplicated line — a restored
+    backup, an interrupted write — lands on the same shelf the first one did."""
+    year, _ = three_groups(capture_store)
+    order = ["Second", "Third", "First"]
+
+    capture_store.order_groups(year, order)
+    capture_store.order_groups(year, order)
+
+    assert capture_store.shelf(year)["groups"] == order
+    assert log_kinds().count("order-groups") == 2  # nothing was rewritten
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.shelf(year)["groups"] == order
+    finally:
+        fresh.close()
+
+
+def test_a_group_named_after_an_arrangement_stands_at_the_end(capture_store):
+    year, _ = three_groups(capture_store)
+    capture_store.order_groups(year, ["Third", "Second", "First"])
+
+    capture_store.capture("a line <four>")
+    fourth = capture_store.create_folder("Four", ["four"])
+    capture_store.set_folder_group(fourth["id"], year, "Fourth")
+
+    assert capture_store.shelf(year)["groups"] == ["Third", "Second", "First", "Fourth"]
+    # The half worth pinning: the targeted write numbers the newcomer's slot
+    # and so does the replay, and they have to agree or the shelf reshuffles
+    # itself on the next launch.
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.shelf(year)["groups"] == ["Third", "Second", "First", "Fourth"]
+    finally:
+        fresh.close()
+
+
+def test_arranging_a_group_that_is_not_there_is_refused(capture_store):
+    year, _ = three_groups(capture_store)
+
+    with pytest.raises(CaptureError, match="no such group"):
+        capture_store.order_groups(year, ["Third", "Nowhere"])
+
+    # And nothing was written: a refused edit leaves the shelf as it was.
+    assert capture_store.shelf(year)["groups"] == ["First", "Second", "Third"]
+    assert "order-groups" not in log_kinds()
+
+
+def test_arranging_refuses_a_year_that_is_not_one(capture_store):
+    with pytest.raises(CaptureError, match="not a year"):
+        capture_store.order_groups("last", ["First"])
+
+
+def test_the_arrangement_is_per_year_like_the_grouping(capture_store):
+    """A shelf is a year's, and so is the order of the headings on it."""
+    capture_store.capture("a line <one>")
+    capture_store.capture("b line <two>")
+    one = capture_store.create_folder("One", ["one"])
+    two = capture_store.create_folder("Two", ["two"])
+    year = capture_store.shelf(None)["years"][0]
+    other = str(int(year) - 1)
+
+    capture_store.set_folder_group(one["id"], year, "First")
+    capture_store.set_folder_group(two["id"], year, "Second")
+    capture_store.set_folder_group(one["id"], other, "First")
+    capture_store.set_folder_group(two["id"], other, "Second")
+
+    capture_store.order_groups(year, ["Second", "First"])
+
+    assert capture_store.shelf(year)["groups"] == ["Second", "First"]
+    assert capture_store.shelf(other)["groups"] == ["First", "Second"]
+
+
+def test_the_arrangement_travels_over_the_wire(client):
+    for tag in ("one", "two"):
+        client.post("/api/capture/entries", json={"raw_text": f"a line <{tag}>"})
+    ids = [
+        client.post("/api/capture/folders", json={"name": tag.title(), "tags": [tag]})
+        .json()["folder"]["id"]
+        for tag in ("one", "two")
+    ]
+    year = client.get("/api/capture/shelf").json()["years"][0]
+    for folder_id, group in zip(ids, ("First", "Second")):
+        client.put(
+            f"/api/capture/folders/{folder_id}/group", json={"year": year, "name": group}
+        )
+
+    arranged = client.post(
+        "/api/capture/groups/order", json={"year": year, "order": ["Second", "First"]}
+    )
+    assert arranged.status_code == 200, arranged.text
+    assert arranged.json()["groups"] == ["Second", "First"]
+
+    assert (
+        client.post(
+            "/api/capture/groups/order", json={"year": year, "order": ["Nowhere"]}
+        ).status_code
+        == 404
+    )
+
+
+# ── Lifting a tag ─────────────────────────────────────────────────────────
+#
+# Presentation, and only presentation: the line is untouched and so is where it
+# files. These pin that boundary from both sides.
+
+
+def test_a_tag_can_be_lifted_and_put_back(capture_store):
+    capture_store.capture("first light <garden>")
+
+    assert capture_store.lift_tag("garden", True) == ["garden"]
+    assert capture_store.vocab()["lifted"] == ["garden"]
+
+    assert capture_store.lift_tag("garden", False) == []
+    assert capture_store.vocab()["lifted"] == []
+
+
+def test_lifting_changes_no_line_and_no_membership(capture_store):
+    """The whole rule. A lifted tag still files exactly where it did, and the
+    raw line is what it always was — this log cannot edit one."""
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    before = capture_store.entries(limit=10)
+
+    capture_store.lift_tag("garden", True)
+
+    assert capture_store.entries(limit=10) == before
+    assert [e["raw_text"] for e in capture_store.entries(limit=10)] == [
+        "first light <garden>"
+    ]
+    inside = capture_store.folder_detail(folder["id"])["entries"]
+    assert len(inside) == 1
+
+
+def test_a_lifted_tag_is_still_a_tag(capture_store):
+    """It is offered by the autocomplete and it is still claimed by its
+    folder. Only the brackets stop being drawn."""
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    capture_store.lift_tag("garden", True)
+
+    vocab = capture_store.vocab()
+    assert "garden" in vocab["tags"]
+    assert vocab["tag_to_folder"] == {"garden": folder["id"]}
+
+
+def test_lifting_is_last_wins_and_writes_nothing_twice(capture_store):
+    capture_store.capture("first light <garden>")
+
+    for lifted in (True, True, False, False, True):
+        capture_store.lift_tag("garden", lifted)
+
+    assert capture_store.vocab()["lifted"] == ["garden"]
+    # Three changes of mind, three events — the repeats are not written at all.
+    assert log_kinds().count("lift-tag") == 2
+    assert log_kinds().count("unlift-tag") == 1
+
+
+def test_a_lift_survives_the_index_being_deleted(capture_store):
+    capture_store.capture("first light <garden> <shed>")
+    capture_store.lift_tag("shed", True)
+
+    assert_index_is_disposable(capture_store)
+
+
+def test_a_lift_outlives_the_folder_that_claimed_the_tag(capture_store):
+    """Lifting is a fact about a word, not about a folder — which is why it is
+    not a column on the mapping. Deleting the folder cascades the mapping away
+    and leaves the lift standing."""
+    capture_store.capture("first light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    capture_store.lift_tag("garden", True)
+
+    capture_store.delete_folder(folder["id"])
+
+    assert capture_store.vocab()["lifted"] == ["garden"]
+    assert_index_is_disposable(capture_store)
+
+
+def test_a_tag_to_lift_is_tidied_like_any_other(capture_store):
+    capture_store.capture("first light <garden>")
+
+    assert capture_store.lift_tag("  GARDEN  ", True) == ["garden"]
+
+    with pytest.raises(CaptureError, match="needs a name"):
+        capture_store.lift_tag("   ", True)
+
+
+def test_the_tag_census_says_what_is_lifted_and_where_it_lands(capture_store):
+    capture_store.capture("first light <garden> <shed>")
+    capture_store.capture("more light <garden>")
+    folder = capture_store.create_folder("Garden", ["garden"])
+    capture_store.lift_tag("shed", True)
+
+    census = capture_store.tags()
+
+    assert census == [
+        {"tag": "garden", "count": 2, "folder": folder["id"], "lifted": False},
+        {"tag": "shed", "count": 1, "folder": "", "lifted": True},
+    ]
+
+
+def test_the_census_is_what_was_written_not_what_was_claimed(capture_store):
+    """A folder claims the tag of its own name at creation, so the mapping
+    knows tags nobody has typed. Lifting is about appearances in a line, and a
+    tag with no lines has none to strip."""
+    capture_store.create_folder("Garden")
+
+    assert capture_store.tags() == []
+
+
+def test_the_lift_travels_over_the_wire(client):
+    client.post("/api/capture/entries", json={"raw_text": "first light <garden>"})
+
+    lifted = client.post("/api/capture/tags/lift", json={"tag": "garden", "lifted": True})
+    assert lifted.status_code == 200, lifted.text
+    assert lifted.json()["lifted"] == ["garden"]
+    assert client.get("/api/capture/vocab").json()["lifted"] == ["garden"]
+
+    census = client.get("/api/capture/tags").json()["tags"]
+    assert census == [{"tag": "garden", "count": 1, "folder": "", "lifted": True}]
+
+    back = client.post("/api/capture/tags/lift", json={"tag": "garden", "lifted": False})
+    assert back.json()["lifted"] == []
+
+
+def test_a_directive_is_not_a_word_in_the_vocabulary(capture_store):
+    """The autocomplete offers tags, times, patterns and places — the words you
+    write. A directive names a folder, and the folder list is beside it."""
+    capture_store.capture("--greenhouse <frames> the frame is up")
+
+    vocab = capture_store.vocab()
+    assert vocab["tags"] == ["frames"]
+    assert "greenhouse" not in vocab["tags"]
+
+
+def test_a_lifted_tag_stops_asking_to_be_filed(capture_store):
+    """The mapping screen exists to be emptied. A tag you have lifted is a word
+    you have already said is not a tag, so leaving it on that screen would have
+    it go on asking the one question you have answered."""
+    capture_store.capture("<tagtest> a line I no longer mean that way")
+    capture_store.capture("<garden> the beds along the east wall")
+
+    assert [t["tag"] for t in capture_store.unassigned_tags()] == ["garden", "tagtest"]
+
+    capture_store.lift_tag("tagtest", True)
+    assert [t["tag"] for t in capture_store.unassigned_tags()] == ["garden"]
+
+    # And it comes back the moment it is put back, like everything else here.
+    capture_store.lift_tag("tagtest", False)
+    assert [t["tag"] for t in capture_store.unassigned_tags()] == ["garden", "tagtest"]
+
+
+def test_the_directive_survives_the_index_being_deleted(capture_store):
+    """The column is derived from the raw line on every rebuild, so retuning
+    the parser re-files every directive ever written with no migration."""
+    folder = capture_store.create_folder("Greenhouse")
+    capture_store.capture("--greenhouse the frame is up")
+    capture_store.capture("<greenhouse> a tag nobody pointed anywhere")
+
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert len(fresh.folder_detail(folder["id"])["entries"]) == 1
+        assert fresh.unassigned_tags() == [{"tag": "greenhouse", "count": 1}]
+    finally:
+        fresh.close()

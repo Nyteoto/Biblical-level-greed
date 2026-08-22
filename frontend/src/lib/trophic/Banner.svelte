@@ -175,7 +175,7 @@
 					disabled={busy}
 					aria-label="check this off"
 					title="check this off"
-					class="flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-[5px] border border-neutral-500 transition-colors hover:border-accent-700 disabled:opacity-40"
+					class="flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-[5px] border border-neutral-400 transition-colors hover:border-accent-500 disabled:opacity-40"
 					onclick={tick}
 				>
 					<svg
@@ -192,7 +192,7 @@
 						<path d="M2 5.5 L4 7.5 L8 3" />
 					</svg>
 				</button>
-				<a href={albumHref(current)} class="min-w-0 truncate transition-colors hover:text-ink">
+				<a href={albumHref(current)} class="min-w-0 truncate transition-colors hover:text-neutral-800">
 					{shorten(current.text)}
 				</a>
 				{#if data}
@@ -201,7 +201,7 @@
 					<span
 						class="flex shrink-0 items-center gap-1.5 tabular-nums {data.open >= data.cap
 							? 'text-accent-700'
-							: 'text-neutral-700'}"
+							: 'text-neutral-600'}"
 						title="{data.open} of {data.cap} todos open"
 					>
 						<Glyph kind="entries" count={data.open} size={12} />
@@ -214,7 +214,7 @@
 		{#if reminder}
 			<button
 				type="button"
-				class="flex min-w-0 items-center gap-2.5 text-left text-neutral-700 transition-colors hover:text-ink"
+				class="flex min-w-0 items-center gap-2.5 text-left text-neutral-600 transition-colors hover:text-neutral-800"
 				onclick={openReminder}
 			>
 				<span

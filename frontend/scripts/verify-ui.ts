@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { tokenize, activeTrigger } from '../src/lib/trophic/tokenize.ts';
 import { buildTrie, prefixSearch, scoredSearch } from '../src/lib/trophic/trie.ts';
 import { validate, CAP_WARN_AT, MAX_RAW_LEN } from '../src/lib/trophic/validation.ts';
-import { view, handleKey, caretStyle } from '../src/lib/trophic/capture-bar.ts';
+import { view, handleKey, caretStyle, acceptSuggestion } from '../src/lib/trophic/capture-bar.ts';
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
@@ -48,6 +48,9 @@ import {
 import { todayKey } from '../src/lib/trophic/day.ts';
 import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
 import { albumWeek, foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
+import { dropBefore, moveBefore } from '../src/lib/trophic/sortable.ts';
+import { isReply, stripReply } from '../src/lib/trophic/reply.ts';
+import { COMMANDS } from '../src/lib/trophic/capture-bar.ts';
 import type { Entry, Vocab } from '../src/lib/trophic/api.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -778,6 +781,145 @@ async function localChecks(): Promise<string[]> {
 		}
 	}
 
+	// Dragging a shelf heading into a new place. No corpus covers it — the
+	// source has no groups — and what it writes is an event, so a wrong answer
+	// here is a line in an append-only log saying the user arranged something
+	// they did not.
+	{
+		const order = ['A', 'B', 'C'];
+		const moves: [string, string | null, string[]][] = [
+			['A', 'C', ['B', 'A', 'C']],
+			['C', 'A', ['C', 'A', 'B']],
+			['A', null, ['B', 'C', 'A']],
+			// The three that must move nothing at all: onto itself, in front of
+			// where it already is, and to the end it is already at.
+			['A', 'A', order],
+			['A', 'B', order],
+			['C', null, order],
+			// A name the shelf does not have decides nothing.
+			['A', 'Z', order],
+			['Z', 'A', order]
+		];
+		for (const [key, before, want] of moves) {
+			const got = moveBefore(order, key, before);
+			if (JSON.stringify(got) !== JSON.stringify(want)) {
+				failures.push(
+					`  moveBefore(${JSON.stringify(order)}, ${key}, ${before}) = ` +
+						`${JSON.stringify(got)}, expected ${JSON.stringify(want)}`
+				);
+			}
+		}
+		// An unmoved order must come back as the same array, because that is
+		// what the screens test to decide whether to write anything at all.
+		if (moveBefore(order, 'A', 'B') !== order) {
+			failures.push('  a move that changes nothing returned a new array; nothing would be a no-op');
+		}
+	}
+
+	// And where a drop lands: halves, not edges, and past the last row is the
+	// end of the list.
+	{
+		const slots = [
+			{ key: 'A', top: 0, bottom: 20 },
+			{ key: 'B', top: 20, bottom: 40 },
+			{ key: 'C', top: 40, bottom: 60 }
+		];
+		const drops: [number, string | null][] = [
+			[-50, 'A'],
+			[0, 'A'],
+			[9, 'A'],
+			[10, 'B'],
+			[29, 'B'],
+			[30, 'C'],
+			[49, 'C'],
+			[50, null],
+			[999, null]
+		];
+		for (const [y, want] of drops) {
+			const got = dropBefore(slots, y);
+			if (got !== want) failures.push(`  dropBefore(y=${y}) = ${got}, expected ${want}`);
+		}
+		if (dropBefore([], 10) !== null) failures.push('  dropBefore on an empty list was not the end');
+	}
+
+	// `--reply`, which the corpus has no cases for — the source implements it
+	// in a React component rather than in a module, so there was nothing to
+	// generate fixtures from. It decides whether a line is addressed to the
+	// reminder above the box, and it is the one place this port takes anything
+	// off a raw line before storing it, so it gets an oracle of its own.
+	{
+		const cases: [string, boolean, string][] = [
+			['--reply it came back', true, 'it came back'],
+			['--REPLY it came back', true, 'it came back'],
+			['   --reply   it came back  ', true, 'it came back'],
+			['--reply\tit came back', true, 'it came back'],
+			// Still typing: the space is what says the command is finished.
+			['--reply', false, '--reply'],
+			['--replying to the letter', false, '--replying to the letter'],
+			// Only at the front. Mid-sentence it is prose, the way the source
+			// anchors its regex.
+			['I said --reply and meant it', false, 'I said --reply and meant it'],
+			['', false, '']
+		];
+		for (const [draft, want, stripped] of cases) {
+			if (isReply(draft) !== want) {
+				failures.push(`  isReply(${JSON.stringify(draft)}) = ${!want}, expected ${want}`);
+			}
+			if (stripReply(draft) !== stripped) {
+				failures.push(
+					`  stripReply(${JSON.stringify(draft)}) = ${JSON.stringify(stripReply(draft))}, ` +
+						`expected ${JSON.stringify(stripped)}`
+				);
+			}
+		}
+		// A reply keeps its own syntax: the `{time}` on it resolves as usual, so
+		// an answer can start the next round.
+		if (stripReply('--reply ask again {2d} <shop>') !== 'ask again {2d} <shop>') {
+			failures.push('  stripReply took more than the command off the line');
+		}
+	}
+
+	// The three commands `--` opens. `todo` and `reply` are this port's
+	// addition to the suggestion source; a fourth would need a decision, not a
+	// push to this array.
+	{
+		const want = ['todo', 'reply'];
+		if (JSON.stringify(COMMANDS) !== JSON.stringify(want)) {
+			failures.push(`  COMMANDS is ${JSON.stringify(COMMANDS)}, expected ${JSON.stringify(want)}`);
+		}
+	}
+
+	// **Where the two features meet.** Accepting `--reply` from the suggestion
+	// panel has to produce a string `REPLY_RE` accepts, and the thing that
+	// makes it work is the trailing space `acceptSuggestion` appends. Nothing
+	// else ties those two files together, and either could be "tidied" without
+	// the other noticing.
+	{
+		for (const command of COMMANDS) {
+			const typed = `--${command.slice(0, 2)}`;
+			const after = acceptSuggestion(
+				{ value: typed, caret: typed.length, suggestIdx: 0, stats: {} },
+				command
+			);
+			if (after.value !== `--${command} `) {
+				failures.push(
+					`  accepting --${command} gave ${JSON.stringify(after.value)}, ` +
+						`expected ${JSON.stringify(`--${command} `)}`
+				);
+			}
+			if (after.caret !== after.value.length) {
+				failures.push(`  accepting --${command} left the caret at ${after.caret}`);
+			}
+		}
+		const accepted = acceptSuggestion(
+			{ value: '--re', caret: 4, suggestIdx: 0, stats: {} },
+			'reply'
+		);
+		if (!isReply(accepted.value + 'it came back')) {
+			failures.push('  a --reply accepted from the panel does not read as a reply');
+		}
+	}
+
 	return failures;
 }
 
@@ -816,6 +958,27 @@ const KNOWN_BAD: Record<string, string> = {
 
 // ── Runner ────────────────────────────────────────────────────────────────
 
+// ── Declared deviations, one case at a time ───────────────────────────────
+//
+// A whole file can be retired when the thing it describes is gone — the date
+// ruler took `timeline_draw` with it. This is the other shape: the module is
+// still here and still pinned, and *one* case describes behaviour this app has
+// deliberately changed.
+//
+// It is a table with a reason per case rather than a tolerance, for the same
+// reason `THEME` is a table: "we changed it on purpose" is the excuse a real
+// mistake hides behind. A deviated case that starts *passing* is reported too,
+// so the entry gets deleted rather than accumulating.
+const DEVIATIONS: Record<string, Record<string, string>> = {
+	capture_overlay: {
+		'overlay-suggest-directive-empty-query':
+			'`--` offers the commands before the folders. Upstream the `-` trigger ' +
+			'completes folder names only, so `--todo` — the most used command in the ' +
+			'app — can never be suggested and `--reply` cannot either. See COMMANDS ' +
+			'in capture-bar.ts. The tokenizer is untouched: 395/395 still pass.'
+	}
+};
+
 async function runFile(stem: string, verbose: boolean) {
 	const doc = JSON.parse(readFileSync(join(CORPUS, `${stem}.json`), 'utf8'));
 	const cases = doc.cases as { id: string; input: unknown; expected: unknown }[];
@@ -829,7 +992,10 @@ async function runFile(stem: string, verbose: boolean) {
 	let passed = 0;
 	let failed = 0;
 	let shown = 0;
+	let deviated = 0;
 	const lines: string[] = [];
+	const declared = DEVIATIONS[stem] ?? {};
+	const unclaimed = new Set(Object.keys(declared));
 
 	for (const c of cases) {
 		let actual: unknown;
@@ -844,6 +1010,16 @@ async function runFile(stem: string, verbose: boolean) {
 		const diffs = diff(actual, c.expected);
 		if (diffs.length === 0) {
 			passed++;
+			if (declared[c.id]) {
+				lines.push(`    [${c.id}] NO LONGER DEVIATES — delete its entry from DEVIATIONS`);
+			}
+			unclaimed.delete(c.id);
+			continue;
+		}
+		if (declared[c.id]) {
+			deviated++;
+			unclaimed.delete(c.id);
+			lines.push(`    [${c.id}] deviates on purpose: ${declared[c.id]}`);
 			continue;
 		}
 		failed++;
@@ -860,14 +1036,19 @@ async function runFile(stem: string, verbose: boolean) {
 		return { status: 'corpus', passed: 0, failed: 0, total: cases.length };
 	}
 
+	for (const id of unclaimed) {
+		lines.push(`    [${id}] declared as deviating but no such case in the corpus`);
+	}
+	const tail = deviated ? `  (${deviated} declared deviation${deviated > 1 ? 's' : ''})` : '';
 	console.log(
-		`  ${stem.padEnd(20)} ${failed === 0 ? 'PASS' : 'FAIL'}  ${passed}/${cases.length}`
+		`  ${stem.padEnd(20)} ${failed === 0 ? 'PASS' : 'FAIL'}  ` +
+			`${passed}/${cases.length - deviated}${tail}`
 	);
 	for (const l of lines) console.log(l);
 	if (failed && !verbose && failed > shown) {
 		console.log(`    … ${failed - shown} more failing case(s); re-run with -v`);
 	}
-	return { status: failed ? 'fail' : 'ok', passed, failed, total: cases.length };
+	return { status: failed ? 'fail' : 'ok', passed, failed, total: cases.length - deviated };
 }
 
 async function main(argv: string[]): Promise<number> {

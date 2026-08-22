@@ -44,6 +44,15 @@ from .config import LOG_DIR, ensure_dirs
 # ── Entry events. `id` is the entry's. ────────────────────────────────────
 # A new entry. `text` is the raw line as typed; `media`, when present, is the
 # list of files attached to it, as paths under data/media.
+#
+# `reply_to`, when present, is the id of the entry this one answers — a
+# `--reply` to a reminder that had come due. It is a field rather than
+# something derived from the text for the same reason `media` is: the line says
+# "reply", it does not say *to what*, and the answer is not recoverable from
+# any number of re-reads. The `--reply ` prefix itself is stripped before the
+# line is written, exactly as the source strips it: what you typed the command
+# *for* is stored, and the command was addressed to the app rather than to the
+# journal.
 CAPTURE = "capture"
 # One `--todo` line ticked / unticked. `line` is its index into the entry.
 CHECK = "check"
@@ -127,6 +136,40 @@ SET_GROUP = "set-group"
 RENAME_GROUP = "rename-group"
 DELETE_GROUP = "delete-group"
 
+# The order the groups are drawn in on one year's shelf. `id` is the **year**,
+# because the subject of a reordering is the shelf rather than any one group,
+# and `order` is the names in the order they should be read.
+#
+# The whole order rather than "this one moved to third": a move is only
+# meaningful against the arrangement it started from, so a replayed or
+# duplicated move line would land somewhere different the second time. A whole
+# order is idempotent — the same line applied twice is the same shelf — which is
+# the property every other fold in this log has and the one a restored backup
+# depends on.
+#
+# Groups the event does not name keep their relative order and follow the ones
+# it does. That is what makes a reorder written before a group existed still
+# mean something afterwards, and it is why this can be one event rather than a
+# migration whenever a folder joins a new heading.
+ORDER_GROUPS = "order-groups"
+
+# A tag lifted out of its brackets, and put back. `id` is the tag — a tag has no
+# id because a tag *is* its name, the same reason `rename-group` is keyed on a
+# name.
+#
+# Lifting is about how a word reads, not about where a line goes: `<garden>`
+# still files into whatever folder has claimed `garden`, and the raw line is
+# untouched, as every line in this log is. What changes is that the app stops
+# drawing the delimiters around that one word, so a tag you have stopped
+# thinking of as a tag reads as the prose it has become.
+#
+# Only `<tags>` can be lifted. A `\pattern`, an `@place` and a `{time}` are one
+# character of syntax and a word; a tag is the only kind whose sigil wraps the
+# word on both sides, and so the only one whose removal leaves the sentence
+# reading exactly as it was written.
+LIFT_TAG = "lift-tag"
+UNLIFT_TAG = "unlift-tag"
+
 # A chapter given a name by hand. `id` is the folder — or the literal `unfiled`,
 # which is an album you can open like any other and so is one you can name a
 # chapter in. `year` and `month` say which chapter; `text` is the name, and an
@@ -164,6 +207,9 @@ KINDS = {
     SET_GROUP,
     RENAME_GROUP,
     DELETE_GROUP,
+    ORDER_GROUPS,
+    LIFT_TAG,
+    UNLIFT_TAG,
     NAME_CHAPTER,
 }
 
@@ -191,8 +237,10 @@ def append(
     folder: str | None = None,
     ts: str | None = None,
     media: list[str] | None = None,
+    reply_to: str | None = None,
     year: str | None = None,
     month: int | None = None,
+    order: list[str] | None = None,
 ) -> dict:
     """Write one event. Never rewrites or deletes an existing line.
 
@@ -230,6 +278,14 @@ def append(
         event["year"] = year
     if month is not None:
         event["month"] = month
+    if reply_to:
+        event["reply_to"] = reply_to
+    if order is not None:
+        # Written even when empty, unlike `media`: an empty order is a real
+        # statement — the shelf has nothing arranged on it — and dropping the
+        # field would make that line indistinguishable from one that forgot to
+        # carry it.
+        event["order"] = list(order)
     if media:
         # Paths under data/media, not the files. A reference is a fact about
         # the entry in the same way the raw line is — it cannot be derived

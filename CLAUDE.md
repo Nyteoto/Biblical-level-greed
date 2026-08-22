@@ -175,6 +175,40 @@ editing frontend source leaves the app serving stale UI until you run
   byte-identical to one you tagged yourself and survives a rebuild. Never add a
   folder id to the capture payload — that would be a second kind of membership
   the fold cannot reproduce.
+- **There are three routes into a folder and all three are resolved:** a mapped
+  `<tag>`, a `--directive` naming the folder, and a filing by hand. A folder
+  claims **no tag of its own** — the registry holds the words the user chose to
+  point somewhere, and a word per folder that nobody typed is noise in the one
+  list that has to stay meaningful. A directive resolves against `folder_names`,
+  every name the folder has ever had, so a rename never un-files anything.
+  Do not put the folder's name back in the tag registry; that decision was made
+  once, reversed once, and the reversal is why the mapping screen is readable.
+- **Lifting a tag changes how it reads and nothing else.** A lifted `<garden>`
+  is drawn as `garden` wherever a captured line is rendered, and still files
+  exactly where it always did: the raw line is untouchable and membership is
+  still resolved from it. It is a log event (`lift-tag`) rather than a browser
+  preference, because it is a decision about the writing rather than about this
+  machine. Only `<tags>` can be lifted — a tag is the one kind whose sigil
+  wraps the word on both sides, so it is the only one whose removal leaves the
+  sentence reading as it was written.
+- **`--` opens three commands: `--todo`, `--reply`, `--"folder name"`.** The
+  first two are suggested ahead of folder names, which is a declared deviation
+  from the corpus — the source completes folder names only, so the most used
+  command in the app could never be completed. A command is **not** a missing
+  folder: `--reply` is a `directive` token because 395 tokenize fixtures say so,
+  and `validation.ts` is where that stops meaning "no such folder".
+- **A reply is stored, not derived, and the prefix never reaches the log.**
+  `--reply` is stripped client-side as the source strips it (40 parser fixtures
+  pin `cleanText` as keeping it), the link rides on the capture event as
+  `reply_to`, and answering dismisses the reminder it answers. `replied_by` is
+  the derived other end. Do not try to recover the thread from the text: the
+  line said "reply" and never said to what.
+- **The shelf's group order is one event carrying the whole order.**
+  `order-groups` names the year and lists its headings. A "moved to third"
+  event would land somewhere else on a replay, and duplicated or out-of-order
+  lines are a shape this log has to survive on read. The album sidebar and the
+  year shelf read and write that same order — dragging a heading on either is
+  the same act, and neither screen owns it.
 
 ## Deliberately absent
 
@@ -186,7 +220,7 @@ the one acknowledged gap.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 427 tests, ~3s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 459 tests, ~3s. Run them.
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend

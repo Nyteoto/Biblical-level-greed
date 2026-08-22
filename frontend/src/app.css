@@ -40,6 +40,39 @@
  * in a component is the same 700 the handoff table names. Nothing in the app
  * uses Tailwind's stock neutrals — the tech tree, which is the only older code
  * left, is on `stone` and is deliberately not re-lit.
+ *
+ * ## What each rung is *for*
+ *
+ * One hue means the ladder is the only thing left to say hierarchy with, and
+ * for a long time the app did not use it: a count of every colour application
+ * found `neutral-700` and the lit accent doing four fifths of the work and
+ * `accent-400/500/600` at literally zero. Everything was either prose or
+ * shouting, which is why the screens were hard to follow — there was no rung
+ * left to say "this, quietly".
+ *
+ * So the rungs have jobs. Reach for the one that matches the *role*, and if two
+ * things on a screen are the same rung, they are claiming to be the same kind
+ * of thing:
+ *
+ *   - **200 / 300** — ground furniture. Fills, tracks, the inside of a bar.
+ *     Never text.
+ *   - **400** — a mark you should not read: a rail beside a held row, a tick,
+ *     the resting state of an indicator. Never text.
+ *   - **500** — the quietest thing that may still be a *shape*: bars, rules,
+ *     a border that has to be found rather than seen. Never small text; it does
+ *     not clear the contrast line on this ground.
+ *   - **600** — metadata at rest. Timestamps, counts, units, the second half of
+ *     a label. The rung most of what is currently 700 should be.
+ *   - **700** — prose. The body of an entry, the default `body` colour, the
+ *     thing you are actually reading.
+ *   - **800** — the anchor in a list. A day heading, the name of the row you
+ *     are scanning for. One notch above the prose it sits over, which is all a
+ *     heading needs when it is already bold.
+ *   - **accent (peak)** — the app *speaking*: syntax tokens, the current
+ *     selection, a live edge, something that just happened. If it is on screen
+ *     at rest and it is not syntax, it is probably one rung too high.
+ *
+ * Hover moves one rung, never two — the same rule the shadow ladder keeps.
  */
 @theme {
 	--font-sans: 'JetBrains Mono Variable', ui-monospace, 'Fira Code', monospace;

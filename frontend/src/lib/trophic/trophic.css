@@ -258,8 +258,22 @@
 /* Where the banner sent you. A brief lift rather than a highlight: a colour
    wash would have to be a second accent, and the one-hue rule says no. The
    line simply comes forward for a moment and settles. */
+/* Landing on a line you were sent to — by the banner's reminder, or by
+   following a thread.
+ *
+ * Two stages, because they answer two different questions. The **flash** says
+ * *there* — it is over in under a second and it is the only part that uses peak
+ * emission. The **hold** says *this one*, and it stays until you look away: a
+ * rail at 400 and a tint you could not name if asked, which is exactly right
+ * for something that has to survive being read past. Scrolling a screen to a
+ * line and then leaving no mark on it is how the jump used to work, and it made
+ * you re-find by eye the thing the app had just found for you.
+ *
+ * The tint is `color-mix` on the accent rather than a rung, because it sits
+ * *under* text and has to stay below the ground's own contrast — a rung would
+ * be a fill, and this is a wash. */
 .trophic .entry-landed {
-	animation: entry-landed 2200ms ease-out both;
+	animation: entry-landed 900ms ease-out both;
 }
 
 @keyframes entry-landed {
@@ -271,8 +285,54 @@
 		transform: translateX(0);
 		opacity: 1;
 	}
+	40% {
+		background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+	}
 	100% {
 		transform: translateX(0);
 		opacity: 1;
 	}
+}
+
+/* Held until you click away. The padding is compensated by the margin so
+   nothing on the row moves when it lands — a line that shifts sideways as it is
+   marked is a line you have to re-read. */
+.trophic .entry-held {
+	background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+	box-shadow: inset 2px 0 0 0 var(--color-accent-400);
+	border-radius: 4px 10px 10px 4px;
+	padding: 4px 10px;
+	margin: -4px -10px;
+	transition:
+		background 220ms ease-out,
+		box-shadow 220ms ease-out;
+}
+
+/* The reminder strip while the draft is answering it. A lit rim rather than a
+   fill: the prompt is still the thing being read, and a filled card above the
+   capture box would out-shout the box. */
+.answering {
+	box-shadow:
+		0 0 0 1px var(--color-accent-700),
+		0 0 18px -6px var(--color-accent);
+}
+
+/* A reply, set against the margin. The corner nearest the thing it answers is
+   squared off, which is the one detail that makes a bubble read as pointing at
+   something rather than as a chip. */
+.reply-bubble {
+	border: 1px solid var(--color-accent-400);
+	background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+	color: var(--color-neutral-800);
+	border-radius: 14px 4px 14px 14px;
+	padding: 6px 13px;
+	transition:
+		background 150ms ease-out,
+		border-color 150ms ease-out;
+	overflow-wrap: anywhere;
+}
+/* One rung, never two. */
+.reply-bubble:hover {
+	border-color: var(--color-accent-500);
+	background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }

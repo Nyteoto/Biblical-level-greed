@@ -65,12 +65,21 @@
 		type BackupStatus,
 		type StorageReport
 	} from '$lib/api';
-	import { phosphorize } from '$lib/trophic/colors';
-	import { getFolders, getUnassignedTags, reindex, type Folder } from '$lib/trophic/api';
+	import { phosphorize, TOKEN_COLORS } from '$lib/trophic/colors';
+	import {
+		getFolders,
+		getTags,
+		getUnassignedTags,
+		reindex,
+		type Folder,
+		type TagCensus
+	} from '$lib/trophic/api';
+	import { lifted } from '$lib/trophic/lifted.svelte';
 
 	let report = $state<StorageReport | null>(null);
 	let backup = $state<BackupStatus | null>(null);
 	let folders = $state<Folder[]>([]);
+	let tags = $state<TagCensus[]>([]);
 	let unmapped = $state(0);
 	let error = $state<string | null>(null);
 	let busy = $state<string | null>(null);
@@ -82,16 +91,18 @@
 
 	async function load() {
 		try {
-			const [s, b, f, u] = await Promise.all([
+			const [s, b, f, u, t] = await Promise.all([
 				getStorage(),
 				getBackup(),
 				getFolders(),
-				getUnassignedTags()
+				getUnassignedTags(),
+				getTags()
 			]);
 			report = s;
 			backup = b;
 			folders = f.folders;
 			unmapped = u.total;
+			tags = t.tags;
 			error = null;
 		} catch (e) {
 			error = (e as Error).message;
@@ -194,6 +205,51 @@
 	/** Which tags point at a folder, in that folder's own colour. The mapping
 	 *  is the definition of the folder, not a summary of it. */
 	const mapped = $derived(folders.filter((f) => f.tags.length > 0 || f.state === 'active'));
+
+	/**
+	 * ## Lifting, and why it is on this screen
+	 *
+	 * A tag you have stopped thinking of as a tag is still bracketed in every
+	 * line you ever wrote with it, and the log cannot edit a line — nor should
+	 * it. Lifting is the way out: the app stops drawing that one tag's brackets
+	 * and it reads as the word it has become.
+	 *
+	 * It changes nothing else. `<garden>` lifted still files into whatever
+	 * folder claimed `garden`, the raw line is what it always was, and putting
+	 * it back is the same gesture again. That is why this sits beside the
+	 * mapping rather than under Log: it is about the vocabulary, not about how
+	 * the days are grouped on the way out.
+	 *
+	 * Only `<tags>` are here. A `\pattern`, an `@place` and a `{time}` are one
+	 * sigil and a word — take it away and the sentence is missing something. A
+	 * tag is the one kind wrapped on both sides, so it is the only one that can
+	 * be lifted out and leave the line reading as it was written.
+	 */
+	const liftStore = lifted();
+	let tagFilter = $state('');
+	const colorOf = $derived(new Map(folders.map((f) => [f.id, f.color])));
+
+	/** The census, narrowed by the field. Lifted tags stay in the list whatever
+	 *  is typed — they are the ones you came here to find again. */
+	const shownTags = $derived.by(() => {
+		const needle = tagFilter.trim().toLowerCase().replace(/^<|>$/g, '');
+		if (!needle) return tags;
+		return tags.filter((t) => t.tag.includes(needle) || t.lifted);
+	});
+	const liftedCount = $derived(tags.filter((t) => t.lifted).length);
+
+	async function toggleLift(row: TagCensus) {
+		error = null;
+		try {
+			await liftStore.set(row.tag, !row.lifted);
+			// The row is patched rather than the census refetched: the answer
+			// carries the whole lifted set already, and a reload would jump the
+			// list you are reading back to the top.
+			tags = tags.map((t) => (t.tag === row.tag ? { ...t, lifted: !row.lifted } : t));
+		} catch (e) {
+			error = (e as Error).message;
+		}
+	}
 
 	const OPENS_ON: { value: OpenOn; label: string }[] = [
 		{ value: 'shelf', label: 'Year shelf' },
@@ -481,7 +537,11 @@
 						     list in the Log does. They were flat links that did nothing
 						     under a finger, which on a touch screen reads as a list rather
 						     than as a set of doors. -->
-						<div class="rounded-[16px] bg-surface px-2 py-2 shadow-md">
+						<!-- Capped and scrolling inside itself, for the same reason the
+						     album sidebar is: this list is as long as the user's projects,
+						     and everything under it — the loose tags, the lifting — was
+						     reachable only by scrolling past all of them. -->
+						<div class="max-h-[40vh] overflow-y-auto rounded-[16px] bg-surface px-2 py-2 shadow-md">
 							{#each mapped as folder (folder.id)}
 								{@const shipped = folder.state === 'shipped'}
 								<a
@@ -522,16 +582,98 @@
 								</p>
 							{/each}
 
-							<a
-								href="/mapping"
-								class="flex items-center gap-3 rounded-[10px] px-2 py-3 transition-colors hover:bg-neutral-200"
-							>
-								<span class="min-w-0 flex-1 text-[14px] font-semibold text-accent-700">
-									{unmapped}
-									{unmapped === 1 ? 'tag points' : 'tags point'} nowhere
-								</span>
-								<span class="shrink-0 text-[13px] font-semibold">Map them →</span>
-							</a>
+						</div>
+
+						<!-- Outside the card, because it is the one row here that ever
+						     needs acting on and a capped list would scroll it out of
+						     sight. -->
+						<a
+							href="/mapping"
+							class="lift lift-sm flex items-center gap-3 rounded-[12px] bg-surface px-4 py-3 shadow-sm transition-colors"
+						>
+							<span class="min-w-0 flex-1 text-[14px] font-semibold text-accent-700">
+								{unmapped}
+								{unmapped === 1 ? 'tag points' : 'tags point'} nowhere
+							</span>
+							<span class="shrink-0 text-[13px] font-semibold">Map them →</span>
+						</a>
+
+						<!-- ── Lifting ──────────────────────────────────────────
+						     Every tag ever written, commonest first, and the one
+						     thing that can be done to a word: stop drawing its
+						     brackets. The card is capped and scrolls inside itself
+						     — a vocabulary is as long as the writing behind it, and
+						     this is the one list on the screen with no ceiling. -->
+						<div class="flex flex-col gap-2.5">
+							<div>
+								<div class="flex items-baseline gap-3">
+									<span class="text-[14px] font-bold">Lifted tags</span>
+									{#if liftedCount}
+										<span class="ml-auto shrink-0 text-[12px] text-neutral-700 tabular-nums">
+											{liftedCount} lifted
+										</span>
+									{/if}
+								</div>
+								<p class="mt-[5px] text-[12px] leading-[1.5] text-neutral-700">
+									A lifted tag reads as the word it has become. It still files where it
+									always did, and putting it back is the same gesture again.
+								</p>
+							</div>
+
+							{#if tags.length > 8}
+								<form
+									class="focus-pill flex items-center gap-2.5 rounded-[11px] bg-surface px-3.5 py-2.5 shadow-sm"
+									onsubmit={(e) => e.preventDefault()}
+								>
+									<span class="shrink-0 font-mono text-[13px] text-neutral-600">&lt;&gt;</span>
+									<input
+										bind:value={tagFilter}
+										placeholder="find a tag"
+										aria-label="find a tag"
+										class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-neutral-700"
+									/>
+								</form>
+							{/if}
+
+							<div class="max-h-[46vh] overflow-y-auto rounded-[16px] bg-surface px-2 py-2 shadow-md">
+								{#each shownTags as row (row.tag)}
+									<div class="flex items-center gap-3 rounded-[10px] px-2 py-2.5">
+										<!-- The tag as the log now draws it, which is the whole
+										     feedback this control needs: bracketed and lit, or
+										     the bare word in the prose weight. -->
+										<span
+											class="min-w-0 flex-1 truncate font-mono text-[13px] {row.lifted
+												? 'text-neutral-800'
+												: 'font-bold'}"
+											style={row.lifted
+												? undefined
+												: `color:${row.folder
+														? phosphorize(colorOf.get(row.folder) ?? '')
+														: TOKEN_COLORS.folder}`}
+										>
+											{row.lifted ? row.tag : `<${row.tag}>`}
+										</span>
+										<span class="shrink-0 text-[12px] text-neutral-700 tabular-nums">
+											{row.count}
+										</span>
+										<button
+											type="button"
+											class="shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition-colors {row.lifted
+												? 'text-neutral-700 hover:text-ink'
+												: 'text-accent-700 hover:bg-neutral-200'}"
+											onclick={() => toggleLift(row)}
+										>
+											{row.lifted ? 'Put it back' : 'Lift'}
+										</button>
+									</div>
+								{:else}
+									<p class="px-2 py-3 text-[13px] text-neutral-700">
+										{tags.length
+											? 'no tag here matches that.'
+											: 'nothing written with a tag yet.'}
+									</p>
+								{/each}
+							</div>
 						</div>
 					{:else if current.id === 'log'}
 						<div class="rounded-[16px] bg-surface px-4 py-2 shadow-md">

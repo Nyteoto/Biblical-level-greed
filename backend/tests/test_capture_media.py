@@ -117,7 +117,7 @@ def test_media_does_not_disturb_the_derived_fields(capture_store):
 
 def test_an_entry_with_media_lands_in_its_folder(capture_store):
     """Nothing downstream needs to know an entry has a file on it."""
-    folder = capture_store.create_folder("Gym")
+    folder = capture_store.create_folder("Gym", ["gym"])
     ref = _stored()
     capture_store.capture("<gym> squats", media=[ref])
 

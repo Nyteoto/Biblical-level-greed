@@ -70,10 +70,17 @@ changed no fixture: 395/395 and 1185/1185 still pass, and the parser's corpus
 adapter projects six named fields, so `places` is invisible to it by
 construction.
 
-**A `--directive` files the entry under its own name.** `--work` puts the entry
-in the tag `work`, which is exactly where `<work>` would have put it. The source
-instead looks the directive up in the folder table at write time and drops it if
-nothing matches; that loses it, and is the one place the port refuses to follow.
+**A `--directive` names a folder, and is not a tag.** It is derived onto the
+entry as its own field and resolves against the folder's *name* at read time.
+The source looks the directive up in the folder table at write time and drops it
+if nothing matches; that loses it, and is the one place the port refuses to
+follow — here the word is on the raw line forever and in a derived column on
+every rebuild, so a folder made next year collects every `--directive` that has
+been waiting for it.
+
+It used to travel as a tag instead — `derive()` appended it to the entry's tag
+list — which worked because of the claim described below, and stopped working
+the day that claim was removed. See **22 Aug 2026** at the end of this file.
 
 ## Folders, and the taxonomy of tags
 
@@ -87,15 +94,29 @@ mapping retroactive: point `<deploy>` at Work and every entry ever written with
 `<deploy>` in it is in Work, with nothing to migrate and nothing to backfill.
 Unmap it and they leave again.
 
-**A folder claims the tag of its own name, at creation and at rename.** This is
-an addition, not a port: the source upserts that tag lazily, the first time an
-entry is filed by a directive into a folder that has no tags. Doing it eagerly
-means there is exactly one mechanism — a tag points at a folder — and `--work`
-needs no special case anywhere downstream. The rename case is the load-bearing
-one: the old name stays mapped, so entries written `--admin` do not silently
-fall out of the folder when it becomes `Paperwork`. A folder never *steals* a
-name already mapped elsewhere; an explicit mapping does move a tag, because
-that is the entire gesture on the mapping screen.
+**A folder claims no tag at all — and it used to claim its own name.** The
+claim was an addition rather than a port, and the argument for it was that one
+mechanism is better than two: a tag points at a folder, `--work` arrives through
+the ordinary mapping, no special case anywhere downstream.
+
+**It was removed on 22 Aug 2026, by the person using the app**, and the reason
+is worth keeping because it is not a reason the code could have found. The
+registry is the list of words you have decided point somewhere — its whole value
+is that it is *semantic and non-obvious*, `karamazos_brothers` into Book
+thoughts. A folder claiming its own name fills that list with a word per folder
+that nobody ever typed and nobody ever will, and the noise is in the one place
+that most needed to stay meaningful. Twelve folders, eleven dead entries.
+
+What replaced it: a folder answers to **every name it has ever had**
+(`folder_names`, derived from the create and rename events), and a directive
+resolves against that. So the rename case is still load-bearing and still
+handled — entries written `--admin` follow the folder into being called
+Paperwork — and it now costs nothing in the registry rather than two tags. A
+name belongs to one folder, keyed like `folder_tags`, so a new folder called
+Admin takes `--admin` back: a name means what it means now.
+
+An explicit mapping still moves a tag, because that is the entire gesture on the
+mapping screen.
 
 **One tag, one folder.** `folder_tags` is keyed on the tag, which is this log's
 spelling of `@@unique([userId, tagName])`. `unmap-tag` names the folder it is
@@ -290,8 +311,10 @@ tiebreaker rather than either prose.
 ## What is not built yet
 
 The codex and thinking-pond screens and the insight engine behind them,
-`--draw`, `--reply`, images, and onboarding. Encryption is refused rather than
-pending — see `trophic/README.md` for why.
+`--draw`, images, and onboarding. Encryption is refused rather than pending —
+see `trophic/README.md` for why.
+
+`--reply` **is** built; see *The three commands* below.
 
 Three hooks from the source are ported: the device classification
 (`device.ts`), the on-screen-keyboard test — which earns its keep on the syntax
@@ -318,6 +341,65 @@ and offers to create the folder inline; `--work <garden>` when `<garden>` is
 Home's blinks both and refuses to send. Nothing else about a draft is
 checkable — a tag no folder has claimed is not a mistake, it is how tags start.
 
+## The three commands, and the reply
+
+`--` opens three things and not one: `--todo`, `--reply`, and `--"folder
+name"`. That the first two were missing was not an omission in the port — it is
+what the source does, faithfully copied, and it is worth writing down because
+both halves look like bugs and only one was.
+
+**`--reply` blinked red.** `tokenize.ts` reserves the source's nav words —
+`codex`, `folders`, `settings`, `assign`, `logout`, `dev`, `draw` — but not
+`reply`, while `parser.ts` reserves `reply` and not `draw`. The two lists
+disagree in the source, both were ported exactly, and 395 tokenize fixtures pin
+`--reply` as a `directive` token. So the validation layer saw a directive,
+looked for a folder called "reply", found none, and locked the bar. The
+tokenizer is not the place to fix that: the token stays what the corpus says it
+is, and `validation.ts` decides that a **command is not a missing folder**.
+
+**`--todo` was never suggested**, and it is the most used command in the app.
+The `-` trigger's completion source was folder names only, so the one word you
+type constantly could not be completed while three folder names could.
+`COMMANDS` in `capture-bar.ts` now seeds that list ahead of the folders. This
+is a **declared deviation** — see `DEVIATIONS` in `scripts/verify-ui.ts`, which
+carries a reason per case, reports a deviated case that starts passing, and
+reports one that no longer exists. One `capture_overlay` case is listed. The
+tokenizer is untouched and its 395 still pass.
+
+### Replying to a reminder
+
+The mechanic the schema describes (`replyToEntryId`: "the Log renders this
+entry right-aligned (chat-bubble) and clickable, so self-conversations read as
+threaded messages over time") and `CaptureClient.tsx` implements:
+
+- A `{time}` that has come due surfaces **one** prompt above the capture box,
+  oldest first. The strip says how to answer it, because `--reply` is the only
+  part of this syntax you cannot discover by typing a sigil and reading the
+  panel — it belongs to the moment rather than to the vocabulary.
+- `--reply <thought>` answers it. No pending reminder and the bar refuses with
+  the source's own words. The command is stripped **client-side**, exactly as
+  the source strips it, and the link is written on the capture event as
+  `reply_to`: 40 parser fixtures pin `cleanText` as *keeping* `--reply`, so
+  stripping it in the parser was never available. Nothing is lost by that —
+  what the command encoded is the field.
+- Answering **dismisses** the reminder it answers, resolved server-side so the
+  screen and the log cannot disagree about which prompt was dealt with. A reply
+  is otherwise an ordinary entry: its own `{time}` resolves, so an answer can
+  start the next round.
+- The log draws the thread from both ends. `reply_to` is stored; `replied_by`
+  is derived on the read, over an index on `(reply_to, ts)` — on the pair,
+  because `reply_to` alone left sqlite sorting matches in a temp b-tree once
+  per row, which
+  `test_the_newest_first_reads_do_not_scan_the_whole_log` caught.
+
+**Following a thread had to fix the jump first.** The far end of a thread is
+old by definition, old days are quiet, and quiet days are folded — so the
+landing effect now opens the stretch its target is inside before scrolling.
+It also does not route an in-page jump through `?entry=`: `replaceState` is
+shallow and does not re-run the derived that reads the URL, so a tap set the
+address bar and nothing else. Arriving *at* the screen still comes through the
+URL, which is what the banner uses and what survives a reload.
+
 ## Picking this up
 
 **Where this stands, 16 Aug 2026.** The port is no longer the work. Capture is
@@ -340,6 +422,55 @@ Shipped in the last session, all four gates green:
 - **The folder page is a project page** — cover, `2 days · 28 Jul → 16 Aug`,
   the state control, a contact-sheet toggle, rename and delete. The log no
   longer carries the folder list; that moved here.
+
+Since then, five things about reading the app back at density — the shelf and
+the sidebar were both built when there were eight folders, and neither had been
+seen at forty:
+
+- **A tag can be lifted.** `lift-tag` / `unlift-tag`, keyed on the tag itself,
+  and a `lifted` set on `/vocab`. A lifted tag is drawn without its brackets
+  wherever a captured line is rendered and is unchanged in every other respect
+  — it files where it always did, and the line is what was typed. Only `<tags>`
+  qualify: a tag is the one kind wrapped on both sides, so it is the only one
+  whose removal leaves the sentence reading as written. The control is on
+  Settings → Folders & tags, over `/api/capture/tags`.
+- **The shelf's groups can be arranged.** `order-groups` carries the *whole*
+  order for one year, because an order replayed twice is the same shelf and a
+  move replayed twice is not. `index.order_seqs` is the one rule both `fold`
+  and the targeted mirror use.
+- **Hold, then drag.** `sortable.ts` picks the gesture up where `HoldRing`
+  leaves it: the corpus-pinned press fires with the finger still down, so
+  moving afterwards is a drag and letting go without moving is the panel it
+  always was. The two pure halves — `dropBefore`, `moveBefore` — are covered by
+  `localChecks()` in `verify:ui`, because they decide what gets written to the
+  log.
+- **The album sidebar carries the groups too**, folded and capped, with the
+  chapter list under its own fold and cap beneath. Dragging a heading works
+  from either screen and writes the same order.
+- **The contact sheet is only pictures.** The overview card is gone while it is
+  open, as the day column already was.
+
+**22 Aug 2026 — the registry holds only what you chose.** A folder no longer
+claims the tag of its own name, at creation or at rename; see *Folders, and the
+taxonomy of tags* above for the argument and what replaced it. Three parts:
+
+- `entries.directive` is a derived column and `folder_names` is a derived
+  table. A directive resolves against every name its folder has ever answered
+  to, so renaming never un-files anything and nothing is stored to make that
+  true. `_MEMBERSHIP` gained a third route and `folder_entries` — which had
+  kept its own copy of the rule — was made to use the shared one.
+- **The pin still writes a tag, and cannot write the directive instead.** That
+  is the obvious-looking fix and it is wrong: a directive names one folder, so a
+  pinned `--garden` plus any `<tag>` mapped elsewhere trips the conflict check
+  in `validation.ts` and locks the bar. A folder with no tag pointing at it
+  cannot be pinned, and the menu says so.
+- A **lifted** tag drops off the mapping screen and out of the "points nowhere"
+  count. A word you have said is not a tag should not go on asking to be filed.
+
+The live log was cleaned up in the same session: ten never-written name-claims
+unmapped and four loose tags lifted, which moved no entry out of any folder —
+an unwritten tag cannot be holding anything up. `<health>` was kept, because it
+is a name-claim that has actually been written.
 
 Deliberately left for next time, in the order they were argued for:
 
@@ -366,9 +497,9 @@ mounted at `/api/capture/`, and the four screens above are built and rendered
 end-to-end against a scratch data dir. Everything below passes:
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q          # 334, of which 77 are capture's
+.venv/bin/python -m pytest backend/tests -q          # 459, of which 190 are capture's
 python3 trophic/golden/verify_golden.py              # 1348 passed, 920 not yet covered
-cd frontend && npm run verify:ui                     # 771 passed, 0 failed
+cd frontend && npm run verify:ui                     # 770 passed, 0 failed, 1 deviation
 cd frontend && npm run check && npm run build        # 0 errors
 ./run.sh                                             # both apps, port 8787
 ```

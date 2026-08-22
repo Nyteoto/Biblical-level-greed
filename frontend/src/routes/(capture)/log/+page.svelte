@@ -33,6 +33,7 @@
 		setFolderGroup,
 		renameGroup,
 		deleteGroup,
+		orderGroups,
 		type Album,
 		type Folder,
 		type Shelf,
@@ -43,6 +44,7 @@
 	import { collapsedGroups } from '$lib/trophic/collapsed.svelte';
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import { holdable } from '$lib/trophic/holdable';
+	import { moveBefore, sortable } from '$lib/trophic/sortable';
 
 	let { data }: { data: { shelf?: Shelf; key?: string } } = $props();
 
@@ -196,6 +198,34 @@
 		}))
 	);
 
+	/**
+	 * Arranging the shelf: hold a heading and drag it.
+	 *
+	 * The order is the *shelf's*, not this screen's — the album sidebar reads
+	 * the same `shelf.groups` and draws its headings in the same order, so a
+	 * shelf arranged here is arranged there and the other way round. See
+	 * `order-groups` in eventlog.py for why the whole order goes over the wire
+	 * rather than a move.
+	 *
+	 * The drop is applied here before the request goes out. Not for speed: the
+	 * server answers with the whole shelf, and letting the headings snap back to
+	 * where they were for the length of a round trip is the thing that makes a
+	 * drag feel like it did not take.
+	 */
+	let dragging = $state<string | null>(null);
+	let dropAt = $state<string | null>(null);
+
+	function dropGroup(name: string, before: string | null) {
+		const year = shelf?.year;
+		dragging = null;
+		dropAt = null;
+		if (!shelf || !year) return;
+		const next = moveBefore(shelf.groups, name, before);
+		if (next === shelf.groups) return;
+		shelf.groups = next;
+		act(orderGroups(year, next));
+	}
+
 	/** Big cards for what is running, one-line strips for what is not. The
 	 *  split is by size rather than by state: an album with three entries in it
 	 *  does not earn a mosaic even if the folder is marked active.
@@ -259,7 +289,7 @@
 					type="button"
 					class="rounded-[12px] px-3 py-2.5 text-[15px] transition-colors {on
 						? 'accent-fill font-extrabold'
-						: 'font-semibold text-neutral-700 hover:text-ink'}"
+						: 'font-semibold text-neutral-600 hover:text-neutral-800'}"
 					onclick={() => {
 						logSettings.setYearAlbums(true);
 						year = y;
@@ -288,7 +318,7 @@
 				     year on their left nor the search on their right. -->
 				<div class="flex min-w-0 items-end gap-7">
 					<div class="min-w-0">
-					<div class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">
+					<div class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
 						Year shelf
 					</div>
 					<div class="mt-2 flex items-baseline gap-4">
@@ -300,7 +330,7 @@
 						{#key shelfYear}
 							<h1
 								use:pixelate={{ block: 3 }}
-								class="text-[64px] leading-[0.9] font-extrabold tracking-[0.02em]"
+								class="text-[64px] leading-[0.9] font-extrabold tracking-[0.02em] text-neutral-800"
 							>
 								{shelfYear}
 							</h1>
@@ -309,7 +339,7 @@
 							<!-- Marks rather than nouns: three numbers and three words was
 							     mostly words, and the words never change. -->
 							<span
-								class="flex items-center gap-3.5 text-[14px] text-neutral-700 tabular-nums"
+								class="flex items-center gap-3.5 text-[14px] text-neutral-600 tabular-nums"
 							>
 								<span class="flex items-center gap-1.5">
 									<Glyph kind="album" count={shelf.albums.length} />
@@ -341,7 +371,7 @@
 					{#if shelf && shelf.unfiled > 0}
 						<a
 							href={albumHref(null)}
-							class="flex items-center gap-2.5 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-neutral-700 transition-colors hover:border-neutral-600 hover:text-ink"
+							class="flex items-center gap-2.5 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-neutral-600 transition-colors hover:border-neutral-500 hover:text-neutral-800"
 						>
 							<span class="text-[13px]">
 								Unfiled{logSettings.yearAlbums ? ' this year' : ''}
@@ -362,7 +392,7 @@
 								placeholder="name it"
 								aria-label="new folder name"
 								size="12"
-								class="min-w-0 bg-transparent text-[13px] font-semibold placeholder:font-normal placeholder:text-neutral-700"
+								class="min-w-0 bg-transparent text-[13px] font-semibold placeholder:font-normal placeholder:text-neutral-600"
 								onkeydown={(e) => {
 									if (e.key === 'Escape') {
 										creating = false;
@@ -373,12 +403,12 @@
 									if (!newName.trim()) creating = false;
 								}}
 							/>
-							<span class="shrink-0 text-[11px] text-neutral-700">↵</span>
+							<span class="shrink-0 text-[11px] text-neutral-600">↵</span>
 						</form>
 					{:else}
 						<button
 							type="button"
-							class="flex items-center gap-2 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-[13px] text-neutral-700 transition-colors hover:border-accent-700 hover:text-accent-700"
+							class="flex items-center gap-2 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-[13px] text-neutral-600 transition-colors hover:border-accent-500 hover:text-neutral-800"
 							onclick={() => (creating = true)}
 						>
 							<span class="text-[15px] leading-none">+</span>
@@ -412,7 +442,7 @@
 					<input
 						bind:value={jump}
 						placeholder="Jump to a date, tag or word"
-						class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-neutral-700"
+						class="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-neutral-600"
 					/>
 				</form>
 			</div>
@@ -422,9 +452,9 @@
 			{/if}
 
 			{#if loading && !shelf}
-				<p class="text-[13px] text-neutral-700">reading…</p>
+				<p class="text-[13px] text-neutral-600">reading…</p>
 			{:else if shelf && shelf.albums.length === 0 && shelf.unfiled === 0}
-				<p class="text-[13px] text-neutral-700">capture something and it will be here.</p>
+				<p class="text-[13px] text-neutral-600">capture something and it will be here.</p>
 			{:else if shelf}
 				{#snippet cards(list: Album[])}
 					{@const part = split(list)}
@@ -438,7 +468,7 @@
 							>
 								<Mosaic refs={album.lead} />
 								<div class="flex items-baseline justify-between gap-2.5">
-									<span class="truncate text-[20px] font-bold tracking-[-0.015em]">
+									<span class="truncate text-[20px] font-bold tracking-[-0.015em] text-neutral-800">
 										{album.name}
 									</span>
 									{#if STATE_WORD[album.state]}
@@ -450,7 +480,7 @@
 									{/if}
 								</div>
 								<div
-									class="flex items-baseline justify-between text-[12px] text-neutral-700 tabular-nums"
+									class="flex items-baseline justify-between text-[12px] text-neutral-600 tabular-nums"
 								>
 									<span class="flex items-center gap-3">
 										<span class="flex items-center gap-1.5">
@@ -501,7 +531,7 @@
 								</div>
 								<div class="min-w-0 flex-1">
 									<div class="truncate text-[17px] font-bold tracking-[-0.01em]">{album.name}</div>
-									<div class="mt-[3px] flex items-center gap-1.5 text-[12px] text-neutral-700">
+									<div class="mt-[3px] flex items-center gap-1.5 text-[12px] text-neutral-600">
 										<Glyph kind="entries" count={album.entry_count} size={12} />
 										<span class="tabular-nums">{album.entry_count}</span>
 										{#if album.months}<span class="ml-1.5">{album.months}</span>{/if}
@@ -509,7 +539,7 @@
 								</div>
 								{#if STATE_WORD[album.state]}
 									<span
-										class="shrink-0 text-[10px] font-bold tracking-[0.1em] text-neutral-700 uppercase"
+										class="shrink-0 text-[10px] font-bold tracking-[0.1em] text-neutral-600 uppercase"
 									>
 										{STATE_WORD[album.state]}
 									</span>
@@ -524,46 +554,92 @@
 					{@render cards(ungrouped)}
 				</div>
 
-				<!-- Then the named groups, in the order they were first named. A
-				     heading is a button over its own grid: the whole row is the
-				     hit area, because a chevron alone is a 12px target for a
-				     gesture you make constantly. -->
-				{#each sections as section (section.name)}
-					{@const shut = folded.isShut(shelf.year, section.name)}
-					<div class="mt-[34px] flex flex-col gap-[18px]">
-						<button
-							type="button"
-							class="group/head flex w-full items-center gap-2.5 text-left"
-							aria-expanded={!shut}
-							use:holdable={(x, y) => (groupPanel = { name: section.name, x, y })}
-							onclick={() => folded.toggle(shelf?.year ?? null, section.name)}
-						>
-							<span
-								class="inline-block text-[13px] leading-none text-neutral-600 transition-transform duration-150 group-hover/head:text-ink {shut
-									? ''
-									: 'rotate-90'}"
+				<!-- Then the named groups, in the shelf's order. A heading is a
+				     button over its own grid: the whole row is the hit area,
+				     because a chevron alone is a 12px target for a gesture you
+				     make constantly.
+
+				     Hold one and it can be dragged into a different place on the
+				     shelf; hold it and let go, and it is the properties panel it
+				     always was. One gesture, two meanings, decided by whether you
+				     moved — see `sortable.ts`. -->
+				<div data-sort-list="shelf-groups" class="contents">
+					{#each sections as section (section.name)}
+						{@const shut = folded.isShut(shelf.year, section.name)}
+						<!-- A heading belongs to the grid under it, so it sits close to
+						     that and far from the group above: ~36px over, 14px under.
+						     It was 60, and then 80 once the drop marker below joined the
+						     flow — which read as five unrelated shelves rather than one
+						     shelf with five headings on it. -->
+						<div class="relative mt-[10px] flex flex-col gap-[14px]">
+							<!-- Where it would land. A line rather than a gap that opens:
+							     the grids below the headings are tall, and a shelf that
+							     reflowed under the finger would be redrawing the thing
+							     being aimed at.
+							
+							     `absolute`, so it costs no layout. In the flow it was 2px
+							     of line plus a whole gap of air above every heading, all
+							     the time, to say something only ever true mid-drag. -->
+							<div
+								class="pointer-events-none absolute -top-[9px] right-0 left-0 h-[2px] rounded-full transition-colors {dragging &&
+								dropAt === section.name
+									? 'bg-accent-700'
+									: 'bg-transparent'}"
+							></div>
+							<button
+								type="button"
+								class="group/head flex w-full items-center gap-2.5 text-left transition-opacity {dragging ===
+								section.name
+									? 'opacity-50'
+									: ''}"
+								aria-expanded={!shut}
+								use:sortable={{
+									key: section.name,
+									list: 'shelf-groups',
+									onhold: (x, y) => (groupPanel = { name: section.name, x, y }),
+									onpick: () => (dragging = section.name),
+									onover: (before) => (dropAt = before),
+									ondrop: (before) => dropGroup(section.name, before),
+									oncancel: () => {
+										dragging = null;
+										dropAt = null;
+									}
+								}}
+								onclick={() => folded.toggle(shelf?.year ?? null, section.name)}
 							>
-								▶
-							</span>
-							<span
-								class="text-[11px] font-bold tracking-[0.22em] text-neutral-700 uppercase transition-colors group-hover/head:text-ink"
-							>
-								{section.name}
-							</span>
-							<!-- The count is what a folded group still has to say. -->
-							<span class="flex items-center gap-1.5 text-[12px] text-neutral-700 tabular-nums">
-								<Glyph kind="album" count={section.albums.length} size={12} />
-								{section.albums.length}
-							</span>
-							<span class="h-px flex-1 bg-neutral-300"></span>
-						</button>
-						{#if !shut}
-							<div class="grid grid-cols-3 gap-[22px]">
-								{@render cards(section.albums)}
-							</div>
-						{/if}
-					</div>
-				{/each}
+								<span
+									class="inline-block text-[13px] leading-none text-neutral-600 transition-transform duration-150 group-hover/head:text-ink {shut
+										? ''
+										: 'rotate-90'}"
+								>
+									▶
+								</span>
+								<span
+									class="text-[11px] font-bold tracking-[0.22em] text-neutral-600 uppercase transition-colors group-hover/head:text-neutral-800"
+								>
+									{section.name}
+								</span>
+								<!-- The count is what a folded group still has to say. -->
+								<span class="flex items-center gap-1.5 text-[12px] text-neutral-600 tabular-nums">
+									<Glyph kind="album" count={section.albums.length} size={12} />
+									{section.albums.length}
+								</span>
+								<span class="h-px flex-1 bg-neutral-300"></span>
+							</button>
+							{#if !shut}
+								<div class="grid grid-cols-3 gap-[22px]">
+									{@render cards(section.albums)}
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+
+				<!-- The foot of the arrangement: dropped past the last heading, a
+				     group goes to the end. -->
+				{#if dragging && dropAt === null}
+					<div class="mt-[18px] h-[2px] rounded-full bg-accent-700"></div>
+				{/if}
 
 				<!-- The year below, pinned to the foot, half off the bottom edge:
 				     the shelf hands back rather than ending. -->
@@ -574,10 +650,10 @@
 						class="lift lift-md mt-auto flex items-center gap-5 rounded-t-[16px] bg-surface px-[22px] py-[18px] text-left shadow-md"
 						onclick={() => (year = before.year)}
 					>
-						<span class="text-[22px] font-extrabold tracking-[-0.02em] text-neutral-700">
+						<span class="text-[22px] font-extrabold tracking-[-0.02em] text-neutral-800">
 							{before.year}
 						</span>
-						<span class="text-[13px] text-neutral-700">
+						<span class="text-[13px] text-neutral-600">
 							{before.entries.toLocaleString()} entries
 						</span>
 						<span class="ml-auto text-[13px] font-semibold">Open year →</span>

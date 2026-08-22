@@ -21,6 +21,18 @@ export interface Entry {
 	manual_folders: string[];
 	/** Files attached at capture time, as paths under data/media. */
 	media: string[];
+	/** The `--directive`, lowercased, or `''`. Beside `folders` rather than in
+	 *  it: a tag is a word you chose and pointed somewhere, a directive names a
+	 *  folder outright and resolves against its name. Only the first belongs in
+	 *  the registry. */
+	directive: string;
+	/** The entry this one answers — a `--reply` to a reminder that had come
+	 *  due — or `''`. Stored on the event, because the line said "reply" and
+	 *  did not say to what. */
+	reply_to: string;
+	/** And the other end of the thread: what answered *this* entry, or `''`.
+	 *  Derived from `reply_to` on the read, so the pair cannot disagree. */
+	replied_by: string;
 }
 
 /** The two URLs a stored file has: the original, and what to draw. The display
@@ -36,6 +48,19 @@ export interface Vocab {
 	times: string[];
 	patterns: string[];
 	places: string[];
+	/** Tags whose brackets are no longer drawn — see `lifted.svelte.ts`. Still
+	 *  tags in every other sense: they file where they always did and the
+	 *  autocomplete still offers them. */
+	lifted: string[];
+}
+
+/** One tag, as the Settings screen reads it: how often it was written, which
+ *  folder claims it (`''` for none), and whether it has been lifted. */
+export interface TagCensus {
+	tag: string;
+	count: number;
+	folder: string;
+	lifted: boolean;
 }
 
 export interface Folder {
@@ -193,13 +218,16 @@ export const getEntries = (params: { date?: string; from?: string; to?: string; 
 /** Where a queued capture is replayed to. The retry queue stores a URL and a
  *  body rather than a call, so it has to know the absolute path. */
 export const CAPTURE_URL = '/api/capture/entries';
-export const captureBody = (raw_text: string, media: string[] = []) =>
-	JSON.stringify({ raw_text, media });
+export const captureBody = (raw_text: string, media: string[] = [], reply_to?: string) =>
+	JSON.stringify(reply_to ? { raw_text, media, reply_to } : { raw_text, media });
 
-export const capture = (raw_text: string, media: string[] = []) =>
+/** `reply_to` is the entry this line answers. The `--reply ` prefix is stripped
+ *  before the text gets here — the same as the source — so what is stored is
+ *  the thought, and the reminder that prompted it is dismissed server-side. */
+export const capture = (raw_text: string, media: string[] = [], reply_to?: string) =>
 	call<{ entry: Entry }>('/entries', {
 		method: 'POST',
-		body: captureBody(raw_text, media)
+		body: captureBody(raw_text, media, reply_to)
 	});
 
 export const toggleLine = (id: string, line: number) =>
@@ -357,6 +385,32 @@ export const nameChapter = (
 		method: 'PUT',
 		body: JSON.stringify({ year, month, name })
 	});
+
+/**
+ * Arrange one year's group headings.
+ *
+ * The whole order goes over, not "this one moved to third": an order applied
+ * twice is the same shelf and a move applied twice is not, which is what lets
+ * the log replay it. Groups left out of `order` keep their relative place
+ * behind the ones named, so a stale read cannot silently reshuffle the rest.
+ */
+export const orderGroups = (year: string, order: string[]) =>
+	call<Shelf & { version: number }>('/groups/order', {
+		method: 'POST',
+		body: JSON.stringify({ year, order })
+	});
+
+/** Stop drawing a tag's brackets, or draw them again. Presentation only:
+ *  nothing about where the line files changes. Answers with the whole lifted
+ *  set, which is what the renderer holds. */
+export const liftTag = (tag: string, lifted: boolean) =>
+	call<{ lifted: string[] }>('/tags/lift', {
+		method: 'POST',
+		body: JSON.stringify({ tag, lifted })
+	});
+
+/** Every tag ever written, commonest first. The Settings screen's list. */
+export const getTags = () => call<{ tags: TagCensus[] }>('/tags');
 
 /** Take a group off one year's shelf. Its folders return to the loose grid; no
  *  folder and no entry is touched. */

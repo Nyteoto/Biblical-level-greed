@@ -53,11 +53,14 @@
 	import {
 		assignEntry,
 		deleteFolder,
+		deleteGroup,
 		getAlbum,
 		getShelf,
 		getUnassignedTags,
 		nameChapter,
+		orderGroups,
 		patchFolder,
+		renameGroup,
 		toggleLine,
 		type AlbumView,
 		type Chapter,
@@ -72,6 +75,7 @@
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import HoldMenu from '$lib/trophic/HoldMenu.svelte';
 	import ChapterPanel from '$lib/trophic/ChapterPanel.svelte';
+	import GroupPanel from '$lib/trophic/GroupPanel.svelte';
 
 	const id = $derived(page.params.id!);
 	/** `unfiled` is an album you can open like any other and is not a folder. */
@@ -93,6 +97,10 @@
 	 *  months rather than a thing with an id, so what is held here is the whole
 	 *  record — the panel needs its first month to anchor a name to. */
 	let chapterPanel = $state<{ chapter: Chapter; x: number; y: number } | null>(null);
+	/** And a group heading's, from a hold on one in the sidebar. The same panel
+	 *  the year shelf opens: the heading is the same object on both screens, so
+	 *  it answers a hold with the same thing on both. */
+	let groupPanel = $state<{ name: string; x: number; y: number } | null>(null);
 	/** Whether the overview has taken the day column's place. Reset when the
 	 *  album changes: it is a property of reading *this* folder, not a mode. */
 	let overviewOpen = $state(false);
@@ -128,11 +136,40 @@
 	 *  the parameter, so a later reload of the same URL does not yank you back
 	 *  to a line you have since scrolled away from.
 	 */
-	const wanted = $derived(page.url.searchParams.get('entry'));
+	const arrived = $derived(page.url.searchParams.get('entry'));
+	/** A thread followed from inside this screen. Its own state rather than a
+	 *  `replaceState` into `?entry=`: shallow routing does not re-run the
+	 *  derived that reads the URL, so a tap on a reply set the address bar and
+	 *  nothing else — the effect below never saw it. Arriving *at* the screen
+	 *  still comes through the URL, which is what the banner uses and what
+	 *  makes it survive a reload. */
+	let target = $state('');
+	const wanted = $derived(target || arrived);
 	let landed = $state('');
+	/** The line the reader was last sent to, marked until they look away. The
+	 *  flash is over in under a second and is the wrong thing to rely on: a
+	 *  jump that lands mid-column and leaves no trace makes you re-find by eye
+	 *  the line the app had just found for you. See `.entry-held`. */
+	let held = $state('');
 
 	$effect(() => {
 		if (!wanted || !column || days.length === 0 || landed === wanted) return;
+		// **Open the stretch it is inside first.** Quiet days are folded, and a
+		// line the reader was *sent* to is one of the likeliest to be in one:
+		// an overdue reminder is old by definition, and the far end of a reply
+		// thread is older still. Without this the jump found no row, returned,
+		// and did nothing at all — the `?entry=` stayed in the URL and the
+		// screen simply sat there.
+		const home = album?.entries.find((e) => e.id === wanted)?.day;
+		if (home) {
+			const folded = rows.find(
+				(row) => row.kind === 'stretch' && row.days.some((d) => d.key === home)
+			);
+			if (folded && folded.kind === 'stretch' && !expanded.has(folded.days[0].key)) {
+				toggleStretch(folded.days[0].key);
+				return; // and land on the next pass, once the rows are drawn
+			}
+		}
 		const row = column.querySelector<HTMLElement>(`[data-entry="${CSS.escape(wanted)}"]`);
 		if (!row) return;
 		landed = wanted;
@@ -141,10 +178,14 @@
 		// class rather than a style so the animation lives with the rest of the
 		// vocabulary in `trophic.css`.
 		row.classList.add('entry-landed');
-		setTimeout(() => row.classList.remove('entry-landed'), 2200);
-		const url = new URL(page.url);
-		url.searchParams.delete('entry');
-		replaceState(url, {});
+		setTimeout(() => row.classList.remove('entry-landed'), 900);
+		held = wanted;
+		target = '';
+		if (arrived) {
+			const url = new URL(page.url);
+			url.searchParams.delete('entry');
+			replaceState(url, {});
+		}
 	});
 
 	$effect(() => {
@@ -206,6 +247,24 @@
 		column?.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
+	/** Follow a thread. It goes through the URL rather than straight to a
+	 *  `scrollIntoView` so that both ways in — the banner's reminder and a tap
+	 *  on a reply — land by exactly the same path, and so back works. */
+	function jumpTo(entryId: string) {
+		landed = '';
+		target = entryId;
+	}
+
+	/** Let go of the mark. Any click that is not on the held line itself —
+	 *  following a thread out of it sets a new one before this runs, which is
+	 *  why it tests the id rather than clearing unconditionally. */
+	function release(event: MouseEvent) {
+		if (!held) return;
+		const on = (event.target as HTMLElement | null)?.closest?.('[data-entry]');
+		if (on instanceof HTMLElement && on.dataset.entry === held) return;
+		held = '';
+	}
+
 	function toggleStretch(key: string) {
 		const next = new Set(expanded);
 		if (next.has(key)) next.delete(key);
@@ -263,6 +322,8 @@
 
 </script>
 
+
+<svelte:window onclick={release} onkeydown={(e) => e.key === 'Escape' && (held = '')} />
 
 <div class="flex h-dvh flex-col">
 	<!-- ── Header ────────────────────────────────────────────────────────
@@ -347,6 +408,15 @@
 			oncollapse={() => (collapsed = true)}
 			onhold={(f, x, y) => (panel = { folder: f, x, y })}
 			onholdchapter={(chapter, x, y) => (chapterPanel = { chapter, x, y })}
+			onholdgroup={(name, x, y) => (groupPanel = { name, x, y })}
+			onorder={(order) => {
+				// Applied here first for the same reason the year shelf does it:
+				// the answer carries the whole shelf back, and headings that snap
+				// to where they were for a round trip read as a drag that failed.
+				if (!shelf?.year) return;
+				shelf.groups = order;
+				act(orderGroups(shelf.year, order));
+			}}
 		/>
 	{/if}
 
@@ -357,8 +427,13 @@
 
 				<!-- The overview sits above the days and, when opened, replaces them
 				     rather than pushing them down — see `OverviewCard`. The unfiled
-				     pile has no folder to describe, so it has no card. -->
-				{#if album?.folder}
+				     pile has no folder to describe, so it has no card.
+
+				     And it is gone entirely under the contact sheet. Words off means
+				     words off: the sheet is the one view that is only the pictures,
+				     and a card of prose standing over it is the thing that view
+				     exists to get out of the way. -->
+				{#if album?.folder && !sheet}
 					{@const owner = album.folder}
 					<div class="mb-[22px] flex min-h-0 shrink-0 flex-col" class:flex-1={overviewOpen}>
 						<OverviewCard
@@ -407,6 +482,8 @@
 								ontoggle={onToggle}
 								onassign={(entry, x, y) => (menu = { x, y, entry })}
 								onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
+								onjump={jumpTo}
+								{held}
 							/>
 						{/if}
 
@@ -419,6 +496,8 @@
 										ontoggle={onToggle}
 										onassign={(entry, x, y) => (menu = { x, y, entry })}
 										onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
+										onjump={jumpTo}
+										{held}
 									/>
 								{:else if expanded.has(row.days[0].key)}
 									{#each row.days as day (day.key)}
@@ -427,7 +506,9 @@
 											onopen={(s, index) => (lightbox = { shots: s, index })}
 											ontoggle={onToggle}
 											onassign={(entry, x, y) => (menu = { x, y, entry })}
-										onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
+											onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
+											onjump={jumpTo}
+											{held}
 										/>
 									{/each}
 									<button
@@ -547,6 +628,30 @@
 			act(nameChapter(folderId, year, at, to));
 		}}
 		onclose={() => (chapterPanel = null)}
+	/>
+{/if}
+
+{#if groupPanel && shelf?.year}
+	{@const held = groupPanel}
+	{@const on = shelf.year}
+	<GroupPanel
+		x={held.x}
+		y={held.y}
+		name={held.name}
+		year={on}
+		count={shelf.albums.filter((a) => a.group === held.name).length}
+		onrename={(to) => {
+			// The request first, the teardown second — clearing `groupPanel`
+			// destroys this block and every `@const` in it. The same note as the
+			// media panels below, and the same bug if it is the other way round.
+			act(renameGroup(on, held.name, to));
+			groupPanel = null;
+		}}
+		ondelete={() => {
+			act(deleteGroup(on, held.name));
+			groupPanel = null;
+		}}
+		onclose={() => (groupPanel = null)}
 	/>
 {/if}
 

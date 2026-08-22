@@ -21,6 +21,7 @@
 	 * lightbox.
 	 */
 	import ColorizedText from './ColorizedText.svelte';
+	import ReplyBubble from './ReplyBubble.svelte';
 	import TodoEntryText from './TodoEntryText.svelte';
 	import { longpress } from './longpress';
 	import { mediaViewUrl } from './api';
@@ -36,8 +37,10 @@
 		today = false,
 		onopen,
 		onholdmedia,
+		onjump,
 		ontoggle,
-		onassign
+		onassign,
+		held = ''
 	}: {
 		day: Day;
 		today?: boolean;
@@ -46,6 +49,11 @@
 		 *  overview picture. The day's own media answers this as readily as the
 		 *  contact sheet's, because they are the same photographs. */
 		onholdmedia?: (ref: string, x: number, y: number) => void;
+		/** The entry the reader was last sent to, marked until they look away.
+		 *  See `.entry-held` — the flash says *there*, this says *this one*. */
+		held?: string;
+		/** Follow the thread, both ways. See `LightDay`. */
+		onjump?: (entryId: string) => void;
 		ontoggle?: (entry: Entry, line: number) => void;
 		onassign?: (entry: Entry, x: number, y: number) => void;
 	} = $props();
@@ -53,13 +61,27 @@
 	/** How many thumbnails fit before the overflow tile earns its place. */
 	const RIBBON = 5;
 
-	const shots = $derived(day.media);
+	/** **A reply's attachments are its own and stay in its bubble.** They are
+	 *  taken out of the day's pool before anything here runs, which is what
+	 *  stops a reply being promoted to the day's hero — and it had been: the
+	 *  photograph became the lead and the reply became its caption,
+	 *  left-aligned and unlinked, which is the one shape that says this is not
+	 *  part of a conversation. See `ReplyBubble`. */
+	const shots = $derived(day.media.filter((shot) => !shot.entry.reply_to));
 	const hero = $derived(shots[0] ?? null);
 	/** The line the lead photograph was written beside, promoted out of the
 	 *  list below so it is not said twice. */
 	const caption = $derived(hero?.entry ?? null);
 	const rest = $derived(day.lines.filter((entry) => entry.id !== caption?.id));
 	const ribbon = $derived(shots.slice(1));
+
+	/** Replies that said nothing — a photograph and no words. `day.lines` keeps
+	 *  only entries that said something, so without this a media-only reply
+	 *  would be stored, threaded, and drawn nowhere at all. */
+	const silentReplies = $derived(
+		day.entries.filter((entry) => entry.reply_to && !entry.clean_text.trim())
+	);
+	const spoken = $derived([...rest, ...silentReplies].sort((a, b) => b.ts.localeCompare(a.ts)));
 
 	const time = (entry: Entry) =>
 		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -167,22 +189,49 @@
 		</div>
 	{/if}
 
-	{#if rest.length}
+	{#if rest.length || silentReplies.length}
 		<div class="flex max-w-[700px] flex-col gap-3.5 pt-1">
-			{#each rest as entry, i (entry.id)}
+			{#each spoken as entry, i (entry.id)}
 				<!-- Right-click, or long-press on a phone: file this line into a
 				     folder without having tagged it. -->
+				{@const answered = !!entry.reply_to}
+				{@const answeredBy = !entry.reply_to && !!entry.replied_by}
+				<!-- A reply sits on the other side of the column here too. This is
+				     where most of them are: you answer a prompt now, so the answer
+				     is on today's block and the thing it answers is weeks up the
+				     page. See `LightDay` for the argument. -->
 				<div
 					data-entry={entry.id}
 					class="flex gap-5"
+					class:flex-row-reverse={answered}
+					class:entry-held={entry.id === held}
 					style="animation:entry-fade-in 400ms ease-out both;animation-delay:{i * 50}ms"
 					use:longpress={(x, y) => onassign?.(entry, x, y)}
 				>
-					<span class="w-[42px] shrink-0 pt-1 font-mono text-[11px] text-neutral-700">
+					<span class="w-[42px] shrink-0 pt-1 font-mono text-[11px] text-neutral-600">
 						{time(entry)}
 					</span>
 					{#if entry.todo_lines.length > 0}
 						<TodoEntryText {entry} ontoggle={(line) => ontoggle?.(entry, line)} />
+					{:else if answered}
+						<div class="min-w-0 text-[17px] leading-[1.55] font-light">
+							<ReplyBubble {entry} {onjump} {onopen} />
+						</div>
+					{:else if answeredBy}
+						<button
+							type="button"
+							class="group/answered min-w-0 text-left text-[17px] leading-[1.55] font-light text-neutral-700 transition-colors hover:text-neutral-800"
+							title="jump to the reply"
+							onclick={() => onjump?.(entry.replied_by)}
+							style="overflow-wrap:anywhere"
+						>
+							<ColorizedText text={entry.clean_text} />
+							<span
+								class="ml-2 align-middle text-[11px] text-neutral-600 transition-colors group-hover/answered:text-accent-700"
+							>
+								answered ↓
+							</span>
+						</button>
 					{:else}
 						<p class="min-w-0 text-[17px] leading-[1.55] font-light" style="overflow-wrap:anywhere">
 							<ColorizedText text={entry.clean_text} />

@@ -116,13 +116,31 @@ function folderNames(vocab: Vocab | undefined): string[] {
 		.filter((n): n is string => typeof n === 'string' && n.length > 0);
 }
 
+/**
+ * The commands `--` can open, before any folder name.
+ *
+ * **A deliberate deviation from the source, and one of the few.** Upstream the
+ * `-` trigger completes folder names and nothing else, so `--todo` — the most
+ * used command in the real app by a distance — could never be suggested, and
+ * `--reply` could not either. The corpus records that faithfully; see the
+ * deviation table in `scripts/verify-ui.ts` for the two cases this changes and
+ * why. Nothing about how the *tokens* are read has moved: `tokenize.ts` is
+ * untouched and all 395 of its fixtures still pass.
+ *
+ * First in the list rather than appended, because a trie is ordered by
+ * insertion and these are the fixed half of the vocabulary — a folder is one
+ * of yours and there are many, a command is one of three and there always
+ * will be.
+ */
+export const COMMANDS = ['todo', 'reply'];
+
 /** The ranked completions for wherever the caret is, best first. */
 export function rankedSuggestions(state: BarState, vocab: Vocab | undefined): string[] {
 	const trigger = activeTrigger(state.value, state.caret);
 	if (!trigger || !vocab) return [];
 	const pick = (terms: string[]) =>
 		scoredSearch(buildTrie(terms), terms, trigger.query, state.stats);
-	if (trigger.char === '-') return pick(folderNames(vocab));
+	if (trigger.char === '-') return pick([...COMMANDS, ...folderNames(vocab)]);
 	if (trigger.char === '<') return pick(vocab.tags);
 	if (trigger.char === '{') return pick(vocab.times);
 	return pick(vocab.patterns);
