@@ -256,6 +256,13 @@ the Linux checkout. `install-windows.ps1`, `backup.ps1` and
 there — which means the suite cannot exercise them and neither can you.
 Change them only with a reason you could defend without running them.
 
+**If you are on Windows, read `docs/windows-bringup.md` before anything else.**
+Those three scripts were written from Linux and have never met an interpreter;
+that file carries the drive letters, the volume serial, the tailnet names, the
+four bugs already found by reading, and the order of operations that keeps an
+unproven backup script away from a real photo library. It is a handoff and is
+meant to be deleted once its checklist is green.
+
 Tests point at a throwaway data dir via `conftest.py` before the app imports —
 they never touch `data/`. Keep it that way.
 
