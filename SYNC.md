@@ -33,6 +33,23 @@ systemctl --user list-timers pgs-backup.timer
 cat /mnt/data/pgs-backup/.last-backup
 ```
 
+```powershell
+.\backup.ps1                                    # the same, on the other side
+Get-ScheduledTaskInfo 'PGS Backup'
+Get-Content C:\pgs-backup\.last-backup
+```
+
+`backup.ps1` is a second script rather than a portable one: `rsync`, `df
+--output=source` and `date -Iseconds` have no Windows equivalent worth
+shimming, and the two refusals below are easier to trust stated twice than
+found inside a platform conditional. It carries both of them — robocopy with
+no `/MIR`, and a volume comparison before it writes a byte.
+
+The Windows daily run is a Scheduled Task with `StartWhenAvailable`, the
+counterpart of the timer's `Persistent=true`. On a dual-boot machine that
+setting is doing more work than it does on either side alone: most days one of
+the two operating systems was not running when its backup was due.
+
 `pgs-backup.timer` runs `backup.sh` once a day, `Persistent=true` so a machine
 that was asleep when it was due catches up on the next boot rather than silently
 skipping. It copies everything except `index.sqlite`, which replays from the log
@@ -55,10 +72,22 @@ than no backup at all:
 external SSD, so both of this machine's operating systems can reach one copy of
 it:
 
-| | |
-|---|---|
-| data | `/mnt/ssd/pgs-data` — `sdb1`, exFAT, readable from either operating system |
-| backup | `/mnt/data/pgs-backup` — `sda2`, ext4, a different physical disk |
+| | Linux | Windows |
+|---|---|---|
+| data | `/mnt/ssd/pgs-data` — `sdb1`, exFAT | `E:\pgs-data` — the same disk, the same files |
+| backup | `/mnt/data/pgs-backup` — `sda2`, ext4 | `C:\pgs-backup` — the internal NTFS disk |
+| checkout | `~/pekka/dev/…` — btrfs | its own clone, on `C:` |
+
+exFAT for the data disk is the whole reason either side can read it: it is the
+one filesystem both operating systems mount without a third-party driver. The
+cost is that it carries no permissions and no symlinks, which is why only
+`data/` lives there and never the checkout.
+
+**The two backups do not meet, and do not need to.** `/mnt/data` is ext4, which
+Windows cannot read, so the Windows side writes its own copy to the internal
+disk instead. Both read the same shared data directory and neither ever
+deletes, so these are two complete copies of one source rather than two halves
+of anything. More copies is the point.
 
 Both are `fstab` mounts, deliberately, and not the desktop's `/run/media`
 auto-mounts: those only exist while somebody is logged in, and a backup timer
@@ -99,6 +128,41 @@ Worth knowing what each loss actually costs:
 | `todos.jsonl` | the old checklist's history. Still folded into XP, so losing it lowers your lifetime total. |
 | `capture/log/` | every thought you ever captured in Trophic. The tags, times and patterns are derived from those lines, so they go too. **Unrecoverable.** |
 | `index.sqlite`, `capture/index.sqlite` | nothing. They rebuild on next start. |
+
+## Dual boot: the data crosses by disk, the code crosses by git
+
+These are two different mechanisms and confusing them is the way to lose work.
+
+**The data needs no sync at all.** Both operating systems open the same folder
+on the same exFAT disk, so there is one log, one set of trees, one media
+library. Nothing is copied between them and nothing can diverge. This is why
+the data moved off the system disk in the first place.
+
+**The code is not shared, and does not sync itself.** The Linux checkout is on
+btrfs, which Windows cannot read; the Windows one is its own clone with its own
+`.venv` and its own `node_modules`, neither of which is portable across
+operating systems anyway. They meet only at the remote:
+
+```bash
+git push                  # before rebooting out of an OS
+git pull                  # after rebooting into the other one
+```
+
+Three things follow from that, and all three have teeth:
+
+- **Uncommitted work does not cross.** A dirty working tree is invisible to the
+  other side. `git status` before rebooting is the whole discipline.
+- **A branch with no upstream does not cross either**, even after `git push` on
+  some other branch. `git push -u origin <branch>` once, per branch.
+- **`frontend/build` is gitignored, so a pull is never enough.** The UI you are
+  served is the last one built *on that machine*. After pulling anything that
+  touched the frontend, run the installer again — it is idempotent and rebuilds
+  — or `npm run build` by hand. This is the usual explanation for "I pulled and
+  it looks the same".
+
+**Only one side can serve the phone at a time**, and they are two different
+Tailscale devices with two different names, so there are two home-screen icons.
+That is a decision rather than an oversight — see MOBILE.md.
 
 ## Moving to a new machine
 

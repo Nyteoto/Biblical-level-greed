@@ -11,9 +11,12 @@ interface.
 
 Not Tauri: that wraps a Rust binary, and this backend is Python — it would need
 the Rust toolchain plus a PyInstaller sidecar for the same window. pywebview
-drives WebKitGTK directly.
+drives the system engine directly: WebKitGTK on Linux, WebView2 on Windows.
 
-Linux only; the cross-platform guards below are untested elsewhere.
+Both halves of a dual-boot machine run this file. They are separate checkouts
+with separate virtual environments — only `--data-dir` is shared — so the only
+thing that has to be portable is what is in here. The platform branches are
+few and they are all about the window and about finding Tailscale.
 """
 from __future__ import annotations
 
@@ -53,13 +56,30 @@ def wait_until_up(port: int, timeout: float = 30.0) -> bool:
     return False
 
 
-# Linux only, as the rest of the app is. The Windows path that used to be here
-# survived both Windows-removal commits by being a string nobody grepped for.
+# Tried in order, first one that answers wins. The bare name covers a PATH that
+# already has it; the absolute paths cover the common install locations, which
+# matters on Windows because the installer does not put the CLI on PATH and on
+# Linux because a service manager's PATH is not a login shell's.
 TAILSCALE_BINARIES = (
     "tailscale",
     "/usr/bin/tailscale",
     "/usr/local/bin/tailscale",
+    r"C:\Program Files\Tailscale\tailscale.exe",
+    r"C:\Program Files (x86)\Tailscale\tailscale.exe",
 )
+
+
+def tailscale_hint() -> str:
+    """How to get the daemon running, in the words of the OS you are on.
+
+    Worth branching for rather than printing both: the Linux instruction is a
+    command you can paste, and the Windows one is emphatically not — signing in
+    from the CLI there leaves the service running as the wrong identity, and
+    the tray app is the only supported way in.
+    """
+    if sys.platform == "win32":
+        return "  open the Tailscale tray app and sign in (not the command line)"
+    return "  sudo systemctl enable --now tailscaled && sudo tailscale up"
 
 
 def tailscale_ip() -> str | None:
@@ -86,7 +106,7 @@ def tailscale_ip() -> str | None:
         if "not running" in (out.stderr or "").lower():
             raise SystemExit(
                 "Tailscale is installed but its daemon is not running.\n"
-                "  sudo systemctl enable --now tailscaled && sudo tailscale up"
+                + tailscale_hint()
             )
     return None
 
@@ -133,6 +153,24 @@ def shutdown(server, thread, timeout: float = 5.0) -> None:
         # A request wedged mid-flight. Escalate rather than exit underneath it.
         server.force_exit = True
         thread.join(timeout=2.0)
+
+
+def _prepare_gui() -> None:
+    """Environment the window needs, set before pywebview is imported.
+
+    Both branches exist because pywebview picks its backend by probing, and
+    on both operating systems the first thing it probes is not the thing that
+    works here. Naming the backend outright is the difference between a
+    window and a traceback.
+    """
+    if sys.platform == "win32":
+        # WebView2, the Chromium control Edge uses. pywebview would otherwise
+        # try mshtml — the Internet Explorer engine — which renders this app
+        # as an unstyled column: it has no CSS grid, no custom properties and
+        # no ES6, so every part of the frontend fails at once.
+        os.environ.setdefault("PYWEBVIEW_GUI", "edgechromium")
+        return
+    _prepare_linux_gui()
 
 
 def _prepare_linux_gui() -> None:
@@ -210,7 +248,7 @@ def main() -> int:
         if not found:
             print(
                 "Could not find a Tailscale address. Is it installed and signed in?\n"
-                "  sudo systemctl enable --now tailscaled && sudo tailscale up",
+                + tailscale_hint(),
                 file=sys.stderr,
             )
             return 1
@@ -282,7 +320,7 @@ def main() -> int:
             shutdown(server, thread)
         return 0
 
-    _prepare_linux_gui()
+    _prepare_gui()
 
     try:
         import webview

@@ -2,7 +2,8 @@
 
 A local, single-user tech tree for deliberate practice, plus **Trophic**, a
 syntax-driven capture app being ported in beside it. FastAPI + SvelteKit,
-Linux only, no auth and no multi-user — do not add either.
+no auth and no multi-user — do not add either. It runs on both halves of one
+dual-boot machine, Fedora and Windows, sharing a single data disk.
 
 The two are **sibling apps in one process**, not one app: `backend/app/` and
 `backend/capture/`, `/api/…` and `/api/capture/…`, `data/log/` and
@@ -203,6 +204,27 @@ editing frontend source leaves the app serving stale UI until you run
   `reply_to`, and answering dismisses the reminder it answers. `replied_by` is
   the derived other end. Do not try to recover the thread from the text: the
   line said "reply" and never said to what.
+- **Dual boot splits along one line: data crosses by disk, code crosses by
+  git.** Both operating systems open the same `data/` on the shared exFAT
+  disk, so there is one log and nothing to reconcile — this is what the exFAT
+  choice buys and why the checkout must never live there. The code is two
+  clones meeting at the remote, so uncommitted work does not cross and
+  `frontend/build` (gitignored) is stale on the other side until it is rebuilt
+  there. Do not add a sync mechanism to either half; the first needs none and
+  the second already has one.
+- **Two Tailscale devices means two home-screen icons, and that is the
+  decision.** Identity is per-install, so each OS has its own MagicDNS name,
+  and iOS binds an icon to an origin. The alternatives — never serving from
+  Windows, sharing a node key, an always-on box — were weighed and lost; see
+  MOBILE.md. Only one is ever live, because one machine boots one OS. Do not
+  try to collapse them.
+- **There are two backup scripts and there must be.** `backup.sh` and
+  `backup.ps1` restate the same two refusals — never write to the same volume
+  as the data, never delete — rather than sharing them, because `rsync` and
+  `df` have no Windows equivalent worth shimming and a refusal buried in a
+  platform conditional is one that gets removed in a hurry. They write to
+  different disks by necessity (ext4 is unreadable from Windows) and that is
+  two complete copies, not two halves.
 - **The shelf's group order is one event carrying the whole order.**
   `order-groups` names the year and lists its headings. A "moved to third"
   event would land somewhere else on a replay, and duplicated or out-of-order
@@ -220,13 +242,19 @@ the one acknowledged gap.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 459 tests, ~3s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 463 tests, ~3s. Run them.
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend
 cd frontend && npm run check                    # svelte-check
 cd frontend && npm run verify:ui                # the corpus, TypeScript side
 ```
+
+The Windows side has its own clone and its own venv; nothing here runs from
+the Linux checkout. `install-windows.ps1`, `backup.ps1` and
+`install-windows-tasks.ps1` are the three files that only ever execute over
+there — which means the suite cannot exercise them and neither can you.
+Change them only with a reason you could defend without running them.
 
 Tests point at a throwaway data dir via `conftest.py` before the app imports —
 they never touch `data/`. Keep it that way.

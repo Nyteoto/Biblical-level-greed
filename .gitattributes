@@ -12,3 +12,11 @@
 # it, and should keep doing so.
 
 * text=auto eol=lf
+
+# The exception, and it is a real one rather than a preference. PowerShell reads
+# a `.ps1` with the console's default encoding assumptions, and Windows tooling
+# that edits these files — including the ISE and a few installers' log parsers —
+# writes CRLF back, which would show as a whole-file diff every time. Attributes
+# for these existed once, were deleted with the Windows installer, and are back
+# for the same reason they were there the first time.
+*.ps1 text eol=crlf

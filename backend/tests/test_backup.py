@@ -1,10 +1,11 @@
 """The Settings screen's backup button, and the stamp it reads.
 
-`backup.py` is deliberately thin — it shells out to `backup.sh` and reports
-what the script said — so what is worth testing is exactly the seam: that the
-script's own refusals reach the screen verbatim, that the destination it is
-given is the one it runs against, and that asking twice does not start two
-rsyncs over the same tree.
+`backup.py` is deliberately thin — it picks one of two scripts by platform,
+shells out, and reports what the script said — so what is worth testing is
+exactly the seam: that the script's own refusals reach the screen verbatim,
+that the destination it is given is the one it runs against, that asking twice
+does not start two copies over the same tree, and that the argv is right for
+both operating systems even though only one of them can run this suite.
 
 **No test here runs the real script.** Every one of them points `SCRIPT` at a
 stub in `tmp_path`, because the real one copies the media library and its
@@ -202,3 +203,64 @@ def test_the_status_endpoint_answers_without_a_backup_disk(dest):
     assert body["destination"] == str(dest)
     assert body["running"] is False
     assert "source" in body
+
+
+# -- which script, and how it is run ----------------------------------------
+#
+# The dual-boot half. There are two scripts because `rsync` and `df` have no
+# Windows equivalent worth shimming, and the seam between them is three lines
+# in `_command` — which is exactly the amount of platform logic that rots
+# silently, because the machine running the suite only ever exercises one side
+# of it. So both sides are pinned here, on either platform.
+
+
+def test_the_posix_script_is_run_directly(monkeypatch):
+    """A `.sh` carries its own shebang, so it is its own argv[0]. Handing it to
+    an interpreter would work and would also mean the Linux path stopped being
+    the simple one for no gain."""
+    monkeypatch.setattr(backup, "_WINDOWS", False)
+    monkeypatch.setattr(backup, "SCRIPT", Path("/opt/pgs/backup.sh"))
+
+    assert backup._command(Path("/mnt/data/pgs-backup")) == [
+        "/opt/pgs/backup.sh",
+        "/mnt/data/pgs-backup",
+    ]
+
+
+def test_the_windows_script_is_handed_to_powershell(monkeypatch):
+    """Windows has no shebang, so a `.ps1` is data until something runs it —
+    and the default execution policy refuses unsigned local scripts, with an
+    error about publishers that says nothing about backups. Both facts are
+    load-bearing, so both flags are asserted rather than the file name alone."""
+    monkeypatch.setattr(backup, "_WINDOWS", True)
+    monkeypatch.setattr(backup, "SCRIPT", Path(r"C:\pgs\backup.ps1"))
+
+    argv = backup._command(Path(r"D:\pgs-backup"))
+
+    assert argv[0] == "powershell.exe"
+    assert "-ExecutionPolicy" in argv and "Bypass" in argv
+    # The script and the destination stay the last two words, in that order:
+    # -File consumes the next argument and everything after it is the script's.
+    assert argv[-2:] == [r"C:\pgs\backup.ps1", r"D:\pgs-backup"]
+
+
+def test_the_destination_is_still_passed_on_windows(dest, tmp_path, monkeypatch):
+    """`PGS_BACKUP_DIR` is how the second disk moves without an edit. The
+    Windows branch adds five words before the script name, and dropping the
+    destination off the end while doing that would silently back up to the
+    script's own default instead."""
+    monkeypatch.setattr(backup, "_WINDOWS", True)
+    monkeypatch.setattr(backup, "SCRIPT", Path(r"C:\pgs\backup.ps1"))
+
+    assert backup._command(backup.destination())[-1] == str(dest)
+
+
+def test_both_scripts_are_present_in_the_checkout():
+    """Neither operating system can run the other's script, and neither clone
+    can test it. The one thing this side can check is that the file the other
+    side will reach for is actually in the repo — which is how the Windows
+    installer went missing the first time, and stayed missing for a month."""
+    root = Path(backup.__file__).resolve().parents[2]
+
+    assert (root / "backup.sh").is_file()
+    assert (root / "backup.ps1").is_file()

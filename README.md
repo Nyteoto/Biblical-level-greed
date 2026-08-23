@@ -3,8 +3,9 @@
 A local tech tree for deliberate practice. One question: **what do I work on
 right now, and for how long?**
 
-Linux only. The in-app **Manual** tab explains the model and why it is shaped
-this way; this file is reference.
+Linux and Windows, on one dual-boot machine sharing one data disk. The in-app
+**Manual** tab explains the model and why it is shaped this way; this file is
+reference.
 
 The **Trophic** tab is a second app sharing this one's shell and disk — a
 syntax-driven capture bar and a log of what it caught. It is documented in
@@ -18,6 +19,14 @@ pgs                                # native window, data in ./data
 pgs --data-dir /mnt/other/pgs      # data elsewhere
 pgs --browser                      # no window
 pgs --headless --host tailscale    # serve only; see MOBILE.md
+```
+
+On Windows, from its own clone — the Linux checkout is on btrfs and is not
+readable from that side:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
+pgs --data-dir E:\pgs-data        # the disk shared with Linux; see SYNC.md
 ```
 
 Tests: `.venv/bin/python -m pytest backend/tests -q`
