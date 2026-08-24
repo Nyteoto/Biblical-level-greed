@@ -1,4 +1,4 @@
-# Copy data\ to a second physical disk. The Windows half of backup.sh.
+﻿# Copy data\ to a second physical disk. The Windows half of backup.sh.
 #
 # The repo holds the app; this machine holds everything you have done with it.
 # Neither operating system's copy of the event log, the trees, the captures or

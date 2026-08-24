@@ -1,4 +1,4 @@
-# Install the Personal Growth System as a desktop app on Windows.
+﻿# Install the Personal Growth System as a desktop app on Windows.
 #
 # Idempotent: safe to re-run after `git pull`, which is how you update.
 #

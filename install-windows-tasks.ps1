@@ -1,4 +1,4 @@
-# Register the two scheduled tasks: serve at logon, back up daily.
+﻿# Register the two scheduled tasks: serve at logon, back up daily.
 #
 #   powershell -ExecutionPolicy Bypass -File .\install-windows-tasks.ps1
 #   powershell -ExecutionPolicy Bypass -File .\install-windows-tasks.ps1 -Remove

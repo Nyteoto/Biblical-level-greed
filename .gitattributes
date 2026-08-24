@@ -20,3 +20,14 @@
 # for these existed once, were deleted with the Windows installer, and are back
 # for the same reason they were there the first time.
 *.ps1 text eol=crlf
+
+# These three files also carry a UTF-8 BOM, and must keep it. Windows
+# PowerShell 5.1 — which is what `powershell.exe` still means, what the backup
+# scheduled task runs and what `backup.py` shells out to — reads a `.ps1`
+# without one as cp1252. Every em-dash in a comment then decodes to three
+# characters, the last of which is a right curly quote, and PowerShell treats
+# curly quotes as string delimiters: the file parses as one long unbalanced
+# string and fails with "Missing closing '}'" pointing at a line nowhere near
+# the problem. It is invisible under pwsh 7, which assumes UTF-8, and it fails
+# or not depending on whether a file happens to hold an even number of dashes.
+# Do not strip the BOM to make a diff tidy.
