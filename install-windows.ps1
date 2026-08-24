@@ -109,10 +109,25 @@ Say '4/6  Frontend'
 # frontend\build is gitignored, so a fresh clone or a pull that changed the UI
 # leaves nothing to serve until this runs. This is the step that most often
 # explains "I pulled and it looks the same".
-if (-not (Test-Path -LiteralPath frontend\node_modules)) {
-    Push-Location frontend; try { & npm install --silent } finally { Pop-Location }
-}
-Push-Location frontend; try { & npm run build | Out-Null } finally { Pop-Location }
+#
+# Both npm calls are checked. `$ErrorActionPreference = 'Stop'` does not reach a
+# native command, and this script has already turned off the one setting that
+# would have — so an unchecked `npm run build` can fail, print its errors, and
+# still be followed by a green OK. That happened: a case-insensitive import
+# resolved to the wrong file, the build died, and the installer reported it
+# built. The output is held back until it is needed; on success it is warnings.
+Push-Location frontend
+try {
+    if (-not (Test-Path -LiteralPath node_modules)) {
+        & npm install --silent
+        if ($LASTEXITCODE -ne 0) { Die 'npm install failed; the frontend cannot be built.' }
+    }
+    $built = & npm run build 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $built | ForEach-Object { Write-Host "     $_" }
+        Die 'The frontend build failed. Nothing was written to frontend\build, so the app would serve the last build that worked, or nothing at all.'
+    }
+} finally { Pop-Location }
 OK 'built to frontend\build'
 
 Say '5/6  Launcher'
