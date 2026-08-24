@@ -57,22 +57,19 @@ data.*/
 # `settings.svelte.ts`, and the shape of the Log in CLAUDE.md.
 /design_handoff_trophic_ui/
 
-# Agent skills installed from elsewhere by `npx skills add`. Tools for whoever
-# is working on this checkout, not part of the program — and machine-local by
-# decision, so they are not carried to the other half of the dual boot.
+# The skills installed by `npx skills add` are tracked now, as ordinary
+# directories under .claude/skills/ next to this repo's own design-study. They
+# were ignored for one concrete reason and it no longer holds: the installer
+# writes the files to .agents/skills/<name>/ and leaves .claude/skills/<name>
+# as an *absolute* symlink into /c/Trophic-PGS/..., which would arrive dead on
+# the other half of the dual boot. Copying the files where Claude Code looks
+# for them and deleting .agents/ removes the symlink, so the skills now cross
+# by git like any other file. `skills-lock.json` is tracked with them and
+# records source and hash for each.
 #
-# Two paths per skill: the file lives in .agents/skills/<name>/ and .claude/
-# skills/<name> is an *absolute* symlink to it. That symlink is the reason this
-# is not a judgement call — committed, it would cross by git to a checkout
-# where /c/Trophic-PGS/... does not exist, and the skill would quietly fail to
-# load there. `skills-lock.json` records source and hash, so re-running the
-# same `npx skills add` on the other side is the way to have them there too.
-#
-# .claude/skills/design-study/ is this repo's own and stays tracked.
+# What stays ignored is .agents/ itself, because a later `npx skills add` on
+# this machine will recreate it — a second copy of skills that are already in
+# the tree, plus symlinks that would overwrite the tracked directories. If that
+# happens, take the update out of .agents/skills/<name>/ by hand and delete the
+# rest. Updating in place is the price of having them travel.
 /.agents/
-/skills-lock.json
-/.claude/skills/codebase-design
-/.claude/skills/domain-modeling
-/.claude/skills/find-skills
-/.claude/skills/grilling
-/.claude/skills/improve-codebase-architecture
