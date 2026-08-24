@@ -53,7 +53,14 @@ if (-not (Test-Path -LiteralPath $pythonw)) {
 $serveAction = New-ScheduledTaskAction -Execute $pythonw `
     -Argument "`"$root\desktop.py`" --headless --port 8787" `
     -WorkingDirectory $root
-$serveTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+# The fully qualified account name, and not $env:USERNAME. Task Scheduler
+# rejects a bare user name outright — "The parameter is incorrect", naming
+# UserId in the error, which is as near as it comes to saying it wanted a
+# machine or a domain on the front of it. WindowsIdentity gives the form it
+# accepts on a local account, a domain account and a Microsoft account alike,
+# where guessing at $env:USERDOMAIN gets one of the three wrong.
+$account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$serveTrigger = New-ScheduledTaskTrigger -AtLogOn -User $account
 # RestartCount/RestartInterval is the Restart=on-failure of the systemd unit:
 # the Tailscale service can take a moment after logon, and a server that gave
 # up on its first try is one the phone cannot reach until you notice.
@@ -92,7 +99,7 @@ Write-Host "  registered $backupTask" -ForegroundColor Green
 
 Write-Host @"
 
-Both tasks run as $env:USERNAME, at logon and daily respectively.
+Both tasks run as $account, at logon and daily respectively.
 
   Get-ScheduledTask 'PGS *'                     are they registered
   Get-ScheduledTaskInfo 'PGS Backup'            when did the backup last run
