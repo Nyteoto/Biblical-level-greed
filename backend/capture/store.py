@@ -35,7 +35,36 @@ from .import_csv import compose_line, flex_parse_time, parse_import_csv
 
 
 class CaptureError(Exception):
-    """A refusal the user should read, not a bug."""
+    """A refusal the user should read, not a bug.
+
+    `status` is the HTTP code the refusal deserves, and it is here rather than
+    in `api.py` because the raise site is the only place that knows which it
+    is. It used to be decided at the wire by reading the message —
+    `str(exc).startswith("no such ")` — which made the *wording* of every
+    refusal load-bearing: rewording one to "that folder is gone" would have
+    turned a 404 into a 400 with nothing anywhere to notice. The prose is
+    prose again.
+
+    400 is the default because most refusals here are about what was asked
+    for rather than about what is missing: a name too long, a state that is
+    not a state, an eleventh open todo.
+    """
+
+    status = 400
+
+
+class NotFound(CaptureError):
+    """The thing this call names does not exist.
+
+    Not every "no such …" is one of these, which is the whole reason the code
+    is chosen at the raise rather than derived from the sentence. A capture
+    naming a blob that is not there is a bad *request* — the collection it
+    posts to exists — so `capture()` raises the base class for that and this
+    subclass is for the subject the caller addressed: the folder in the path,
+    the entry being ticked, the group being renamed.
+    """
+
+    status = 404
 
 
 class Store:
@@ -114,7 +143,7 @@ class Store:
         with self._lock:
             found = index.folder(self.conn, folder_id)
             if found is None:
-                raise CaptureError(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {folder_id}")
             return {
                 "folder": found,
                 "entries": index.folder_entries(self.conn, folder_id),
@@ -129,7 +158,7 @@ class Store:
         with self._lock:
             found = index.album(self.conn, folder_id, year)
             if found is None:
-                raise CaptureError(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {folder_id}")
             return found
 
     def unassigned_tags(self) -> list[dict]:
@@ -199,6 +228,28 @@ class Store:
 
     # -- writes ------------------------------------------------------------
 
+    def _commit(self, kind: str, subject: str, **fields) -> dict:
+        """Append one event and put it into the index. Every write goes here.
+
+        **Log first, always.** If the process dies between the append and the
+        apply, a reindex recovers the truth; the other order would lose it.
+        That ordering used to be restated at twenty-three call sites, each
+        naming the event kind twice — once for the log and once again to pick
+        which of `index.py`'s nineteen targeted mirrors to call afterwards.
+        The mirrors are gone: `index.apply` is the one transition table, and
+        the only thing a caller has to get right now is the event.
+
+        `version` moves on every commit rather than once per method. It is a
+        change counter the frontend polls, so more of them is never wrong —
+        and a method that appends twice (a reply, which also dismisses what it
+        answers) genuinely did change two things.
+        """
+        event = eventlog.append(kind, subject, **fields)
+        with self.conn:
+            index.apply(self.conn, event)
+        self.version += 1
+        return event
+
     def capture(
         self, raw_text: str, media: Iterable[str] = (), reply_to: str | None = None
     ) -> dict:
@@ -263,20 +314,15 @@ class Store:
                 # cannot disagree about which prompt this answers.
                 answering = self._due_on(reply_to)
 
-            event = eventlog.append(
+            event = self._commit(
                 eventlog.CAPTURE,
                 eventlog.new_id(),
                 text=text,
                 media=attached,
                 reply_to=reply_to or None,
             )
-            index.add_capture(self.conn, event)
             if answering is not None:
-                eventlog.append(
-                    eventlog.DISMISS, reply_to, line=answering["line"]
-                )
-                index.dismiss_reminder(self.conn, reply_to, answering["line"])
-            self.version += 1
+                self._commit(eventlog.DISMISS, reply_to, line=answering["line"])
             return index.get(self.conn, event["id"])  # type: ignore[return-value]
 
     def _due_on(self, entry_id: str) -> dict | None:
@@ -297,20 +343,14 @@ class Store:
         with self._lock:
             entry = index.get(self.conn, entry_id)
             if entry is None:
-                raise CaptureError(f"no such entry: {entry_id}")
+                raise NotFound(f"no such entry: {entry_id}")
             if line not in entry["todo_lines"]:
                 raise CaptureError(f"line {line} of that entry is not a todo")
 
-            done = set(entry["todo_done"])
-            if line in done:
-                eventlog.append(eventlog.UNCHECK, entry_id, line=line)
-                done.discard(line)
-            else:
-                eventlog.append(eventlog.CHECK, entry_id, line=line)
-                done.add(line)
-
-            index.set_done(self.conn, entry_id, sorted(done))
-            self.version += 1
+            ticking = line not in set(entry["todo_done"])
+            self._commit(
+                eventlog.CHECK if ticking else eventlog.UNCHECK, entry_id, line=line
+            )
             return index.get(self.conn, entry_id)  # type: ignore[return-value]
 
     def import_csv(self, text: str) -> dict:
@@ -370,18 +410,16 @@ class Store:
         with self._lock:
             entry = index.get(self.conn, entry_id)
             if entry is None:
-                raise CaptureError(f"no such entry: {entry_id}")
+                raise NotFound(f"no such entry: {entry_id}")
             for ref in refs:
                 if blobs.path_for(ref) is None:
-                    raise CaptureError(f"no such media: {ref}")
+                    raise NotFound(f"no such media: {ref}")
 
             fresh = [ref for ref in refs if ref not in entry["media"]]
             if not fresh:
                 return entry
 
-            eventlog.append(eventlog.ATTACH_MEDIA, entry_id, media=fresh)
-            index.set_media(self.conn, entry_id, entry["media"] + fresh)
-            self.version += 1
+            self._commit(eventlog.ATTACH_MEDIA, entry_id, media=fresh)
             return index.get(self.conn, entry_id)  # type: ignore[return-value]
 
     def dismiss_reminder(self, entry_id: str, line: int) -> None:
@@ -389,10 +427,8 @@ class Store:
         with self._lock:
             entry = index.get(self.conn, entry_id)
             if entry is None:
-                raise CaptureError(f"no such entry: {entry_id}")
-            eventlog.append(eventlog.DISMISS, entry_id, line=line)
-            index.dismiss_reminder(self.conn, entry_id, line)
-            self.version += 1
+                raise NotFound(f"no such entry: {entry_id}")
+            self._commit(eventlog.DISMISS, entry_id, line=line)
 
     # -- folders -----------------------------------------------------------
     #
@@ -425,12 +461,11 @@ class Store:
             return
         owner = index.folder(self.conn, folder_id)
         if owner is None:
-            raise CaptureError(f"no such folder: {folder_id}")
+            raise NotFound(f"no such folder: {folder_id}")
         current = index.tag_owner(self.conn, tag)
         if current == folder_id or (current is not None and not steal):
             return
-        eventlog.append(eventlog.MAP_TAG, folder_id, tag=tag)
-        index.map_tag(self.conn, tag, folder_id)
+        self._commit(eventlog.MAP_TAG, folder_id, tag=tag)
 
     def create_folder(self, name: str, tags: Iterable[str] = ()) -> dict:
         with self._lock:
@@ -439,10 +474,9 @@ class Store:
             colour = colors.next_color([f["color"] for f in existing])
 
             folder_id = eventlog.new_id()
-            event = eventlog.append(
+            self._commit(
                 eventlog.CREATE_FOLDER, folder_id, text=clean, color=colour
             )
-            index.add_folder(self.conn, event)
 
             # **A folder claims no tag of its own.** It used to claim the tag of
             # its own name here, so that `--work` reached the folder Work
@@ -463,7 +497,7 @@ class Store:
         with self._lock:
             before = index.folder(self.conn, folder_id)
             if before is None:
-                raise CaptureError(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {folder_id}")
             clean = self._checked_name(name, except_id=folder_id)
 
             # The old name keeps answering, and nothing here has to arrange
@@ -471,10 +505,7 @@ class Store:
             # written `--oldname` reach it exactly as they did. That is the one
             # thing a rename must not change, and it costs no tag and no
             # registry entry — see `folder_names` in index.py.
-            eventlog.append(eventlog.RENAME_FOLDER, folder_id, text=clean)
-            index.rename_folder(self.conn, folder_id, clean)
-
-            self.version += 1
+            self._commit(eventlog.RENAME_FOLDER, folder_id, text=clean)
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def set_overview(self, folder_id: str, text: str) -> dict:
@@ -485,10 +516,8 @@ class Store:
         """
         with self._lock:
             if index.folder(self.conn, folder_id) is None:
-                raise CaptureError(f"no such folder: {folder_id}")
-            eventlog.append(eventlog.SET_OVERVIEW, folder_id, text=text)
-            index.set_overview(self.conn, folder_id, text)
-            self.version += 1
+                raise NotFound(f"no such folder: {folder_id}")
+            self._commit(eventlog.SET_OVERVIEW, folder_id, text=text)
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def set_overview_media(self, folder_id: str, ref: str) -> dict:
@@ -500,12 +529,10 @@ class Store:
         """
         with self._lock:
             if index.folder(self.conn, folder_id) is None:
-                raise CaptureError(f"no such folder: {folder_id}")
-            eventlog.append(
+                raise NotFound(f"no such folder: {folder_id}")
+            self._commit(
                 eventlog.SET_OVERVIEW_MEDIA, folder_id, media=[ref] if ref else []
             )
-            index.set_overview_media(self.conn, folder_id, ref)
-            self.version += 1
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def set_folder_state(self, folder_id: str, state: str) -> dict:
@@ -524,12 +551,10 @@ class Store:
         with self._lock:
             folder = index.folder(self.conn, folder_id)
             if folder is None:
-                raise CaptureError(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {folder_id}")
             if folder["state"] == state:
                 return folder
-            eventlog.append(eventlog.SET_STATE, folder_id, text=state)
-            index.set_folder_state(self.conn, folder_id, state)
-            self.version += 1
+            self._commit(eventlog.SET_STATE, folder_id, text=state)
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def set_folder_group(self, folder_id: str, year: str, name: str) -> dict:
@@ -552,10 +577,8 @@ class Store:
         with self._lock:
             folder = index.folder(self.conn, folder_id)
             if folder is None:
-                raise CaptureError(f"no such folder: {folder_id}")
-            eventlog.append(eventlog.SET_GROUP, folder_id, text=name, year=year)
-            index.set_folder_group(self.conn, folder_id, year, name)
-            self.version += 1
+                raise NotFound(f"no such folder: {folder_id}")
+            self._commit(eventlog.SET_GROUP, folder_id, text=name, year=year)
             return index.shelf(self.conn, year)
 
     def name_chapter(
@@ -583,15 +606,13 @@ class Store:
         subject = folder_id or index.UNFILED_ALBUM
         with self._lock:
             if subject != index.UNFILED_ALBUM and index.folder(self.conn, subject) is None:
-                raise CaptureError(f"no such folder: {folder_id}")
-            eventlog.append(
+                raise NotFound(f"no such folder: {folder_id}")
+            self._commit(
                 eventlog.NAME_CHAPTER, subject, text=name, year=year, month=month
             )
-            index.set_chapter_name(self.conn, subject, year, month, name)
-            self.version += 1
             found = index.album(self.conn, folder_id, year)
             if found is None:
-                raise CaptureError(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {folder_id}")
             return found
 
     def _group_name(self, name: str) -> str:
@@ -619,12 +640,10 @@ class Store:
         with self._lock:
             _, names = index.groups_for(self.conn, year)
             if name not in names:
-                raise CaptureError(f"no such group in {year}: {name!r}")
+                raise NotFound(f"no such group in {year}: {name!r}")
             if name == new_name:
                 return index.shelf(self.conn, year)
-            eventlog.append(eventlog.RENAME_GROUP, name, text=new_name, year=year)
-            index.rename_group(self.conn, year, name, new_name)
-            self.version += 1
+            self._commit(eventlog.RENAME_GROUP, name, text=new_name, year=year)
             return index.shelf(self.conn, year)
 
     def order_groups(self, year: str, order: list[str]) -> dict:
@@ -651,10 +670,8 @@ class Store:
             _, names = index.groups_for(self.conn, year)
             missing = [name for name in order if name not in names]
             if missing:
-                raise CaptureError(f"no such group in {year}: {missing[0]!r}")
-            eventlog.append(eventlog.ORDER_GROUPS, year, order=order)
-            index.order_groups(self.conn, year, order)
-            self.version += 1
+                raise NotFound(f"no such group in {year}: {missing[0]!r}")
+            self._commit(eventlog.ORDER_GROUPS, year, order=order)
             return index.shelf(self.conn, year)
 
     def lift_tag(self, tag: str, lifted: bool) -> list[str]:
@@ -676,11 +693,9 @@ class Store:
         with self._lock:
             already = tag in index.lifted_tags(self.conn)
             if already != lifted:
-                eventlog.append(
+                self._commit(
                     eventlog.LIFT_TAG if lifted else eventlog.UNLIFT_TAG, tag
                 )
-                index.lift_tag(self.conn, tag, lifted)
-                self.version += 1
             return index.lifted_tags(self.conn)
 
     def tags(self) -> list[dict]:
@@ -702,10 +717,8 @@ class Store:
         with self._lock:
             _, names = index.groups_for(self.conn, year)
             if name not in names:
-                raise CaptureError(f"no such group in {year}: {name!r}")
-            eventlog.append(eventlog.DELETE_GROUP, name, year=year)
-            index.delete_group(self.conn, year, name)
-            self.version += 1
+                raise NotFound(f"no such group in {year}: {name!r}")
+            self._commit(eventlog.DELETE_GROUP, name, year=year)
             return index.shelf(self.conn, year)
 
     def delete_folder(self, folder_id: str) -> None:
@@ -717,10 +730,8 @@ class Store:
         """
         with self._lock:
             if index.folder(self.conn, folder_id) is None:
-                raise CaptureError(f"no such folder: {folder_id}")
-            eventlog.append(eventlog.DELETE_FOLDER, folder_id)
-            index.drop_folder(self.conn, folder_id)
-            self.version += 1
+                raise NotFound(f"no such folder: {folder_id}")
+            self._commit(eventlog.DELETE_FOLDER, folder_id)
 
     def map_tag(self, folder_id: str, tag: str) -> dict:
         with self._lock:
@@ -732,12 +743,10 @@ class Store:
         with self._lock:
             folder = index.folder(self.conn, folder_id)
             if folder is None:
-                raise CaptureError(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {folder_id}")
             clean = parser.normalize_tag(tag)
             if clean in folder["tags"]:
-                eventlog.append(eventlog.UNMAP_TAG, folder_id, tag=clean)
-                index.unmap_tag(self.conn, clean, folder_id)
-                self.version += 1
+                self._commit(eventlog.UNMAP_TAG, folder_id, tag=clean)
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def assign_entry(self, entry_id: str, folder_id: str | None) -> dict:
@@ -750,18 +759,15 @@ class Store:
         with self._lock:
             entry = index.get(self.conn, entry_id)
             if entry is None:
-                raise CaptureError(f"no such entry: {entry_id}")
+                raise NotFound(f"no such entry: {entry_id}")
 
             if folder_id is None:
                 for current in entry["manual_folders"]:
-                    eventlog.append(eventlog.UNASSIGN, entry_id, folder=current)
+                    self._commit(eventlog.UNASSIGN, entry_id, folder=current)
             else:
                 if index.folder(self.conn, folder_id) is None:
-                    raise CaptureError(f"no such folder: {folder_id}")
-                eventlog.append(eventlog.ASSIGN, entry_id, folder=folder_id)
-
-            index.set_manual_folder(self.conn, entry_id, folder_id)
-            self.version += 1
+                    raise NotFound(f"no such folder: {folder_id}")
+                self._commit(eventlog.ASSIGN, entry_id, folder=folder_id)
             return index.get(self.conn, entry_id)  # type: ignore[return-value]
 
 

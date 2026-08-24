@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .config import YEAR_RE
-from .store import CaptureError, store
+from .store import store
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
 
@@ -71,12 +71,6 @@ class FolderPatch(BaseModel):
     overview_media: str | None = None
 
 
-def _status(exc: CaptureError) -> int:
-    """A refusal that names something missing is a 404; everything else the
-    store refuses is a bad request."""
-    return 404 if str(exc).startswith("no such ") else 400
-
-
 def _day(value: str | None, field: str) -> str | None:
     if value is None:
         return None
@@ -117,31 +111,25 @@ def list_entries(
 
 @router.post("/entries", status_code=201)
 def create_entry(body: CaptureIn) -> dict:
-    try:
-        return {
-            "entry": store.capture(body.raw_text, body.media, body.reply_to),
-            "version": store.version,
-        }
-    except CaptureError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    return {
+        "entry": store.capture(body.raw_text, body.media, body.reply_to),
+        "version": store.version,
+    }
 
 
 @router.patch("/entries/{entry_id}")
 def patch_entry(entry_id: str, body: EntryPatch) -> dict:
     """Tick a box, or file the entry into a folder by hand. Neither is an
     edit: each appends an event and returns the re-folded entry."""
-    try:
-        if body.toggle_line is not None:
-            entry = store.toggle_line(entry_id, body.toggle_line)
-        elif body.attach_media:
-            entry = store.attach_media(entry_id, body.attach_media)
-        elif "assign_folder" in body.model_fields_set:
-            entry = store.assign_entry(entry_id, body.assign_folder)
-        else:
-            raise HTTPException(400, "nothing to change")
-        return {"entry": entry, "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    if body.toggle_line is not None:
+        entry = store.toggle_line(entry_id, body.toggle_line)
+    elif body.attach_media:
+        entry = store.attach_media(entry_id, body.attach_media)
+    elif "assign_folder" in body.model_fields_set:
+        entry = store.assign_entry(entry_id, body.assign_folder)
+    else:
+        raise HTTPException(400, "nothing to change")
+    return {"entry": entry, "version": store.version}
 
 
 # ── Reminders ─────────────────────────────────────────────────────────────
@@ -177,10 +165,7 @@ def list_reminders() -> dict:
 
 @router.post("/reminders/dismiss")
 def dismiss_reminder(body: DismissIn) -> dict:
-    try:
-        store.dismiss_reminder(body.entry_id, body.line)
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    store.dismiss_reminder(body.entry_id, body.line)
     return {"reminders": store.due_reminders(), "version": store.version}
 
 
@@ -194,13 +179,10 @@ def list_folders() -> dict:
 
 @router.post("/folders", status_code=201)
 def create_folder(body: FolderIn) -> dict:
-    try:
-        return {
-            "folder": store.create_folder(body.name, body.tags),
-            "version": store.version,
-        }
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {
+        "folder": store.create_folder(body.name, body.tags),
+        "version": store.version,
+    }
 
 
 @router.get("/folders/{folder_id}")
@@ -211,10 +193,7 @@ def folder_detail(folder_id: str) -> dict:
     to "what would happen if I mapped that tag" — map it and the entries are
     already inside.
     """
-    try:
-        return {**store.folder_detail(folder_id), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**store.folder_detail(folder_id), "version": store.version}
 
 
 @router.patch("/folders/{folder_id}")
@@ -222,35 +201,29 @@ def patch_folder(folder_id: str, body: FolderPatch) -> dict:
     """Rename it, move it along its life, and add or drop tag mappings. One
     request can do all of them, which is what the mapping screen's drag needs
     when it also creates."""
-    try:
-        folder = None
-        if body.name is not None:
-            folder = store.rename_folder(folder_id, body.name)
-        if body.state is not None:
-            folder = store.set_folder_state(folder_id, body.state)
-        for tag in body.add_tags:
-            folder = store.map_tag(folder_id, tag)
-        for tag in body.remove_tags:
-            folder = store.unmap_tag(folder_id, tag)
-        if body.overview is not None:
-            folder = store.set_overview(folder_id, body.overview)
-        if body.overview_media is not None:
-            folder = store.set_overview_media(folder_id, body.overview_media)
-        if folder is None:
-            raise HTTPException(400, "nothing to change")
-        return {"folder": folder, "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    folder = None
+    if body.name is not None:
+        folder = store.rename_folder(folder_id, body.name)
+    if body.state is not None:
+        folder = store.set_folder_state(folder_id, body.state)
+    for tag in body.add_tags:
+        folder = store.map_tag(folder_id, tag)
+    for tag in body.remove_tags:
+        folder = store.unmap_tag(folder_id, tag)
+    if body.overview is not None:
+        folder = store.set_overview(folder_id, body.overview)
+    if body.overview_media is not None:
+        folder = store.set_overview_media(folder_id, body.overview_media)
+    if folder is None:
+        raise HTTPException(400, "nothing to change")
+    return {"folder": folder, "version": store.version}
 
 
 @router.delete("/folders/{folder_id}")
 def delete_folder(folder_id: str) -> dict:
     """Deletes the folder, not what was written into it. The entries stay and
     their tags return to the unassigned pool."""
-    try:
-        store.delete_folder(folder_id)
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    store.delete_folder(folder_id)
     return {"ok": True, "version": store.version}
 
 
@@ -321,10 +294,7 @@ def name_chapter(folder_id: str, body: ChapterIn) -> dict:
     resolves which name the run now carries, and a folder-shaped reply would
     leave the client guessing.
     """
-    try:
-        album = store.name_chapter(_album_folder(folder_id), body.year, body.month, body.name)
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    album = store.name_chapter(_album_folder(folder_id), body.year, body.month, body.name)
     return {**album, "version": store.version}
 
 
@@ -336,10 +306,7 @@ def set_folder_group(folder_id: str, body: GroupIn) -> dict:
     the shelf, one move can create a heading or empty one out of existence, and
     a folder-shaped answer would not say either.
     """
-    try:
-        return {**store.set_folder_group(folder_id, body.year, body.name), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**store.set_folder_group(folder_id, body.year, body.name), "version": store.version}
 
 
 class GroupEdit(BaseModel):
@@ -357,20 +324,14 @@ class GroupEdit(BaseModel):
 def rename_group(body: GroupEdit) -> dict:
     """Rename one year's group. Renaming onto a name the year already has
     merges the two; see `store.rename_group`."""
-    try:
-        return {**store.rename_group(body.year, body.name, body.to), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**store.rename_group(body.year, body.name, body.to), "version": store.version}
 
 
 @router.post("/groups/delete")
 def delete_group(body: GroupEdit) -> dict:
     """Take a group off one year's shelf. Its folders return to the loose grid;
     no folder and no entry is touched."""
-    try:
-        return {**store.delete_group(body.year, body.name), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**store.delete_group(body.year, body.name), "version": store.version}
 
 
 class GroupOrder(BaseModel):
@@ -385,10 +346,7 @@ class GroupOrder(BaseModel):
 @router.post("/groups/order")
 def order_groups(body: GroupOrder) -> dict:
     """Arrange one year's group headings. Answers with the whole shelf."""
-    try:
-        return {**store.order_groups(body.year, body.order), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**store.order_groups(body.year, body.order), "version": store.version}
 
 
 class TagLift(BaseModel):
@@ -404,10 +362,7 @@ def lift_tag(body: TagLift) -> dict:
     line is untouchable in any case. Answers with the whole lifted set, because
     that is what every screen rendering a captured line holds.
     """
-    try:
-        return {"lifted": store.lift_tag(body.tag, body.lifted), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {"lifted": store.lift_tag(body.tag, body.lifted), "version": store.version}
 
 
 @router.get("/tags")
@@ -433,10 +388,7 @@ def album(folder: str | None = None, year: str | None = None) -> dict:
     """One album, one year. `folder` absent (or `unfiled`) is the pile nothing
     has claimed, which the shelf offers as an album of its own."""
     target = _album_folder(folder)
-    try:
-        return {**store.album(target, _year(year)), "version": store.version}
-    except CaptureError as exc:
-        raise HTTPException(_status(exc), str(exc)) from exc
+    return {**store.album(target, _year(year)), "version": store.version}
 
 
 @router.post("/reindex")

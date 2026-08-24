@@ -65,6 +65,13 @@ TABLES = (
     "lifted_tags",
 )
 
+# Dropped and recreated by `rebuild` alongside the tables. A view holds no
+# rows, so this is not about the data — it is so that changing the membership
+# rule takes effect on an index file that predates the change. `CREATE VIEW IF
+# NOT EXISTS` over a stale definition is a silent no-op, and the stale
+# definition is exactly the thing a reindex is being run to get rid of.
+VIEWS = ("membership",)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
     id         TEXT PRIMARY KEY,
@@ -87,7 +94,7 @@ CREATE TABLE IF NOT EXISTS entries (
     -- The `--directive`, lowercased, or empty. Derived like everything else on
     -- this row; it is a column rather than one more word in `folders` because
     -- a directive names a *folder* and a tag names a word, and only one of
-    -- them belongs in the registry. See `_BY_DIRECTIVE`.
+    -- them belongs in the registry. See the `membership` view.
     directive  TEXT NOT NULL DEFAULT '',
     -- The entry this one answers, or ''. **Stored, not derived** — the only
     -- other column here that is, besides `media`, and for the same reason: the
@@ -229,6 +236,41 @@ CREATE INDEX IF NOT EXISTS entry_folders_by_folder ON entry_folders (folder_id);
 CREATE TABLE IF NOT EXISTS lifted_tags (
     tag TEXT PRIMARY KEY
 );
+
+-- ── The membership rule, and the only place it is written ─────────────────
+--
+-- An entry is in a folder when one of its tags is mapped to that folder, when
+-- it was filed there by hand, or when its `--directive` names the folder. All
+-- three are resolved here, at read time, and none of them is stored — see the
+-- module docstring for why a junction table would be wrong in between mapping
+-- changes.
+--
+-- A view rather than four SQL strings. The rule used to be spelled once per
+-- query *shape* — one for a folder's entries, one for the complement, one for
+-- every pair at once, one inline in the shelf, and three separate queries in
+-- `home_folder` — and they had to agree by hand. They did not: the docstring
+-- on `folder_entries` records the read that had never heard of a directive,
+-- and the comment above `_shelf_buckets`'s union records the one that was
+-- taught about it afterwards. A view is still resolved, still stored nowhere,
+-- and is now the one edit a fourth route would need.
+--
+-- `route` ranks the ways in, most deliberate first: filed by hand, then a
+-- mapped tag, then a directive. `key` is the tag a tag-route came in by and
+-- empty otherwise, which is what lets `home_folder` break its tie the way it
+-- always did — on the tag's name. Consumers that want *pairs* rather than
+-- routes ask for them: an entry reachable two ways is two rows here, and
+-- `DISTINCT` is how a caller says it does not care which way.
+CREATE VIEW IF NOT EXISTS membership AS
+    SELECT ef.entry_id AS entry_id, ef.folder_id AS folder_id,
+           0 AS route, '' AS key
+      FROM entry_folders ef
+    UNION ALL
+    SELECT et.entry_id, ft.folder_id, 1 AS route, et.tag
+      FROM entry_tags et JOIN folder_tags ft USING (tag)
+    UNION ALL
+    SELECT e.id, fn.folder_id, 2 AS route, ''
+      FROM entries e JOIN folder_names fn ON fn.name_key = e.directive
+     WHERE e.directive <> '';
 """
 
 COLUMNS = (
@@ -289,7 +331,7 @@ def derive(raw_text: str) -> dict:
     typed, and the registry is supposed to hold the words *you* chose, the
     non-obvious ones you want pointed somewhere. A directive is the other
     gesture — naming the folder outright — so it resolves against the folder's
-    name at read time instead, and stores nothing. See `_BY_DIRECTIVE`.
+    name at read time instead, and stores nothing. See the `membership` view.
 
     Nothing is lost by the change, which is what the source got wrong and this
     still refuses to follow: it resolves the directive at *write* time and
@@ -385,363 +427,465 @@ def order_seqs(drawn: list[str], order: list[str]) -> dict[str, int]:
     return {name: slot for slot, name in enumerate(named + rest)}
 
 
-def fold(events: list[dict]) -> dict:
-    """Replay every event into the state the tables hold. Pure — it touches no
-    database, which is what lets `rebuild` and the targeted mirrors in
-    `store.py` be checked against each other by deleting the index.
+# Everything below replaces `fold()` and the nineteen targeted mirrors.
 
-    Last-wins throughout, and tolerant throughout: an event naming a folder
-    that does not exist (deleted, or a line restored out of order from a
-    backup) is dropped rather than resurrecting it.
+# The columns of `entries` that hold a JSON array. Named once because both the
+# upsert and the placeholder below have to agree with the schema about which
+# ones cannot be an empty string.
+_JSON_COLUMNS = frozenset(
+    ("folders", "times", "patterns", "places", "todo_lines", "todo_done", "media")
+)
+
+# Every column of an `entries` row is derived from the capture event except
+# `todo_done`, which is the fold of the check events that landed on it. So a
+# capture line arriving twice — a restored backup, an interrupted write —
+# rewrites the derived half and leaves the ticks alone. Spelled off `COLUMNS`
+# rather than by hand so a new column cannot be forgotten here.
+_ENTRY_UPSERT = (
+    f"INSERT INTO entries ({COLUMNS}) VALUES ({PLACEHOLDERS}) "
+    "ON CONFLICT (id) DO UPDATE SET "
+    + ", ".join(
+        f"{name} = excluded.{name}"
+        for name in (c.strip() for c in COLUMNS.split(","))
+        if name not in ("id", "todo_done")
+    )
+)
+
+
+# An `entries` row with nothing in it but an id, for the events that reach the
+# index before the capture they belong to. `ts = ''` is what marks one: every
+# real capture has one, and no read wants a row without it.
+_ENTRY_PLACEHOLDER = (
+    f"INSERT OR IGNORE INTO entries ({COLUMNS}) VALUES ("
+    + ", ".join(
+        "?"
+        if name == "id"
+        else ("'[]'" if name in _JSON_COLUMNS else "''")
+        for name in (c.strip() for c in COLUMNS.split(","))
+    )
+    + ")"
+)
+
+
+def _folder_exists(conn: sqlite3.Connection, folder_id: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM folders WHERE id = ? LIMIT 1", (folder_id,)
+        ).fetchone()
+        is not None
+    )
+
+
+def _claim_name(conn: sqlite3.Connection, folder_id: str, name: str) -> None:
+    """This folder answers to `name` from now on, and nothing else does.
+
+    `INSERT OR REPLACE` on the name key is the taking-back: a name belongs to
+    one folder, so a second folder called Admin takes `admin` off the one that
+    used to be called it.
     """
-    captures: dict[str, dict] = {}
-    done: dict[str, set[int]] = {}
-    media: dict[str, list[str]] = {}
-    dismissed: dict[str, set[int]] = {}
-    folders: dict[str, dict] = {}
-    tag_to_folder: dict[str, str] = {}
-    manual: dict[str, set[str]] = {}
-    # (folder, year) -> (group name, the seq that group was first named at)
-    groups: dict[tuple[str, str], str] = {}
-    group_seq: dict[tuple[str, str], int] = {}
-    # Tags the reader draws without their brackets. A set, folded last-wins
-    # like everything else here.
-    lifted: set[str] = set()
-    # Every name a folder has answered to -> the folder answering. Keyed on the
-    # name, so taking a name takes it back from whoever held it; see
-    # `folder_names`.
-    names: dict[str, str] = {}
-    # (folder, year, month) -> the name given to the chapter anchored there.
-    chapter_names: dict[tuple[str, str, int], str] = {}
+    key = normalize_tag(name)
+    if not key:
+        return
+    conn.execute(
+        "INSERT OR REPLACE INTO folder_names (name_key, folder_id) VALUES (?, ?)",
+        (key, folder_id),
+    )
 
-    for seq, event in enumerate(events):
-        kind = event["kind"]
-        subject = event["id"]
 
-        def claim_name(folder_id: str, name: str) -> None:
-            """`folder_id` answers to `name` from here on, and nothing else
-            does. The same rule the targeted mirror keeps, in the same order —
-            see `_claim_name`."""
-            key = normalize_tag(name)
-            if key:
-                names[key] = folder_id
+def apply(conn: sqlite3.Connection, event: dict) -> None:
+    """Put one event into the tables. **The transition table, and the only
+    copy of it.**
 
-        if kind == eventlog.CAPTURE:
-            # Last-wins on the capture's own list; attachments accumulate on
-            # top of it, in the order they landed.
-            media[subject] = list(event.get("media", []))
-            # Last-wins on a duplicated id, which only happens if a log file
-            # was restored twice. Re-applying the same line is then a no-op.
-            captures[subject] = event
-            done.setdefault(subject, set())
-        elif kind == eventlog.CHECK:
-            done.setdefault(subject, set()).add(int(event.get("line", 0)))
-        elif kind == eventlog.UNCHECK:
-            done.setdefault(subject, set()).discard(int(event.get("line", 0)))
-        elif kind == eventlog.ATTACH_MEDIA:
-            attached = media.setdefault(subject, [])
+    Why it is shaped this way
+    -------------------------
+    This used to be two functions. `fold()` replayed the whole log into
+    dictionaries and `rebuild()` bulk-loaded them; beside it sat nineteen
+    "targeted mirrors" — `add_folder`, `rename_group`, `set_manual_folder` and
+    the rest — which `store.py` called after appending, so that the index did
+    not have to be rebuilt on every keystroke. Twenty-two event kinds, each
+    implemented twice, in two files, with nothing but a hand-kept checklist in
+    the tests to notice when the two disagreed.
+
+    They did disagree. `delete-folder` dropped the folder's chapter names in
+    the fold and left them behind in the mirror, so a folder deleted and an
+    index rebuilt were two different databases — latent, because nothing reads
+    a chapter name for a folder that is gone, and exactly the shape of thing
+    that is found the hard way. There is one implementation now, so there is
+    nothing left to keep in step: `rebuild()` is this function over every
+    event, and a write is this function over one.
+
+    **It does not open a transaction.** The caller owns that — `rebuild` wraps
+    the whole replay in one, `Store._commit` wraps one event — because the
+    unit of atomicity is the caller's, not the event's.
+
+    **It is tolerant, the way the fold was.** An event naming a folder that
+    does not exist — deleted, or a line restored out of order from a backup —
+    is dropped rather than resurrecting it. Most of that falls out of `UPDATE
+    … WHERE id = ?` touching no rows; where it does not, the guard is written
+    out.
+    """
+    kind = event["kind"]
+    subject = event["id"]
+
+    # ── Entries ───────────────────────────────────────────────────────────
+    if kind == eventlog.CAPTURE:
+        # Whether anything is already filed under this id decides how much
+        # work the rest of this branch is. On a replay it almost never is —
+        # each capture line is seen once — and the two DELETEs below are then
+        # provably no-ops on an empty index. One primary-key lookup is cheaper
+        # than two b-tree deletes, and a replay does this fifty thousand times.
+        prior = conn.execute(
+            "SELECT 1 FROM entries WHERE id = ? LIMIT 1", (subject,)
+        ).fetchone()
+
+        row, tags = _row(event, [])
+        conn.execute(_ENTRY_UPSERT, row)
+
+        if prior is not None:
+            conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", (subject,))
+        conn.executemany(
+            "INSERT INTO entry_tags (entry_id, tag) VALUES (?, ?)",
+            [(subject, tag) for tag in tags],
+        )
+
+        # Reminders are derived from the line and the moment it was written,
+        # so a replayed capture produces the rows it produced the first time.
+        # Upserted rather than deleted and rewritten, because `dismissed` is
+        # *not* derived — it is the fold of the dismiss events, and throwing
+        # the row away would throw that away with it.
+        reminders = derive_reminders(event)
+        conn.executemany(
+            "INSERT INTO reminders (entry_id, line, line_text, due_at, dismissed) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (entry_id, line) DO UPDATE SET "
+            "line_text = excluded.line_text, due_at = excluded.due_at",
+            reminders,
+        )
+        if prior is not None:
+            # Lines this text no longer names a time on — a capture rewritten
+            # by a replayed duplicate, or a dismissal that was holding a line
+            # that turned out not to be a reminder at all.
+            lines = [r[1] for r in reminders]
+            if lines:
+                marks = ", ".join("?" * len(lines))
+                conn.execute(
+                    f"DELETE FROM reminders WHERE entry_id = ? AND line NOT IN ({marks})",
+                    [subject, *lines],
+                )
+            else:
+                conn.execute("DELETE FROM reminders WHERE entry_id = ?", (subject,))
+
+    elif kind in (eventlog.CHECK, eventlog.UNCHECK):
+        # Read-modify-write on the JSON list rather than a `todo_done` table.
+        # The column is what every read wants — one row, one entry — and a
+        # tick is rare enough that the extra select does not show.
+        #
+        # The placeholder is the out-of-order case, and it is a real one: a
+        # restored backup can put a `check` on disk with a `ts` that sorts
+        # ahead of the capture it belongs to, and the tick must still land.
+        # A row with nothing in it holds the ticks until the capture arrives
+        # and fills the rest in around them — the upsert above leaves
+        # `todo_done` alone precisely so it can. A placeholder whose capture
+        # never arrives is swept at the end of the replay; see `_sweep_lost`.
+        conn.execute(_ENTRY_PLACEHOLDER, (subject,))
+        row = conn.execute(
+            "SELECT todo_done FROM entries WHERE id = ?", (subject,)
+        ).fetchone()
+        done = set(json.loads(row["todo_done"]))
+        line = int(event.get("line", 0))
+        done.add(line) if kind == eventlog.CHECK else done.discard(line)
+        conn.execute(
+            "UPDATE entries SET todo_done = ? WHERE id = ?",
+            (json.dumps(sorted(done)), subject),
+        )
+
+    elif kind == eventlog.ATTACH_MEDIA:
+        row = conn.execute(
+            "SELECT media FROM entries WHERE id = ?", (subject,)
+        ).fetchone()
+        if row is not None:
+            attached = json.loads(row["media"])
             for ref in event.get("media", []):
                 if ref not in attached:  # a replayed line must not duplicate
                     attached.append(ref)
-        elif kind == eventlog.DISMISS:
-            dismissed.setdefault(subject, set()).add(int(event.get("line", 0)))
+            conn.execute(
+                "UPDATE entries SET media = ? WHERE id = ?",
+                (json.dumps(attached, ensure_ascii=False), subject),
+            )
 
-        elif kind == eventlog.CREATE_FOLDER:
-            claim_name(subject, event.get("text", ""))
-            folders[subject] = {
-                "name": event.get("text", ""),
-                "color": event.get("color", ""),
-                "created_ts": event["ts"],
-                "state": "",
-                "overview": "",
-                "overview_media": "",
-            }
-        elif kind == eventlog.RENAME_FOLDER:
-            if subject in folders:
-                folders[subject]["name"] = event.get("text", "")
-                # The old name is not dropped: entries written `--oldname`
-                # reach this folder by it, and a rename must not un-file them.
-                claim_name(subject, event.get("text", ""))
-        elif kind == eventlog.SET_STATE:
-            if subject in folders:
-                folders[subject]["state"] = event.get("text", "")
-        elif kind == eventlog.SET_OVERVIEW:
-            if subject in folders:
-                folders[subject]["overview"] = event.get("text", "")
-        elif kind == eventlog.SET_OVERVIEW_MEDIA:
-            if subject in folders:
-                # A list, because that is the field the log already has for a
-                # media ref. One entry, or none to clear it.
-                refs = event.get("media") or []
-                folders[subject]["overview_media"] = refs[0] if refs else ""
-        elif kind == eventlog.SET_GROUP:
-            year = event.get("year") or ""
-            name = event.get("text", "")
-            if subject in folders and year:
-                if name:
-                    groups[(subject, year)] = name
-                    # First naming wins the ordering slot. Moving another
-                    # folder into an existing group must not jump that group to
-                    # the end of the shelf.
-                    group_seq.setdefault((year, name), seq)
+    elif kind == eventlog.DISMISS:
+        # Same placeholder trick, for the same reason: `dismissed` is the one
+        # column of a reminder row that is *not* derived from the line, so a
+        # dismissal that arrives ahead of its capture has to wait somewhere.
+        # The capture's upsert fills in `line_text` and `due_at` around it, and
+        # drops the row again if that line turned out not to be a reminder.
+        line = int(event.get("line", 0))
+        conn.execute(
+            "INSERT OR IGNORE INTO reminders "
+            "(entry_id, line, line_text, due_at, dismissed) VALUES (?, ?, '', '', 1)",
+            (subject, line),
+        )
+        conn.execute(
+            "UPDATE reminders SET dismissed = 1 WHERE entry_id = ? AND line = ?",
+            (subject, line),
+        )
+
+    # ── Folders ───────────────────────────────────────────────────────────
+    elif kind == eventlog.CREATE_FOLDER:
+        conn.execute(
+            "INSERT OR REPLACE INTO folders "
+            "(id, name, color, created_ts, state, overview, overview_media) "
+            "VALUES (?, ?, ?, ?, '', '', '')",
+            (subject, event.get("text", ""), event.get("color", ""), event["ts"]),
+        )
+        _claim_name(conn, subject, event.get("text", ""))
+
+    elif kind == eventlog.RENAME_FOLDER:
+        if _folder_exists(conn, subject):
+            conn.execute(
+                "UPDATE folders SET name = ? WHERE id = ?",
+                (event.get("text", ""), subject),
+            )
+            # The old name is not dropped: entries written `--oldname` reach
+            # this folder by it, and a rename must not un-file them.
+            _claim_name(conn, subject, event.get("text", ""))
+
+    elif kind == eventlog.SET_STATE:
+        conn.execute(
+            "UPDATE folders SET state = ? WHERE id = ?",
+            (event.get("text", ""), subject),
+        )
+
+    elif kind == eventlog.SET_OVERVIEW:
+        conn.execute(
+            "UPDATE folders SET overview = ? WHERE id = ?",
+            (event.get("text", ""), subject),
+        )
+
+    elif kind == eventlog.SET_OVERVIEW_MEDIA:
+        # A list, because that is the field the log already has for a media
+        # ref. One entry, or none to clear it.
+        refs = event.get("media") or []
+        conn.execute(
+            "UPDATE folders SET overview_media = ? WHERE id = ?",
+            (refs[0] if refs else "", subject),
+        )
+
+    elif kind == eventlog.DELETE_FOLDER:
+        conn.execute("DELETE FROM folders WHERE id = ?", (subject,))
+        # Cascade, the same one Prisma declares on FolderTag and the same one
+        # the source gets from `onDelete: Cascade`. A mapping to a folder that
+        # no longer exists would make its tag look claimed.
+        conn.execute("DELETE FROM folder_tags WHERE folder_id = ?", (subject,))
+        conn.execute("DELETE FROM entry_folders WHERE folder_id = ?", (subject,))
+        conn.execute("DELETE FROM folder_names WHERE folder_id = ?", (subject,))
+        conn.execute("DELETE FROM folder_groups WHERE folder_id = ?", (subject,))
+        # The half the targeted mirror used to miss.
+        conn.execute("DELETE FROM chapter_names WHERE folder_id = ?", (subject,))
+
+    # ── The shelf ─────────────────────────────────────────────────────────
+    elif kind == eventlog.SET_GROUP:
+        year = event.get("year") or ""
+        name = event.get("text", "")
+        if year and _folder_exists(conn, subject):
+            if not name:
+                conn.execute(
+                    "DELETE FROM folder_groups WHERE folder_id = ? AND year = ?",
+                    (subject, year),
+                )
+            else:
+                # First naming wins the ordering slot. Moving another folder
+                # into an existing group must not jump that group to the end
+                # of the shelf; a group nobody has named before goes one past
+                # the highest slot there is, which is where this event stands.
+                row = conn.execute(
+                    "SELECT seq FROM folder_groups WHERE year = ? AND name = ? LIMIT 1",
+                    (year, name),
+                ).fetchone()
+                if row is None:
+                    top = conn.execute(
+                        "SELECT coalesce(max(seq), -1) AS s FROM folder_groups"
+                    ).fetchone()
+                    slot = top["s"] + 1
                 else:
-                    groups.pop((subject, year), None)
-        elif kind == eventlog.RENAME_GROUP:
-            year = event.get("year") or ""
-            new = event.get("text", "")
-            if year and new and new != subject:
-                hit = [k for k, v in groups.items() if k[1] == year and v == subject]
-                for key in hit:
-                    groups[key] = new
-                was = group_seq.pop((year, subject), None)
-                # `setdefault`, so renaming onto a name the year already uses
-                # keeps the older slot rather than dragging the survivor to
-                # wherever the group being renamed happened to sit.
-                if hit and was is not None:
-                    group_seq.setdefault((year, new), was)
-        elif kind == eventlog.ORDER_GROUPS:
-            # `id` is the year: what is being arranged is the shelf, not any
-            # one of the groups standing on it.
-            year = subject
-            here: dict[str, int] = {}
-            for (folder_id, in_year), name in groups.items():
-                if in_year == year:
-                    here.setdefault(name, group_seq.get((year, name), 0))
-            drawn = sorted(here, key=lambda name: (here[name], name))
-            for name, slot in order_seqs(drawn, event.get("order") or []).items():
-                group_seq[(year, name)] = slot
-        elif kind == eventlog.DELETE_GROUP:
-            year = event.get("year") or ""
-            if year:
-                groups = {
-                    k: v for k, v in groups.items() if not (k[1] == year and v == subject)
-                }
-                group_seq.pop((year, subject), None)
-        elif kind == eventlog.NAME_CHAPTER:
-            year = event.get("year") or ""
-            month = int(event.get("month") or 0)
-            name = event.get("text", "")
-            # `unfiled` is a real album to name a chapter in and is the one
-            # subject here that is not a folder id.
-            known = subject == UNFILED_ALBUM or subject in folders
-            if known and year and 1 <= month <= 12:
-                if name:
-                    chapter_names[(subject, year, month)] = name
-                else:
-                    chapter_names.pop((subject, year, month), None)
-        elif kind == eventlog.DELETE_FOLDER:
-            folders.pop(subject, None)
-            names = {key: fid for key, fid in names.items() if fid != subject}
-            groups = {k: v for k, v in groups.items() if k[0] != subject}
-            chapter_names = {k: v for k, v in chapter_names.items() if k[0] != subject}
-            # Cascade, the same one Prisma declares on FolderTag and the same
-            # one the source gets from `onDelete: Cascade`. A mapping to a
-            # folder that no longer exists would make its tag look claimed.
-            tag_to_folder = {
-                tag: fid for tag, fid in tag_to_folder.items() if fid != subject
-            }
-            for filed in manual.values():
-                filed.discard(subject)
+                    slot = row["seq"]
+                conn.execute(
+                    "INSERT INTO folder_groups (folder_id, year, name, seq) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT (folder_id, year) "
+                    "DO UPDATE SET name = excluded.name, seq = excluded.seq",
+                    (subject, year, name, slot),
+                )
 
-        elif kind == eventlog.LIFT_TAG:
-            # No `if subject in folders` guard, and deliberately: a tag is not a
-            # folder's property. Most tags worth lifting are ones nothing ever
-            # claimed, and a tag lifted today must stay lifted through the
-            # folder that later claims it being created, renamed and deleted.
-            if subject:
-                lifted.add(subject)
-        elif kind == eventlog.UNLIFT_TAG:
-            lifted.discard(subject)
+    elif kind == eventlog.RENAME_GROUP:
+        year = event.get("year") or ""
+        new = event.get("text", "")
+        if year and new and new != subject:
+            # A plain rename carries its own slot across untouched; a rename
+            # *onto an existing group* adopts that group's slot, because the
+            # survivor is the older of the two and the shelf must not reorder
+            # itself because you renamed something into it.
+            row = conn.execute(
+                "SELECT seq FROM folder_groups WHERE year = ? AND name = ? LIMIT 1",
+                (year, new),
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "UPDATE folder_groups SET name = ? WHERE year = ? AND name = ?",
+                    (new, year, subject),
+                )
+            else:
+                conn.execute(
+                    "UPDATE folder_groups SET name = ?, seq = ? "
+                    "WHERE year = ? AND name = ?",
+                    (new, row["seq"], year, subject),
+                )
 
-        elif kind == eventlog.MAP_TAG:
-            tag = event.get("tag")
-            if tag and subject in folders:
-                tag_to_folder[tag] = subject
-        elif kind == eventlog.UNMAP_TAG:
-            tag = event.get("tag")
+    elif kind == eventlog.ORDER_GROUPS:
+        # `id` is the year: what is being arranged is the shelf, not any one
+        # of the groups standing on it.
+        _, drawn = groups_for(conn, subject)
+        for name, slot in order_seqs(drawn, event.get("order") or []).items():
+            conn.execute(
+                "UPDATE folder_groups SET seq = ? WHERE year = ? AND name = ?",
+                (slot, subject, name),
+            )
+
+    elif kind == eventlog.DELETE_GROUP:
+        year = event.get("year") or ""
+        if year:
+            # Un-groups its folders and nothing else — no folder and no entry
+            # is touched, and there is nothing else a group could be holding.
+            conn.execute(
+                "DELETE FROM folder_groups WHERE year = ? AND name = ?",
+                (year, subject),
+            )
+
+    elif kind == eventlog.NAME_CHAPTER:
+        year = event.get("year") or ""
+        month = int(event.get("month") or 0)
+        # `unfiled` is a real album to name a chapter in and is the one
+        # subject here that is not a folder id.
+        known = subject == UNFILED_ALBUM or _folder_exists(conn, subject)
+        if known and year and 1 <= month <= 12:
+            conn.execute(
+                "DELETE FROM chapter_names "
+                "WHERE folder_id = ? AND year = ? AND month = ?",
+                (subject, year, month),
+            )
+            # An empty name is a deletion, which is what hands the chapter
+            # back to the reader that names it from your own words.
+            if event.get("text", ""):
+                conn.execute(
+                    "INSERT INTO chapter_names (folder_id, year, month, name) "
+                    "VALUES (?, ?, ?, ?)",
+                    (subject, year, month, event.get("text", "")),
+                )
+
+    # ── Tags ──────────────────────────────────────────────────────────────
+    elif kind == eventlog.LIFT_TAG:
+        # No folder guard, and deliberately: a tag is not a folder's property.
+        # Most tags worth lifting are ones nothing ever claimed, and a tag
+        # lifted today must stay lifted through the folder that later claims
+        # it being created, renamed and deleted.
+        if subject:
+            conn.execute(
+                "INSERT OR IGNORE INTO lifted_tags (tag) VALUES (?)", (subject,)
+            )
+
+    elif kind == eventlog.UNLIFT_TAG:
+        conn.execute("DELETE FROM lifted_tags WHERE tag = ?", (subject,))
+
+    elif kind == eventlog.MAP_TAG:
+        tag = event.get("tag")
+        if tag and _folder_exists(conn, subject):
+            # Moves the tag off whatever held it before: one tag, one folder.
+            conn.execute(
+                "INSERT OR REPLACE INTO folder_tags (tag, folder_id) VALUES (?, ?)",
+                (tag, subject),
+            )
+
+    elif kind == eventlog.UNMAP_TAG:
+        tag = event.get("tag")
+        if tag:
             # Only unmap what this folder actually holds: an `unmap-tag` that
             # arrives after the tag moved elsewhere must not steal it back.
-            if tag and tag_to_folder.get(tag) == subject:
-                del tag_to_folder[tag]
+            conn.execute(
+                "DELETE FROM folder_tags WHERE tag = ? AND folder_id = ?",
+                (tag, subject),
+            )
 
-        elif kind == eventlog.ASSIGN:
-            folder_id = event.get("folder")
-            if folder_id in folders:
-                # Replaces, never adds — `assignFolderId` overwrites the whole
-                # array in the source, and the assign menu is a radio group.
-                manual[subject] = {folder_id}
-        elif kind == eventlog.UNASSIGN:
-            folder_id = event.get("folder")
-            if folder_id:
-                manual.get(subject, set()).discard(folder_id)
+    # ── Filing by hand ────────────────────────────────────────────────────
+    elif kind == eventlog.ASSIGN:
+        folder_id = event.get("folder")
+        if folder_id and _folder_exists(conn, folder_id):
+            # Replaces, never adds — `assignFolderId` overwrites the whole
+            # array in the source, and the assign menu is a radio group.
+            conn.execute("DELETE FROM entry_folders WHERE entry_id = ?", (subject,))
+            conn.execute(
+                "INSERT INTO entry_folders (entry_id, folder_id) VALUES (?, ?)",
+                (subject, folder_id),
+            )
 
-    return {
-        "captures": captures,
-        "done": done,
-        "media": media,
-        "dismissed": dismissed,
-        "folders": folders,
-        "tag_to_folder": tag_to_folder,
-        "manual": manual,
-        "groups": groups,
-        "group_seq": group_seq,
-        "chapter_names": chapter_names,
-        "lifted": lifted,
-        "names": names,
-    }
+    elif kind == eventlog.UNASSIGN:
+        folder_id = event.get("folder")
+        if folder_id:
+            conn.execute(
+                "DELETE FROM entry_folders WHERE entry_id = ? AND folder_id = ?",
+                (subject, folder_id),
+            )
+
+
+def _sweep_lost(conn: sqlite3.Connection) -> None:
+    """Throw away what is left over an entry the log never captured.
+
+    The replay's one extra step, and the only thing `rebuild` does that
+    `apply` does not. A live write cannot produce any of this — the store
+    refuses to tick, dismiss or file an entry that is not there — but a log
+    can: a `check` whose capture line was lost, or a filing restored from a
+    backup whose other half was not. `apply` holds those in a placeholder
+    rather than dropping them, because the capture usually *is* still coming,
+    a few lines further down. This is what happens when it is not.
+
+    It is garbage collection, not a transition, which is why it is here rather
+    than folded into a twenty-third branch of `apply`.
+    """
+    conn.execute(
+        "DELETE FROM reminders WHERE entry_id IN "
+        "(SELECT id FROM entries WHERE ts = '')"
+    )
+    conn.execute("DELETE FROM entries WHERE ts = ''")
+    # An entry filed by hand that was never captured. It has to go rather than
+    # be left invisible: the membership view reaches `entry_folders` without
+    # touching `entries`, so an orphan would show up in a folder's count and
+    # nowhere else — a figure with nothing behind it.
+    conn.execute(
+        "DELETE FROM entry_folders WHERE entry_id NOT IN (SELECT id FROM entries)"
+    )
+    conn.execute(
+        "DELETE FROM entry_tags WHERE entry_id NOT IN (SELECT id FROM entries)"
+    )
 
 
 def rebuild(conn: sqlite3.Connection) -> tuple[int, list[str]]:
-    """Drop and replay. Returns (events indexed, log warnings)."""
-    events, warnings = eventlog.read_all()
-    state = fold(events)
+    """Drop and replay. Returns (events indexed, log warnings).
 
-    rows: list[tuple] = []
-    tag_rows: list[tuple[str, str]] = []
-    reminder_rows: list[tuple] = []
-    for entry_id, event in state["captures"].items():
-        row, tags = _row(
-            event,
-            sorted(state["done"].get(entry_id, set())),
-            state["media"].get(entry_id, []),
-        )
-        rows.append(row)
-        tag_rows += [(entry_id, tag) for tag in tags]
-        gone = state["dismissed"].get(entry_id, set())
-        reminder_rows += [
-            (eid, line, text, due, 1 if line in gone else 0)
-            for eid, line, text, due, _ in derive_reminders(event)
-        ]
+    One `apply` per event, in `ts` order, inside one transaction. There is no
+    separate bulk-load path any more: a rebuild and a write are the same code
+    reaching the same tables, which is what makes "delete the index file at any
+    moment" a promise rather than a hope.
+    """
+    events, warnings = eventlog.read_all()
 
     with conn:
+        for view in VIEWS:
+            conn.execute(f"DROP VIEW IF EXISTS {view}")
         for table in TABLES:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
         conn.executescript(SCHEMA)
-        conn.executemany(
-            f"INSERT INTO entries ({COLUMNS}) VALUES ({PLACEHOLDERS})",
-            rows,
-        )
-        conn.executemany(
-            "INSERT INTO entry_tags (entry_id, tag) VALUES (?, ?)", tag_rows
-        )
-        conn.executemany(
-            "INSERT INTO reminders (entry_id, line, line_text, due_at, dismissed) "
-            "VALUES (?, ?, ?, ?, ?)",
-            reminder_rows,
-        )
-        conn.executemany(
-            "INSERT INTO folders "
-            "(id, name, color, created_ts, state, overview, overview_media) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                (
-                    fid,
-                    f["name"],
-                    f["color"],
-                    f["created_ts"],
-                    f["state"],
-                    f.get("overview", ""),
-                    f.get("overview_media", ""),
-                )
-                for fid, f in state["folders"].items()
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO folder_tags (tag, folder_id) VALUES (?, ?)",
-            list(state["tag_to_folder"].items()),
-        )
-        conn.executemany(
-            "INSERT INTO folder_groups (folder_id, year, name, seq) "
-            "VALUES (?, ?, ?, ?)",
-            [
-                (fid, year, name, state["group_seq"].get((year, name), 0))
-                for (fid, year), name in state["groups"].items()
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO folder_names (name_key, folder_id) VALUES (?, ?)",
-            # A name whose folder is gone goes with it: `delete-folder` drops
-            # them in the fold, and a name restored out of order from a backup
-            # must not resurrect one either.
-            [
-                (key, fid)
-                for key, fid in state["names"].items()
-                if fid in state["folders"]
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO lifted_tags (tag) VALUES (?)",
-            [(tag,) for tag in sorted(state["lifted"])],
-        )
-        conn.executemany(
-            "INSERT INTO chapter_names (folder_id, year, month, name) "
-            "VALUES (?, ?, ?, ?)",
-            [
-                (fid, year, month, name)
-                for (fid, year, month), name in state["chapter_names"].items()
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO entry_folders (entry_id, folder_id) VALUES (?, ?)",
-            [
-                (entry_id, folder_id)
-                for entry_id, filed in state["manual"].items()
-                for folder_id in sorted(filed)
-                # An entry can be filed by hand and then never captured only
-                # if the log lost its capture line; skip rather than orphan.
-                if entry_id in state["captures"]
-            ],
-        )
+        for event in events:
+            apply(conn, event)
+        _sweep_lost(conn)
 
     return len(events), warnings
-
-
-def add_capture(conn: sqlite3.Connection, event: dict) -> None:
-    """Mirror a freshly appended capture into the index."""
-    row, tags = _row(event, [])
-    with conn:
-        conn.execute(
-            f"INSERT OR REPLACE INTO entries ({COLUMNS}) "
-            f"VALUES ({PLACEHOLDERS})",
-            row,
-        )
-        conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", (event["id"],))
-        conn.executemany(
-            "INSERT INTO entry_tags (entry_id, tag) VALUES (?, ?)",
-            [(event["id"], tag) for tag in tags],
-        )
-        conn.execute("DELETE FROM reminders WHERE entry_id = ?", (event["id"],))
-        conn.executemany(
-            "INSERT INTO reminders (entry_id, line, line_text, due_at, dismissed) "
-            "VALUES (?, ?, ?, ?, ?)",
-            derive_reminders(event),
-        )
-
-
-def set_done(conn: sqlite3.Connection, entry_id: str, done: list[int]) -> None:
-    """Mirror a check/uncheck. The list is the folded result, not a delta."""
-    with conn:
-        conn.execute(
-            "UPDATE entries SET todo_done = ? WHERE id = ?",
-            (json.dumps(sorted(set(done))), entry_id),
-        )
-
-
-def set_media(conn: sqlite3.Connection, entry_id: str, refs: list[str]) -> None:
-    """Mirror an attach. The list is the folded result, not a delta."""
-    with conn:
-        conn.execute(
-            "UPDATE entries SET media = ? WHERE id = ?",
-            (json.dumps(refs, ensure_ascii=False), entry_id),
-        )
-
-
-def dismiss_reminder(conn: sqlite3.Connection, entry_id: str, line: int) -> None:
-    with conn:
-        conn.execute(
-            "UPDATE reminders SET dismissed = 1 WHERE entry_id = ? AND line = ?",
-            (entry_id, line),
-        )
 
 
 def home_folder(conn: sqlite3.Connection, entry_id: str) -> str | None:
@@ -755,26 +899,17 @@ def home_folder(conn: sqlite3.Connection, entry_id: str) -> str | None:
     `None` means the unfiled pile, which is a real album you can open rather
     than an absence. An entry in two folders has two right answers and gets the
     first — this is a place to be taken to, not a claim about where it lives.
+
+    The priority is `route` on the `membership` view, which exists so that this
+    ordering is a fact about the rule rather than about this function: hand
+    filed, then a mapped tag, then a directive — the directive last only
+    because a mapped tag is the more specific statement when an entry carries
+    both. Ties within the tag route break on the tag's name, which is what
+    `key` carries and what the three separate queries this replaced did.
     """
     row = conn.execute(
-        "SELECT folder_id FROM entry_folders WHERE entry_id = ? LIMIT 1", (entry_id,)
-    ).fetchone()
-    if row:
-        return row["folder_id"]
-    row = conn.execute(
-        "SELECT ft.folder_id AS folder_id FROM entry_tags et "
-        "JOIN folder_tags ft ON ft.tag = et.tag "
-        "WHERE et.entry_id = ? ORDER BY et.tag LIMIT 1",
-        (entry_id,),
-    ).fetchone()
-    if row:
-        return row["folder_id"]
-    # And the directive, which names its folder outright — last only because a
-    # mapped tag is the more specific statement when an entry carries both.
-    row = conn.execute(
-        "SELECT fn.folder_id AS folder_id FROM entries e "
-        "JOIN folder_names fn ON fn.name_key = e.directive "
-        "WHERE e.id = ? AND e.directive <> '' LIMIT 1",
+        "SELECT folder_id FROM membership WHERE entry_id = ? "
+        "ORDER BY route, key LIMIT 1",
         (entry_id,),
     ).fetchone()
     return row["folder_id"] if row else None
@@ -934,192 +1069,6 @@ def due_reminders(conn: sqlite3.Connection, as_of: str) -> list[dict]:
 # after every one of them and asserts the rebuild agrees.
 
 
-def set_overview(conn: sqlite3.Connection, folder_id: str, text: str) -> None:
-    with conn:
-        conn.execute("UPDATE folders SET overview = ? WHERE id = ?", (text, folder_id))
-
-
-def set_overview_media(conn: sqlite3.Connection, folder_id: str, ref: str) -> None:
-    with conn:
-        conn.execute(
-            "UPDATE folders SET overview_media = ? WHERE id = ?", (ref, folder_id)
-        )
-
-
-def add_folder(conn: sqlite3.Connection, event: dict) -> None:
-    with conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO folders "
-            "(id, name, color, created_ts, state, overview, overview_media) "
-            "VALUES (?, ?, ?, ?, '', '', '')",
-            (event["id"], event.get("text", ""), event.get("color", ""), event["ts"]),
-        )
-        _claim_name(conn, event["id"], event.get("text", ""))
-
-
-def rename_folder(conn: sqlite3.Connection, folder_id: str, name: str) -> None:
-    """Mirror of the `rename-folder` branch of `fold`.
-
-    The old name is *kept* — see `folder_names`. Entries written `--oldname`
-    go on reaching this folder, which is the one thing a rename must not
-    change.
-    """
-    with conn:
-        conn.execute("UPDATE folders SET name = ? WHERE id = ?", (name, folder_id))
-        _claim_name(conn, folder_id, name)
-
-
-def _claim_name(conn: sqlite3.Connection, folder_id: str, name: str) -> None:
-    """This folder answers to `name` from now on, and nothing else does.
-
-    `INSERT OR REPLACE` on the name key is the taking-back: a name belongs to
-    one folder, so a second folder called Admin takes `admin` off the one that
-    used to be called it. The fold does the same thing in the same order.
-    """
-    key = normalize_tag(name)
-    if not key:
-        return
-    conn.execute(
-        "INSERT OR REPLACE INTO folder_names (name_key, folder_id) VALUES (?, ?)",
-        (key, folder_id),
-    )
-
-
-def set_folder_state(conn: sqlite3.Connection, folder_id: str, state: str) -> None:
-    with conn:
-        conn.execute("UPDATE folders SET state = ? WHERE id = ?", (state, folder_id))
-
-
-def set_folder_group(
-    conn: sqlite3.Connection, folder_id: str, year: str, name: str
-) -> None:
-    """Mirror of the `set-group` branch of `fold`. Empty name un-groups.
-
-    The `seq` a new group lands on is one past the highest in that year, which
-    is what `fold` would give it too: the fold numbers by event position, and
-    this event is the newest one there is.
-    """
-    with conn:
-        if not name:
-            conn.execute(
-                "DELETE FROM folder_groups WHERE folder_id = ? AND year = ?",
-                (folder_id, year),
-            )
-            return
-        row = conn.execute(
-            "SELECT seq FROM folder_groups WHERE year = ? AND name = ? LIMIT 1",
-            (year, name),
-        ).fetchone()
-        if row is None:
-            top = conn.execute(
-                "SELECT coalesce(max(seq), -1) AS s FROM folder_groups"
-            ).fetchone()
-            seq = top["s"] + 1
-        else:
-            seq = row["seq"]
-        conn.execute(
-            "INSERT INTO folder_groups (folder_id, year, name, seq) "
-            "VALUES (?, ?, ?, ?) ON CONFLICT (folder_id, year) "
-            "DO UPDATE SET name = excluded.name, seq = excluded.seq",
-            (folder_id, year, name, seq),
-        )
-
-
-def rename_group(conn: sqlite3.Connection, year: str, old: str, new: str) -> None:
-    """Mirror of the `rename-group` branch of `fold`.
-
-    The `seq` rule is the whole subtlety: a plain rename carries its own slot
-    across untouched, and a rename *onto an existing group* adopts that group's
-    slot, because the survivor is the older of the two and the shelf must not
-    reorder itself because you renamed something into it.
-    """
-    with conn:
-        row = conn.execute(
-            "SELECT seq FROM folder_groups WHERE year = ? AND name = ? LIMIT 1",
-            (year, new),
-        ).fetchone()
-        if row is None:
-            conn.execute(
-                "UPDATE folder_groups SET name = ? WHERE year = ? AND name = ?",
-                (new, year, old),
-            )
-        else:
-            conn.execute(
-                "UPDATE folder_groups SET name = ?, seq = ? WHERE year = ? AND name = ?",
-                (new, row["seq"], year, old),
-            )
-
-
-def order_groups(conn: sqlite3.Connection, year: str, order: list[str]) -> None:
-    """Mirror of the `order-groups` branch of `fold`. Rewrites `seq` for every
-    group standing on one year's shelf, by the one rule in `order_seqs`."""
-    with conn:
-        _, drawn = groups_for(conn, year)
-        for name, slot in order_seqs(drawn, order).items():
-            conn.execute(
-                "UPDATE folder_groups SET seq = ? WHERE year = ? AND name = ?",
-                (slot, year, name),
-            )
-
-
-def lift_tag(conn: sqlite3.Connection, tag: str, lifted: bool) -> None:
-    """Mirror of the `lift-tag` / `unlift-tag` branches of `fold`."""
-    with conn:
-        if lifted:
-            conn.execute("INSERT OR IGNORE INTO lifted_tags (tag) VALUES (?)", (tag,))
-        else:
-            conn.execute("DELETE FROM lifted_tags WHERE tag = ?", (tag,))
-
-
-def delete_group(conn: sqlite3.Connection, year: str, name: str) -> None:
-    """Mirror of the `delete-group` branch of `fold`. Un-groups its folders and
-    nothing else — no folder and no entry is touched, and there is nothing else
-    a group could have been holding."""
-    with conn:
-        conn.execute(
-            "DELETE FROM folder_groups WHERE year = ? AND name = ?", (year, name)
-        )
-
-
-def drop_folder(conn: sqlite3.Connection, folder_id: str) -> None:
-    with conn:
-        conn.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
-        conn.execute("DELETE FROM folder_tags WHERE folder_id = ?", (folder_id,))
-        conn.execute("DELETE FROM entry_folders WHERE folder_id = ?", (folder_id,))
-        conn.execute("DELETE FROM folder_names WHERE folder_id = ?", (folder_id,))
-        conn.execute("DELETE FROM folder_groups WHERE folder_id = ?", (folder_id,))
-
-
-def map_tag(conn: sqlite3.Connection, tag: str, folder_id: str) -> None:
-    """Point `tag` at `folder_id`, moving it off whatever held it before."""
-    with conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO folder_tags (tag, folder_id) VALUES (?, ?)",
-            (tag, folder_id),
-        )
-
-
-def unmap_tag(conn: sqlite3.Connection, tag: str, folder_id: str) -> None:
-    with conn:
-        conn.execute(
-            "DELETE FROM folder_tags WHERE tag = ? AND folder_id = ?",
-            (tag, folder_id),
-        )
-
-
-def set_manual_folder(
-    conn: sqlite3.Connection, entry_id: str, folder_id: str | None
-) -> None:
-    """File an entry by hand, or clear the filing. Replaces, never adds."""
-    with conn:
-        conn.execute("DELETE FROM entry_folders WHERE entry_id = ?", (entry_id,))
-        if folder_id is not None:
-            conn.execute(
-                "INSERT INTO entry_folders (entry_id, folder_id) VALUES (?, ?)",
-                (entry_id, folder_id),
-            )
-
-
 # ── Reads ─────────────────────────────────────────────────────────────────
 
 
@@ -1213,7 +1162,7 @@ def folders(conn: sqlite3.Connection, counts: bool = True) -> list[dict]:
         {
             row["folder_id"]: row["n"]
             for row in conn.execute(
-                f"SELECT folder_id, count(*) AS n FROM ({_ALL_MEMBERSHIP}) "
+                "SELECT folder_id, count(DISTINCT entry_id) AS n FROM membership "
                 "GROUP BY folder_id"
             ).fetchall()
         }
@@ -1270,15 +1219,16 @@ def folder_name_taken(
 def folder_entries(conn: sqlite3.Connection, folder_id: str) -> list[dict]:
     """Everything in a folder, newest first.
 
-    `_MEMBERSHIP` is the whole rule and this used to spell its own copy of it,
-    which is how it came to be the one read that had never heard of a
-    directive. Nothing here is stored as membership — see the module docstring.
+    This used to spell its own copy of the rule, which is how it came to be the
+    one read that had never heard of a directive. It selects from the
+    `membership` view now, so there is no copy to fall behind. Nothing here is
+    stored as membership — see the module docstring.
     """
     return [
         _as_entry(row)
         for row in conn.execute(
             f"{SELECT_ENTRIES} WHERE id IN ({_MEMBERSHIP}) ORDER BY ts DESC, id DESC",
-            (folder_id, folder_id, folder_id),
+            (folder_id,),
         ).fetchall()
     ]
 
@@ -1370,35 +1320,24 @@ def dates(conn: sqlite3.Connection) -> dict[str, int]:
 # `year=None` means "no year filter", which is what the setting turns the whole
 # screen into when the user does not want the yearly restart.
 
-# The membership rule, spelled once: tagged in, named by a directive, or filed
-# in by hand. Every half is parameterised by the same folder id, so callers pass
-# it three times.
+# Membership, asked three ways. The rule itself is the `membership` view in
+# SCHEMA and is not restated here — these are the shapes the reads want it in,
+# and each is a plain select over the view rather than its own copy of the
+# union. One folder id, once, where there used to be three.
 #
-# **The directive is the newest of the three and it replaced a stored thing.**
-# A `--directive` used to travel as a tag — `derive()` appended it to the
-# entry's tag list, and every folder claimed the tag of its own name at
+# **The directive is the newest of the three routes and it replaced a stored
+# thing.** A `--directive` used to travel as a tag — `derive()` appended it to
+# the entry's tag list, and every folder claimed the tag of its own name at
 # creation, so `--work` arrived through the ordinary mapping. It worked, and it
 # put a word in the registry for every folder that nobody had ever typed. The
 # registry is meant to hold the words the user chose — the non-obvious ones
 # they want pointed somewhere — so the claim is gone and the directive resolves
-# against the folder's name here instead, at read time, storing nothing.
+# against the folder's name, at read time, storing nothing.
 #
-# The two routes stay different on purpose. A tag is semantic and arbitrary and
+# The routes stay different on purpose. A tag is semantic and arbitrary and
 # goes where you say it goes; a directive names the folder outright and needs
 # no mapping to be understood. Both still resolve, neither is stored.
-_BY_DIRECTIVE = (
-    "SELECT id FROM entries WHERE directive <> '' AND directive IN "
-    "  (SELECT name_key FROM folder_names WHERE folder_id = ?)"
-)
-
-_MEMBERSHIP = (
-    "SELECT entry_id FROM entry_tags WHERE tag IN "
-    "  (SELECT tag FROM folder_tags WHERE folder_id = ?) "
-    "UNION "
-    "SELECT entry_id FROM entry_folders WHERE folder_id = ? "
-    "UNION "
-    f"{_BY_DIRECTIVE}"
-)
+_MEMBERSHIP = "SELECT DISTINCT entry_id FROM membership WHERE folder_id = ?"
 
 # The other side of it: an entry no folder claims. Not "has no tags" — a tag
 # nothing has been mapped to leaves its entry unfiled, which is exactly the
@@ -1406,25 +1345,7 @@ _MEMBERSHIP = (
 # folder leaves it there too, and the word is not lost: it is on the raw line
 # and in the `directive` column, so the folder made for it next year collects
 # every entry that has been waiting.
-_UNFILED = (
-    "SELECT id FROM entries WHERE id NOT IN ("
-    "  SELECT entry_id FROM entry_tags WHERE tag IN (SELECT tag FROM folder_tags)"
-    "  UNION SELECT entry_id FROM entry_folders"
-    "  UNION SELECT id FROM entries WHERE directive <> '' "
-    "    AND directive IN (SELECT name_key FROM folder_names)"
-    ")"
-)
-
-# The same three routes as one table of (folder, entry) pairs, for the reads
-# that want every folder's membership at once rather than one folder's.
-_ALL_MEMBERSHIP = (
-    "SELECT folder_id, entry_id FROM folder_tags JOIN entry_tags USING (tag)"
-    " UNION "
-    "SELECT folder_id, entry_id FROM entry_folders"
-    " UNION "
-    "SELECT fn.folder_id AS folder_id, e.id AS entry_id FROM folder_names fn"
-    "  JOIN entries e ON e.directive = fn.name_key"
-)
+_UNFILED = "SELECT id FROM entries WHERE id NOT IN (SELECT entry_id FROM membership)"
 
 
 def _year_clause(year: str | None) -> tuple[str, list]:
@@ -1470,24 +1391,6 @@ def _runs(volumes: list[int]) -> list[tuple[int, int]]:
     if start is not None:
         out.append((start, 11))
     return out
-
-
-def set_chapter_name(
-    conn: sqlite3.Connection, folder_id: str, year: str, month: int, name: str
-) -> None:
-    """Mirror one `name-chapter`. An empty name is a deletion, which is what
-    hands the chapter back to the reader that names it from your own words."""
-    with conn:
-        conn.execute(
-            "DELETE FROM chapter_names WHERE folder_id = ? AND year = ? AND month = ?",
-            (folder_id, year, month),
-        )
-        if name:
-            conn.execute(
-                "INSERT INTO chapter_names (folder_id, year, month, name) "
-                "VALUES (?, ?, ?, ?)",
-                (folder_id, year, month, name),
-            )
 
 
 def chapter_names(
@@ -1585,7 +1488,7 @@ def _album_rows(
         sql = f"SELECT {columns} FROM entries WHERE id IN ({_UNFILED})"
     else:
         sql = f"SELECT {columns} FROM entries WHERE id IN ({_MEMBERSHIP})"
-        args = [folder_id, folder_id, folder_id] + args
+        args = [folder_id] + args
     return conn.execute(sql + clause, args).fetchall()
 
 
@@ -1636,29 +1539,23 @@ def _shelf_buckets(
     """
     clause, args = _year_clause(year)
 
-    # Which folders claim which entries: mapped tag, or filed by hand. The
-    # same union `folders()` counts with, joined to `entries` so a year's
-    # shelf does not carry every other year's memberships in memory.
+    # Which folders claim which entries. This used to spell the three routes
+    # out again, joined to `entries` three times with the year clause repeated
+    # for each — the fourth copy of the rule, and the one that had to be taught
+    # about directives separately. It reads the `membership` view now and joins
+    # `entries` once, which is what keeps a year's shelf from carrying every
+    # other year's memberships in memory.
+    #
+    # `DISTINCT` because the view is per *route*: an entry that carries a
+    # mapped tag and was also filed by hand is two rows there and one member
+    # here.
     membership: dict[str, list[str]] = {}
     for row in conn.execute(
-        "SELECT t.entry_id AS entry_id, ft.folder_id AS folder_id "
-        "  FROM entry_tags t"
-        "  JOIN folder_tags ft USING (tag)"
-        "  JOIN entries e ON e.id = t.entry_id"
-        f" WHERE 1=1{clause}"
-        " UNION "
-        "SELECT ef.entry_id AS entry_id, ef.folder_id AS folder_id"
-        "  FROM entry_folders ef"
-        "  JOIN entries e ON e.id = ef.entry_id"
-        f" WHERE 1=1{clause}"
-        # The third route, joined the same way: an entry whose directive names
-        # this folder. See `_BY_DIRECTIVE`.
-        " UNION "
-        "SELECT e.id AS entry_id, fn.folder_id AS folder_id"
-        "  FROM entries e"
-        "  JOIN folder_names fn ON fn.name_key = e.directive"
+        "SELECT DISTINCT m.entry_id AS entry_id, m.folder_id AS folder_id"
+        "  FROM membership m"
+        "  JOIN entries e ON e.id = m.entry_id"
         f" WHERE 1=1{clause}",
-        args + args + args,
+        args,
     ).fetchall():
         membership.setdefault(row["entry_id"], []).append(row["folder_id"])
 
@@ -1712,7 +1609,7 @@ def album_entries(
         sql = f"{SELECT_ENTRIES} WHERE id IN ({_UNFILED})"
     else:
         sql = f"{SELECT_ENTRIES} WHERE id IN ({_MEMBERSHIP})"
-        args = [folder_id, folder_id, folder_id] + args
+        args = [folder_id] + args
     sql += clause + " ORDER BY ts DESC, id DESC"
     return [_as_entry(row) for row in conn.execute(sql, args).fetchall()]
 

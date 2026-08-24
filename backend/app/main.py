@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from backend.capture.api import router as capture_router
-from backend.capture.store import store as capture_store
+from backend.capture.store import CaptureError, store as capture_store
 
 from . import backup, config, edits, eventlog, media, storage, tools, watcher, xp
 from .config import ROOT
@@ -63,6 +63,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(CaptureError)
+async def _capture_refusal(request: Request, exc: CaptureError) -> JSONResponse:
+    """A refusal from capture's store, answered with the code it chose itself.
+
+    Handled centrally for the same reason `OSError` is, and with one more:
+    every capture route used to carry its own identical `try/except` — fourteen
+    of them — ending in a call that read the exception's *message* to pick
+    between 404 and 400. The code is a property of the refusal now (see
+    `CaptureError.status`), so the routes are back to being what api.py's
+    docstring says they are: parse, call the store, return derived state.
+    """
+    return JSONResponse(status_code=exc.status, content={"detail": str(exc)})
 
 
 @app.exception_handler(OSError)

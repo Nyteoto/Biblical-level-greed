@@ -495,8 +495,14 @@ def test_a_deleted_folder_takes_its_chapter_names_with_it(capture_store):
     capture_store.name_chapter(film["id"], "2026", 3, "The long spring")
     capture_store.delete_folder(film["id"])
 
-    events, _ = eventlog.read_all()
-    assert index.fold(events)["chapter_names"] == {}
+    # Asserted through the store on both sides of a rebuild rather than by
+    # reaching into the replay: the write and the replay are one function now
+    # (`index.apply`), and the thing worth pinning is that they leave the same
+    # table behind. This used to check only the replay's half — which is how
+    # the targeted mirror came to be the one that forgot the cascade.
+    assert index.chapter_names(capture_store.conn, film["id"], "2026") == {}
+    capture_store.reindex()
+    assert index.chapter_names(capture_store.conn, film["id"], "2026") == {}
 
 
 def test_a_chapter_name_is_refused_a_month_that_is_not_one(capture_store):
