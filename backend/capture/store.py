@@ -17,6 +17,7 @@ import sqlite3
 import threading
 from collections.abc import Iterable
 from datetime import timezone
+from pathlib import Path
 
 from backend.app import media as blobs
 from backend.app.timeutil import day_key, now
@@ -38,9 +39,21 @@ class CaptureError(Exception):
 
 
 class Store:
-    def __init__(self) -> None:
+    """The capture app's loaded state, and the one connection into its index.
+
+    `index_path` names the index to open, and exists for the tests that prove
+    the index is disposable: they build a second store by replaying the log and
+    compare it against the first, which needs the two to hold separate files.
+    They used to get that by unlinking the shared one — the first store kept
+    reading the deleted inode, which is a POSIX behaviour and an error on
+    Windows, where an open file cannot be unlinked at all. Asking for a path is
+    the same test without the trick in it. The app never passes one.
+    """
+
+    def __init__(self, index_path: Path | None = None) -> None:
         self._lock = threading.RLock()
-        self.conn = index.connect()
+        self._index_path = index_path
+        self.conn = index.connect(index_path)
         self.warnings: list[str] = []
         self.indexed = 0
         self.version = 0
@@ -61,7 +74,7 @@ class Store:
                 self.conn.close()
             except sqlite3.Error:
                 pass
-            self.conn = index.connect()
+            self.conn = index.connect(self._index_path)
             self.indexed, self.warnings = index.rebuild(self.conn)
             self.version += 1
 

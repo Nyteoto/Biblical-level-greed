@@ -639,7 +639,7 @@ sessions = 3
     write_domain(
         "rt",
         (
-            (loader.DOMAINS_DIR / "rt.toml").read_text().replace(
+            (loader.DOMAINS_DIR / "rt.toml").read_text(encoding="utf-8").replace(
                 'prefers = ["a"]\n', ""
             )
         ),

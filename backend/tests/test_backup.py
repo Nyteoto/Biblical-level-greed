@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -39,11 +39,23 @@ def dest(tmp_path, monkeypatch) -> Path:
     return target
 
 
-def script(tmp_path, monkeypatch, body: str) -> Path:
-    """A stand-in for `backup.sh`, which records its arguments."""
-    path = tmp_path / "fake-backup.sh"
-    path.write_text("#!/bin/sh\n" + body + "\n")
-    path.chmod(0o755)
+def script(tmp_path, monkeypatch, sh: str, ps1: str) -> Path:
+    """A stand-in for the real backup script, in the language of this platform.
+
+    Two bodies rather than one, because `_command` hands a `.ps1` to
+    powershell.exe and runs a `.sh` directly by its shebang. A stub that only
+    spoke `sh` failed every test through this helper on Windows, and failed
+    them misleadingly: the argv under test was right and the fake script it
+    named was simply not runnable. The seam is the thing being tested, so the
+    stub has to be the kind of file the seam actually runs.
+    """
+    if backup._WINDOWS:
+        path = tmp_path / "fake-backup.ps1"
+        path.write_text(ps1 + "\n", encoding="utf-8")
+    else:
+        path = tmp_path / "fake-backup.sh"
+        path.write_text("#!/bin/sh\n" + sh + "\n", encoding="utf-8")
+        path.chmod(0o755)
     monkeypatch.setattr(backup, "SCRIPT", path)
     return path
 
@@ -128,12 +140,17 @@ def test_the_script_is_run_against_the_configured_destination(
     second disk moves without an edit, and it would be pointless if the button
     ran the script's own default instead."""
     argv = tmp_path / "argv"
-    script(tmp_path, monkeypatch, f'echo "$1" > {argv}')
+    script(
+        tmp_path,
+        monkeypatch,
+        f'echo "$1" > {argv}',
+        f"$args[0] | Set-Content -LiteralPath '{argv}'",
+    )
 
     backup.start()
     settle()
 
-    assert argv.read_text().strip() == str(dest)
+    assert argv.read_text(encoding="utf-8").strip() == str(dest)
 
 
 def test_a_refusal_reaches_the_screen_verbatim(dest, tmp_path, monkeypatch):
@@ -142,7 +159,12 @@ def test_a_refusal_reaches_the_screen_verbatim(dest, tmp_path, monkeypatch):
     catches an unmounted disk — and that sentence is a better message than any
     status code this could invent from a return value."""
     refusal = "backup.sh: destination is on the same device as data/, refusing"
-    script(tmp_path, monkeypatch, f'echo "{refusal}" >&2; exit 1')
+    script(
+        tmp_path,
+        monkeypatch,
+        f'echo "{refusal}" >&2; exit 1',
+        f"[Console]::Error.WriteLine('{refusal}'); exit 1",
+    )
 
     backup.start()
     result = settle()["result"]
@@ -154,7 +176,12 @@ def test_a_refusal_reaches_the_screen_verbatim(dest, tmp_path, monkeypatch):
 def test_a_successful_run_reports_its_last_line(dest, tmp_path, monkeypatch):
     """rsync is chatty and the screen has one line. The last thing the script
     said is its summary."""
-    script(tmp_path, monkeypatch, 'echo "copying"; echo "done, 2.5 GB"')
+    script(
+        tmp_path,
+        monkeypatch,
+        'echo "copying"; echo "done, 2.5 GB"',
+        "Write-Output 'copying'; Write-Output 'done, 2.5 GB'",
+    )
 
     backup.start()
     result = settle()["result"]
@@ -180,14 +207,19 @@ def test_asking_twice_does_not_start_a_second_run(dest, tmp_path, monkeypatch):
     """One run at a time. Two rsyncs over the same tree at once is the failure
     this guards, and an impatient second tap is how it would happen."""
     runs = tmp_path / "runs"
-    script(tmp_path, monkeypatch, f'echo x >> {runs}; sleep 1')
+    script(
+        tmp_path,
+        monkeypatch,
+        f'echo x >> {runs}; sleep 1',
+        f"Add-Content -LiteralPath '{runs}' -Value 'x'; Start-Sleep -Seconds 1",
+    )
 
     backup.start()
     assert backup.status()["running"] is True
     backup.start()  # while the first is still going
     settle()
 
-    assert runs.read_text().count("x") == 1
+    assert runs.read_text(encoding="utf-8").count("x") == 1
 
 
 def test_the_status_endpoint_answers_without_a_backup_disk(dest):
@@ -218,10 +250,14 @@ def test_the_posix_script_is_run_directly(monkeypatch):
     """A `.sh` carries its own shebang, so it is its own argv[0]. Handing it to
     an interpreter would work and would also mean the Linux path stopped being
     the simple one for no gain."""
+    # PurePosixPath, not Path: on Windows `Path` is a WindowsPath, which
+    # stringifies a posix path back with backslashes and fails this on the
+    # separator rather than on anything to do with the argv. The Windows case
+    # below needs no such care — a backslash path is already literal on both.
     monkeypatch.setattr(backup, "_WINDOWS", False)
-    monkeypatch.setattr(backup, "SCRIPT", Path("/opt/pgs/backup.sh"))
+    monkeypatch.setattr(backup, "SCRIPT", PurePosixPath("/opt/pgs/backup.sh"))
 
-    assert backup._command(Path("/mnt/data/pgs-backup")) == [
+    assert backup._command(PurePosixPath("/mnt/data/pgs-backup")) == [
         "/opt/pgs/backup.sh",
         "/mnt/data/pgs-backup",
     ]

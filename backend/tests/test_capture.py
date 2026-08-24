@@ -74,8 +74,7 @@ def test_deleting_the_index_loses_nothing(capture_store):
 
     from backend.capture.config import INDEX_PATH
 
-    INDEX_PATH.unlink()
-    rebuilt = Store()
+    rebuilt = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     rebuilt.start()
     try:
         assert rebuilt.entries(limit=100) == before

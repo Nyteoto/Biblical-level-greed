@@ -85,7 +85,7 @@ def test_no_shipped_tree_uses_the_legacy_key(path: Path):
     """`sessions` still loads, for hand-written files from before the rename.
     But a *shipped* file using it means something wrote with old code."""
     offenders = [
-        n for n, line in enumerate(path.read_text().splitlines(), 1)
+        n for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
         if re.match(r"^\s*sessions\s*=", line)
     ]
     assert not offenders, (
@@ -144,6 +144,6 @@ def test_the_trees_carry_no_prose():
     prose = [
         p.name
         for p in FILES
-        if any(line.lstrip().startswith("#") for line in p.read_text().splitlines())
+        if any(line.lstrip().startswith("#") for line in p.read_text(encoding="utf-8").splitlines())
     ]
     assert not prose, f"rationale crept back into {prose} — it belongs in docs/"

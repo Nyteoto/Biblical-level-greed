@@ -358,8 +358,7 @@ def test_the_shelf_survives_the_index_being_deleted(capture_store):
     capture_store.reindex()
     before = capture_store.shelf("2026")
 
-    INDEX_PATH.unlink()
-    fresh = Store()
+    fresh = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     fresh.start()
     try:
         assert fresh.shelf("2026") == before

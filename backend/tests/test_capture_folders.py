@@ -32,11 +32,16 @@ def log_kinds() -> list[str]:
 def rebuilt_from_log(store: Store) -> Store:
     """A second store built from nothing but the log. The comparison every
     test here ends with: the targeted index writes and the full replay have to
-    agree, or the index has stopped being disposable."""
+    agree, or the index has stopped being disposable.
+
+    The replay gets its own index file so that the store it is compared against
+    keeps its own. This used to delete the shared one and let the first store go
+    on reading the unlinked inode — true on POSIX, and on Windows an error,
+    because an open file cannot be deleted at all.
+    """
     from backend.capture.config import INDEX_PATH
 
-    INDEX_PATH.unlink()
-    fresh = Store()
+    fresh = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     fresh.start()
     return fresh
 

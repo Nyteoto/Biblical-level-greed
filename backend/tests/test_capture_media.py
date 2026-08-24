@@ -82,8 +82,7 @@ def test_media_survives_deleting_the_index(capture_store):
 
     from backend.capture.config import INDEX_PATH
 
-    INDEX_PATH.unlink()
-    rebuilt = Store()
+    rebuilt = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     rebuilt.start()
     try:
         assert rebuilt.entries(limit=10) == before
@@ -167,8 +166,7 @@ def test_a_late_attachment_survives_the_index_being_deleted(capture_store):
 
     from backend.capture.config import INDEX_PATH
 
-    INDEX_PATH.unlink()
-    rebuilt = Store()
+    rebuilt = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     rebuilt.start()
     try:
         assert rebuilt.entry(entry["id"])["media"] == [late]

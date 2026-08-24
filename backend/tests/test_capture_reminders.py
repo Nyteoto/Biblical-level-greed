@@ -77,8 +77,7 @@ def test_a_dismissal_survives_the_index_being_deleted(capture_store):
 
     from backend.capture.config import INDEX_PATH
 
-    INDEX_PATH.unlink()
-    fresh = Store()
+    fresh = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     fresh.start()
     try:
         assert fresh.due_reminders() == before
@@ -252,8 +251,7 @@ def test_the_thread_survives_the_index_being_deleted(capture_store):
 
     from backend.capture.config import INDEX_PATH
 
-    INDEX_PATH.unlink()
-    fresh = Store()
+    fresh = Store(INDEX_PATH.with_name("index-replay.sqlite"))
     fresh.start()
     try:
         assert fresh.entry(reply["id"])["reply_to"] == original
