@@ -26,7 +26,7 @@ readable from that side:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
-pgs --data-dir E:\pgs-data        # the disk shared with Linux; see SYNC.md
+pgs --data-dir F:\pgs-data        # the disk shared with Linux; see SYNC.md
 ```
 
 Tests: `.venv/bin/python -m pytest backend/tests -q`

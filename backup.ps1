@@ -67,7 +67,7 @@ function Anchor([string]$path) {
 #
 # This is also, and not obviously, the check that catches an unmounted backup
 # disk — or on Windows, a drive letter that did not come back after a reboot.
-# When E:\ is absent, a path built from it fails outright, but a *stale* path
+# When F:\ is absent, a path built from it fails outright, but a *stale* path
 # under C:\ that used to be the backup would cheerfully "succeed", write the
 # backup onto the very disk it exists to protect against, and report nothing
 # wrong for months.
@@ -98,10 +98,10 @@ $Destination would land on the same volume as your data ($sourceVolume).
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
 # Robocopy is parsed by the C runtime, not by PowerShell, and there a path
-# ending in a backslash arrives as `"E:\pgs-data\"` — the backslash escapes the
-# closing quote and the next argument is swallowed into the path. `E:\` is the
+# ending in a backslash arrives as `"F:\pgs-data\"` — the backslash escapes the
+# closing quote and the next argument is swallowed into the path. `F:\` is the
 # case that actually happens, because a drive root cannot be written without
-# one; it is kept as `E:\.` rather than trimmed away to nothing.
+# one; it is kept as `F:\.` rather than trimmed away to nothing.
 function Unslash([string]$path) {
     $trimmed = $path.TrimEnd('\')
     if ($trimmed -match '^[A-Za-z]:$') { return "$trimmed\." }

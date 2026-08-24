@@ -74,7 +74,7 @@ it:
 
 | | Linux | Windows |
 |---|---|---|
-| data | `/mnt/ssd/pgs-data` — `sdb1`, exFAT | `E:\pgs-data` — the same disk, the same files |
+| data | `/mnt/ssd/pgs-data` — `sdb1`, exFAT | `F:\pgs-data` — the same disk, the same files |
 | backup | `/mnt/data/pgs-backup` — `sda2`, ext4 | `C:\pgs-backup` — the internal NTFS disk |
 | checkout | `~/pekka/dev/…` — btrfs | its own clone, on `C:` |
 

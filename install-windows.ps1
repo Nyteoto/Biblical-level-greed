@@ -153,11 +153,11 @@ Write-Host @"
 Done. Launch from the Start Menu, or:
 
   pgs                                     native window, data in .\data
-  pgs --data-dir E:\pgs-data              the disk shared with Linux (see SYNC.md)
+  pgs --data-dir F:\pgs-data              the disk shared with Linux (see SYNC.md)
   pgs --browser                           no window, opens your browser
   pgs --headless --host tailscale         serve to your phone (see MOBILE.md)
 
 Set the shared disk once, so you never launch against the wrong data:
 
-  [Environment]::SetEnvironmentVariable('PGS_DATA_DIR', 'E:\pgs-data', 'User')
+  [Environment]::SetEnvironmentVariable('PGS_DATA_DIR', 'F:\pgs-data', 'User')
 "@

@@ -17,7 +17,7 @@ param(
     [switch]$Remove,
     # Where the shared data lives on this side. The Linux path /mnt/ssd/pgs-data
     # is the same directory; only the letter differs.
-    [string]$DataDir = $(if ($env:PGS_DATA_DIR) { $env:PGS_DATA_DIR } else { 'E:\pgs-data' })
+    [string]$DataDir = $(if ($env:PGS_DATA_DIR) { $env:PGS_DATA_DIR } else { 'F:\pgs-data' })
 )
 
 $ErrorActionPreference = 'Stop'
