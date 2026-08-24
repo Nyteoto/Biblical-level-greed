@@ -103,6 +103,21 @@ started by hand needs it too:
 PGS_DATA_DIR=/mnt/ssd/pgs-data ./run.sh
 ```
 
+The two Scheduled Tasks carry no environment of their own, so on that side
+`PGS_DATA_DIR` is set once for the user and both tasks inherit it:
+
+```powershell
+[Environment]::SetEnvironmentVariable('PGS_DATA_DIR', 'F:\pgs-data', 'User')
+```
+
+Without it the server task serves the checkout's own `data\` — the six seeded
+trees and none of your history — and the backup task refuses outright, because
+`data\` and `C:\pgs-backup` are then both on `C:` and the same-volume check
+fires. The refusal is the safe direction and is how the missing variable
+announces itself; a `LastTaskResult` of 1 on `PGS Backup` is worth reading as
+this first. Set at *User* scope rather than in the task, so that a shell, the
+Start Menu shortcut and both tasks all agree about where the data is.
+
 **The app refuses to start on an unmounted disk.** When a removable drive is
 absent its mount point is an ordinary empty directory, and without the check
 the app would build a fresh tree inside it and start writing a second, parallel

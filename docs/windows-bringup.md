@@ -7,6 +7,11 @@ left. Delete this file when the checklist at the bottom is green — it is a
 handoff, not documentation, and a stale bring-up guide is worse than none.
 
 Written 2026-08-24, from Fedora, commit `36eebde` on branch `phosphor`.
+**Picked up the same day, on Windows.** Everything below that can be proved
+from this side has been; what is left needs the phone, a reboot, or a
+Tailscale sign-in, and is ticked off at the bottom. The scripts have met an
+interpreter now, and six more bugs came out of it — the reading-only list
+further down is no longer the whole of it.
 
 ## What is already true
 
@@ -38,16 +43,16 @@ Committed and pushed from Linux:
 - **The shared volume** is labelled `Extreme SSD`, exFAT, serial `0663-9718`
   (Linux calls it UUID `0663-9718`; Windows shows the same digits). It is
   `/mnt/ssd` on Linux and the data is `/mnt/ssd/pgs-data`. **The Windows drive
-  letter is unknown** — every doc says `E:` as a placeholder and nobody has
-  checked. Identify it by serial, not by guessing:
+  letter is `F:`** — checked by serial rather than guessed, and the placeholder
+  `E:` that every document carried has been corrected everywhere:
 
   ```powershell
   Get-Volume | Where-Object FileSystemLabel -eq 'Extreme SSD'
   ```
 
-  If it is not `E:`, fix the letter in SYNC.md, README.md and
-  `install-windows-tasks.ps1`'s `-DataDir` default rather than leaving three
-  documents lying.
+  It can move. If it ever does, the serial is what identifies the disk, and the
+  letter appears in SYNC.md, README.md, `install-windows-tasks.ps1`'s `-DataDir`
+  default and the installer's closing lines.
 
 - **That directory already holds a real history** — `capture/`, `domains/`,
   `log/`, `media/`, `notes/`, `seed/`, `tools/`, `todos.jsonl`, `index.sqlite`.
@@ -62,9 +67,15 @@ Committed and pushed from Linux:
 
 - **Toolchain on Linux**, for reference only — the two sides do not share a venv
   or a `node_modules`, and do not need matching versions: Python 3.14.7, Node
-  v22.23.1, npm 10.9.8. **Prefer Python 3.13 on Windows.** 3.14 is new enough
-  that `pillow-heif` and `pywebview` wheels may not exist for it there, and
-  building either from source on Windows is a bad afternoon.
+  v22.23.1, npm 10.9.8. ~~Prefer Python 3.13 on Windows.~~ **Not needed** —
+  checked rather than assumed, and `pillow-heif`, `pywebview` and `Pillow` all
+  ship `cp314` wheels for `win_amd64` now. This side runs 3.14.4 and Node 25
+  with nothing built from source. The caution was right when it was written and
+  cost nothing to disprove:
+
+  ```powershell
+  python -m pip download --only-binary=:all: --no-deps -d $env:TEMP pywebview pillow-heif
+  ```
 
 ## The bugs already found by reading
 
@@ -87,21 +98,61 @@ one already fixed and "fixing" it again is how a working script stops working:
 
 Assume more of the same. Nothing here has met an interpreter.
 
+## The bugs found by running them
+
+Six, and none of them was findable by reading. They are listed newest lesson
+first, because the last two are the ones that would have wasted a day:
+
+1. **The frontend did not build at all.** `Banner.svelte` and `banner.svelte.ts`
+   differ only in case, and Windows resolves `./banner.svelte` to the component
+   rather than the store. The store is now `banner-state.svelte.ts`.
+2. **The installer said it had built anyway.** It clears
+   `$PSNativeCommandUseErrorActionPreference` so a failing test can be reported
+   rather than crash the run, and that is also the setting that would have
+   caught npm. Both npm calls read their exit code now.
+3. **31 of the 463 tests failed**, all on assumptions rather than on the app:
+   an index deleted while a store still held it open (a POSIX behaviour), a
+   backup stub written in `sh` and handed to powershell.exe, a tree read as
+   cp1252, and a posix path built with `Path` that comes back with backslashes.
+4. **The Start Menu shortcut did nothing.** `pythonw.exe` starts with no console
+   and Python sets both standard streams to None, so the first `print` in
+   `main` raised before a window existed. It only fails when detached, which is
+   to say it only fails the way a user launches it.
+5. **The logon task would not register.** `-User $env:USERNAME` is refused —
+   Task Scheduler wants a qualified name, `PEKKA\PEKKA` here.
+6. **Windows PowerShell 5.1 could not parse two of the three scripts.** It reads
+   a `.ps1` with no BOM as cp1252, every em-dash becomes three characters ending
+   in a curly quote, and PowerShell counts curly quotes as string delimiters.
+   `pwsh` never sees it; `powershell.exe` is what the task, the app's backup
+   button and the documented install command all run. All three carry a BOM now
+   and `.gitattributes` says why.
+
+The shape of all six: the Linux side could not have caught any of them, and
+each was invisible until the exact command a user would type was typed.
+
 ## Do this in an order that cannot lose data
 
 The repo's standing rule is **never test a destructive path against real data**,
 and it is written in blood: a previous violation cost an unrecoverable
 photograph. `backup.ps1` never deletes, but it is unproven, so:
 
-1. **Prove the backup against scratch first.** Make `C:\tmp\src` with a couple
-   of junk files and a `index.sqlite`, run
-   `.\backup.ps1 -Destination C:\tmp\dst` with `PGS_DATA_DIR=C:\tmp\src`, and
-   check three things: the files arrive, `index.sqlite` does **not**, and
-   `.last-backup` parses (`[datetime]::Parse((Get-Content C:\tmp\dst\.last-backup))`).
+1. **Prove the backup against scratch first.** Note that the two scratch paths
+   this section first named were both on `C:`, which is step 2's refusal rather
+   than step 1's happy path — a scratch run needs two volumes, the same way the
+   real one does. What was actually run: a throwaway source on the SSD,
+   `F:\pgs-scratch-src`, holding junk files, a nested directory and an
+   `index.sqlite` at both levels, copied to `C:\tmp\pgs-scratch-dst`. Checked
+   three things: the files arrive, **neither** `index.sqlite` does — `/XF`
+   matches by name at every depth — and `.last-backup` parses
+   (`[datetime]::Parse((Get-Content C:\tmp\pgs-scratch-dst\.last-backup))`).
+   The source is only ever read, so a scratch directory beside the real one is
+   safe; delete it afterwards.
 2. **Prove both refusals.** Point source and destination at the same volume and
-   confirm it exits non-zero and says so. Delete a file from the destination,
-   re-run, and confirm it comes back rather than the destination shrinking —
-   that is the missing `/MIR`.
+   confirm it exits non-zero and says so — it does, and it declines before
+   creating the destination directory at all. Then the missing `/MIR`, which is
+   worth proving in both directions: delete a file from the destination and
+   confirm the next run brings it back, and delete one from the *source* and
+   confirm the destination keeps it. The second is the one that matters.
 3. **Only then** run it against the real data directory.
 
 For the app itself the net is already in place: `config.check_data_dir` refuses
@@ -112,22 +163,35 @@ directory to make it go away.
 
 ## Done looks like
 
-- [ ] `install-windows.ps1` runs clean and ends with `463 passed`
-- [ ] `pgs` opens a real window, rendered by WebView2 — not an unstyled column,
-      which is what mshtml gives and means `PYWEBVIEW_GUI` did not take
-- [ ] the window shows the user's actual trees and capture history, i.e. it is
-      reading the shared disk and not a fresh `data\`
+- [x] `install-windows.ps1` runs clean and ends with `463 passed`
+- [x] `pgs` opens a real window, rendered by WebView2 — not an unstyled column,
+      which is what mshtml gives and means `PYWEBVIEW_GUI` did not take.
+      Confirmed from the process tree: the app is the parent of the
+      `msedgewebview2.exe` group, which mshtml would never produce
+- [x] the window shows the user's actual trees and capture history, i.e. it is
+      reading the shared disk and not a fresh `data\` — seven trees, the 2026
+      shelf, twelve folders and the real contact sheets
 - [ ] a capture written on Windows is visible from Linux after a reboot, with
-      no copying step in between
-- [ ] `backup.ps1` proven against scratch, both refusals confirmed, then run for
-      real once
-- [ ] `install-windows-tasks.ps1` registers both tasks; `Get-ScheduledTaskInfo`
-      shows the server task running
+      no copying step in between. **Half proved, half not provable from here:**
+      one was written from this side and is on the exFAT disk in
+      `capture/log/2026-08.jsonl`, and a separate process replaying that log
+      sees it. The reboot is the half only you can do
+- [x] `backup.ps1` proven against scratch, both refusals confirmed, then run for
+      real once — 2.62 GB, 43 files against the source's 44, both
+      `index.sqlite` excluded, stamp written and parsed back
+- [x] `install-windows-tasks.ps1` registers both tasks; `Get-ScheduledTaskInfo`
+      shows the server task running, and `PGS Backup` has run once for real
+      with `LastTaskResult 0`
 - [ ] `tailscale serve` configured on this node too — it is per-device, so the
-      Linux setup does not carry over
+      Linux setup does not carry over. **Tailscale is not installed on this
+      side yet**, and signing in is interactive, through the tray app rather
+      than the CLI. Nothing else waits on it: the server task already serves
+      `127.0.0.1:8787`, which is exactly what `serve` needs to sit in front of
 - [ ] the second icon added to the phone, renamed so the two are tellable apart
-- [ ] every placeholder `E:` corrected across the docs if the letter differs
-- [ ] this file deleted, and anything durable folded into SYNC.md
+- [x] every placeholder `E:` corrected across the docs — the letter is `F:`
+- [ ] this file deleted, and anything durable folded into SYNC.md. The task
+      environment note is folded in already; delete the rest once the three
+      boxes above are ticked
 
 Commit the fixes as you go, in this repo's voice — prose, imperative, intent
 rather than diff. The Linux side pulls them back the same way they arrived.
