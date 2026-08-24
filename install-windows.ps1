@@ -44,7 +44,14 @@ Python is not on PATH.
      (then open a new terminal and re-run this script)
 "@
 }
-$pyVersion = & $python.Source -c 'import sys; print("%d.%d" % sys.version_info[:2])'
+# Single quotes inside the Python, not double. Windows PowerShell 5.1 does
+# not pass an embedded double quote through to a native command: python
+# receives print(%d.%d % ...) with the quotes gone, fails with a syntax
+# error, and the version comes back empty — so the check below reports a
+# Python too old to use and names no version at all. pwsh 7 quotes it
+# correctly, which is why this survived until someone ran the documented
+# command instead.
+$pyVersion = & $python.Source -c "import sys; print('%d.%d' % sys.version_info[:2])"
 if ([version]$pyVersion -lt [version]'3.11') {
     Die "Python $pyVersion is too old; this needs 3.11 or newer."
 }
@@ -115,16 +122,23 @@ Say '4/6  Frontend'
 # would have — so an unchecked `npm run build` can fail, print its errors, and
 # still be followed by a green OK. That happened: a case-insensitive import
 # resolved to the wrong file, the build died, and the installer reported it
-# built. The output is held back until it is needed; on success it is warnings.
+# built. What it printed was there on screen the whole time; nothing read the
+# one number that said whether any of it mattered.
 Push-Location frontend
 try {
     if (-not (Test-Path -LiteralPath node_modules)) {
         & npm install --silent
         if ($LASTEXITCODE -ne 0) { Die 'npm install failed; the frontend cannot be built.' }
     }
-    $built = & npm run build 2>&1
+    # Not `2>&1` into a variable. Windows PowerShell 5.1 wraps a native
+    # command's stderr in ErrorRecords once it is merged into the pipeline,
+    # and with $ErrorActionPreference = 'Stop' the first warning npm prints
+    # becomes a terminating NativeCommandError — the build is fine and the
+    # installer dies reporting the warning. Let both streams go where they
+    # always went, and read the exit code, which is the only part that was
+    # ever missing.
+    & npm run build | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        $built | ForEach-Object { Write-Host "     $_" }
         Die 'The frontend build failed. Nothing was written to frontend\build, so the app would serve the last build that worked, or nothing at all.'
     }
 } finally { Pop-Location }
