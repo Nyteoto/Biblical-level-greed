@@ -195,7 +195,32 @@ def _prepare_linux_gui() -> None:
         os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 
 
+def _ensure_streams() -> None:
+    """Give the process a stdout and a stderr when it was started without any.
+
+    `pythonw.exe` is what the Start Menu shortcut runs, and it has to be:
+    `python.exe` would flash up a console and leave it sitting behind the
+    window for the life of the app. But a process started from a shortcut has
+    no console attached at all, and Python sets `sys.stdout` and `sys.stderr`
+    to None rather than to something that discards writes. The first `print`
+    below then raises AttributeError before a window is ever created, and the
+    shortcut exits 1 where there is, by construction, nowhere to report it.
+
+    It only reproduced when launched detached. From a terminal — which is how
+    anyone testing it would run it — the console is inherited and both streams
+    are real, so the failure hides from exactly the person looking for it.
+
+    Everything written to these is progress for someone watching a terminal.
+    With no terminal, discarding it is the right answer; the failures that
+    matter raise a window or a dialog of their own.
+    """
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name, None) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+
+
 def main() -> int:
+    _ensure_streams()
     parser = argparse.ArgumentParser(description=WINDOW_TITLE)
     parser.add_argument(
         "--data-dir",
