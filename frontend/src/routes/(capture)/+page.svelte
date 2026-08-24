@@ -34,7 +34,7 @@
 	 */
 	import { goto } from '$app/navigation';
 	import SmoothTextarea from '$lib/trophic/SmoothTextarea.svelte';
-	import { banner } from '$lib/trophic/banner.svelte';
+	import { banner } from '$lib/trophic/banner-state.svelte';
 	import { uiDim } from '$lib/trophic/dim.svelte';
 	import SyntaxBar from '$lib/trophic/SyntaxBar.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';

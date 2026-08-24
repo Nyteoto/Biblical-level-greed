@@ -48,7 +48,7 @@
 	import { albumWeek, foldQuiet, groupDays, stretchLabel, stretchTally } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import { queuedTodo } from '$lib/trophic/queued.svelte';
-	import { banner } from '$lib/trophic/banner.svelte';
+	import { banner } from '$lib/trophic/banner-state.svelte';
 	import type { Shot } from '$lib/trophic/media';
 	import {
 		assignEntry,

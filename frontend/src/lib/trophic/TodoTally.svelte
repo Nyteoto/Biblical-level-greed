@@ -110,7 +110,7 @@
 	 * count the strip above draws — so the two cannot disagree about the same
 	 * fold. See `store.banner`.
 	 */
-	import { banner } from './banner.svelte';
+	import { banner } from './banner-state.svelte';
 	import { FRAME, paintFlat } from './tally-face';
 	import type { Tally } from './tally-scene';
 

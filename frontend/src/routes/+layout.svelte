@@ -9,7 +9,7 @@
 	import HoldRing from '$lib/trophic/HoldRing.svelte';
 	import Warmup from '$lib/trophic/Warmup.svelte';
 	import Banner from '$lib/trophic/Banner.svelte';
-	import { banner } from '$lib/trophic/banner.svelte';
+	import { banner } from '$lib/trophic/banner-state.svelte';
 	import { EXPECTED_API, getApiVersion, restartServer } from '$lib/api';
 	import { monitor } from '$lib/trophic/monitor.svelte';
 

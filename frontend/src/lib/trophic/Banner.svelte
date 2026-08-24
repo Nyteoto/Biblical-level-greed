@@ -36,7 +36,7 @@
 	import { goto } from '$app/navigation';
 	import { tick as flush } from 'svelte';
 	import Glyph from './Glyph.svelte';
-	import { banner } from './banner.svelte';
+	import { banner } from './banner-state.svelte';
 	import { queuedTodo } from './queued.svelte';
 	import { uiDim } from './dim.svelte';
 	import { toggleLine } from './api';

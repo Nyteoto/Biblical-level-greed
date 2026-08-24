@@ -1,5 +1,12 @@
 // The persistent banner's state, held once for the whole app.
 //
+// Named `banner-state` and not `banner`, only because `Banner.svelte` sits
+// beside it. Windows resolves paths case-insensitively, so `./banner.svelte`
+// found the component rather than this module and the build stopped on a
+// missing export that is plainly present on Linux. Every other store here
+// keeps the short name; this one cannot while it shares a word with a
+// component in the same directory.
+//
 // A module-level store rather than a per-component one, and for the same reason
 // the pin is: the banner is drawn once in `+layout.svelte` but its contents are
 // changed from all over — capturing a `--todo` on the capture screen, ticking
