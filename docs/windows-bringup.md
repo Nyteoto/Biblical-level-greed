@@ -62,8 +62,11 @@ Committed and pushed from Linux:
 
 - **Tailscale**, Linux side: node `p`, `p.tail1a906a.ts.net`, `100.67.160.15`,
   with `serve` already proxying `https://p.tail1a906a.ts.net` → `127.0.0.1:8787`.
-  The tailnet is `tail1a906a.ts.net`. The Windows node will get its own name;
-  that is expected and is the second icon.
+  The tailnet is `tail1a906a.ts.net`. The Windows node has its own name, as
+  expected, and it is the second icon: **`pekka.tail1a906a.ts.net`**,
+  `100.66.133.50`, serving the same way. Only ever one of the two is online,
+  because one machine boots one OS — `p` shows as offline from here and that is
+  the arrangement working, not a fault to chase.
 
 - **Toolchain on Linux**, for reference only — the two sides do not share a venv
   or a `node_modules`, and do not need matching versions: Python 3.14.7, Node
@@ -194,12 +197,16 @@ directory to make it go away.
 - [x] `install-windows-tasks.ps1` registers both tasks; `Get-ScheduledTaskInfo`
       shows the server task running, and `PGS Backup` has run once for real
       with `LastTaskResult 0`
-- [ ] `tailscale serve` configured on this node too — it is per-device, so the
-      Linux setup does not carry over. **Tailscale is not installed on this
-      side yet**, and signing in is interactive, through the tray app rather
-      than the CLI. Nothing else waits on it: the server task already serves
-      `127.0.0.1:8787`, which is exactly what `serve` needs to sit in front of
-- [ ] the second icon added to the phone, renamed so the two are tellable apart
+- [x] `tailscale serve` configured on this node too — it is per-device, so the
+      Linux setup did not carry over. This node is `pekka.tail1a906a.ts.net`,
+      `100.66.133.50`, on the same tailnet as `p`. `serve --bg` proxies
+      `https://pekka.tail1a906a.ts.net` to `127.0.0.1:8787`; fetched over the
+      tailnet it answers 200 with a real certificate, and serves the app and
+      not only the API
+- [ ] the second icon added to the phone, renamed so the two are tellable
+      apart. Everything it needs is up: add `https://pekka.tail1a906a.ts.net`
+      to the home screen beside the existing `p` one, with the phone on the
+      tailnet and this machine booted into Windows
 - [x] every placeholder `E:` corrected across the docs — the letter is `F:`
 - [ ] this file deleted, and anything durable folded into SYNC.md. The task
       environment note is folded in already; delete the rest once the three
