@@ -30,8 +30,9 @@
 	 * screen owns it.
 	 */
 	import type { Album, AlbumView, Chapter, Folder, Shelf } from './api';
-	import { holdable } from './holdable';
-	import { moveBefore, sortable } from './sortable';
+	import { hold } from './hold';
+	import { sortable } from './sortable';
+	import { albumHref, reorderGroups, splitShelf } from './shelf';
 	import { collapsedChapters, collapsedGroups } from './collapsed.svelte';
 	import Glyph from './Glyph.svelte';
 
@@ -70,7 +71,6 @@
 		onorder?: (order: string[]) => void;
 	} = $props();
 
-	const albumHref = (target: string | null) => `/folders/${target ?? 'unfiled'}?year=${year}`;
 
 	/** A chapter is a run of months; opening it opens its last month, which is
 	 *  where the reading picks up. */
@@ -80,27 +80,19 @@
 	const folded = collapsedGroups();
 	const chapterFold = collapsedChapters();
 
-	/** Ungrouped first and in the plain list, then the headings in the shelf's
-	 *  own order — the same cut the year shelf makes, so the two screens agree
-	 *  about what is where. The all-years shelf has no groups at all, and this
-	 *  falls back to the flat list it always was. */
-	const loose = $derived(shelf?.albums.filter((a) => !a.group) ?? []);
-	const sections = $derived(
-		(shelf?.groups ?? []).map((name) => ({
-			name,
-			albums: shelf?.albums.filter((a) => a.group === name) ?? []
-		}))
-	);
+	/** The same cut the year shelf makes, from the same module, so the two
+	 *  screens cannot disagree about what is where. */
+	const loose = $derived(splitShelf(shelf).loose);
+	const sections = $derived(splitShelf(shelf).sections);
 
 	let dragging = $state<string | null>(null);
 	let dropAt = $state<string | null>(null);
 
 	function drop(name: string, before: string | null) {
-		const order = shelf?.groups ?? [];
 		dragging = null;
 		dropAt = null;
-		const next = moveBefore(order, name, before);
-		if (next !== order) onorder?.(next);
+		const next = reorderGroups(shelf?.groups ?? [], name, before);
+		if (next) onorder?.(next);
 	}
 </script>
 
@@ -135,8 +127,8 @@
 	{#snippet albumRow(a: Album)}
 		{@const on = a.id === folderId}
 		<a
-			href={albumHref(a.id)}
-			use:holdable={(x, y) => onhold?.(a, x, y)}
+			href={albumHref(a.id, year)}
+			use:hold={(x, y) => onhold?.(a, x, y)}
 			class="flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] transition-colors {on
 				? 'accent-fill'
 				: 'hover:bg-neutral-200'}"
@@ -233,7 +225,7 @@
 
 		{#if shelf && shelf.unfiled > 0}
 			<a
-				href={albumHref(null)}
+				href={albumHref(null, year)}
 				class="mt-0.5 flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] transition-colors {folderId ===
 				null
 					? 'accent-fill'
@@ -287,7 +279,7 @@
 					{@const on = here >= chapter.first_month && here <= chapter.last_month}
 					<a
 						href={chapterHref(chapter.last_month)}
-						use:holdable={(x, y) => onholdchapter?.(chapter, x, y)}
+						use:hold={(x, y) => onholdchapter?.(chapter, x, y)}
 						class="flex shrink-0 items-baseline gap-2.5 rounded-[12px] px-3.5 text-left transition-shadow {on
 							? 'bg-surface py-[11px] shadow-sm'
 							: 'py-[9px] hover:bg-neutral-200'}"

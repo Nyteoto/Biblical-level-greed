@@ -16,9 +16,8 @@
 	import ColorizedText from './ColorizedText.svelte';
 	import ReplyBubble from './ReplyBubble.svelte';
 	import TodoEntryText from './TodoEntryText.svelte';
-	import { longpress } from './longpress';
 	import { mediaViewUrl } from './api';
-	import { holdable } from './holdable';
+	import { hold } from './hold';
 	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
 	import type { Day } from './log';
@@ -95,7 +94,7 @@
 			class="flex items-baseline gap-[18px]"
 			class:flex-row-reverse={answered}
 			class:entry-held={entry.id === held}
-			use:longpress={(x, y) => onassign?.(entry, x, y)}
+			use:hold={(x, y) => onassign?.(entry, x, y)}
 		>
 			<!-- The date is the thing you scan for, so it sits one rung above the
 			     prose it labels; the time is metadata and sits one below. Three
@@ -144,7 +143,7 @@
 				<button
 					type="button"
 					class="lift lift-sm relative h-[52px] w-[72px] shrink-0 overflow-hidden rounded-[10px] bg-neutral-300 shadow-sm"
-					use:holdable={(x, y) => onholdmedia?.(shot.ref, x, y)}
+					use:hold={(x, y) => onholdmedia?.(shot.ref, x, y)}
 					onclick={() => onopen?.(strip, i)}
 					aria-label={isVideo(shot.ref) ? 'play clip' : 'open photo'}
 				>

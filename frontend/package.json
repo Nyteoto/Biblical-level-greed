@@ -10,7 +10,7 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "verify:ui": "LC_ALL=en_US.UTF-8 TZ=Asia/Bangkok node --experimental-strip-types --import ./scripts/register-hooks.mjs scripts/verify-ui.ts"
+    "verify:ui": "node scripts/verify-ui.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^7.0.1",

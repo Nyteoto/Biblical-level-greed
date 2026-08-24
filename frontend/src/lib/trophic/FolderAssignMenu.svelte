@@ -13,10 +13,13 @@
 	 *     entry already is rather than only offering somewhere to put it.
 	 *
 	 * Queueing a todo is in here rather than behind a hold of its own. The row
-	 * this opens from already answers a `longpress`, and `holdable` is a second
-	 * timer with the same 500ms — a gesture on the todo line would have fired
-	 * both and opened two menus over each other. One hold, one menu, and the
-	 * menu carries everything you can do to the line you held.
+	 * this opens from already answers a hold, and a gesture on the todo line
+	 * inside it would open a second menu over the first. One hold, one menu,
+	 * and the menu carries everything you can do to the line you held.
+	 *
+	 * There used to be a sharper reason: two hold mechanisms with two 500ms
+	 * timers, either of which could fire. They are one action now — see
+	 * `hold.ts` — so this is a rule about menus rather than about timers.
 	 */
 	import type { Folder } from './api';
 

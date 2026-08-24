@@ -37,7 +37,7 @@
 	import { goto, replaceState } from '$app/navigation';
 	import FolderAssignMenu from '$lib/trophic/FolderAssignMenu.svelte';
 	import LeadDay from '$lib/trophic/LeadDay.svelte';
-	import LightDay from '$lib/trophic/LightDay.svelte';
+	import AlbumFeed from '$lib/trophic/AlbumFeed.svelte';
 	import Lightbox from '$lib/trophic/Lightbox.svelte';
 	import MediaTile from '$lib/trophic/MediaTile.svelte';
 	import AlbumSidebar from '$lib/trophic/AlbumSidebar.svelte';
@@ -45,7 +45,7 @@
 	import Segmented from '$lib/trophic/Segmented.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { todayKey } from '$lib/trophic/day';
-	import { albumWeek, foldQuiet, groupDays, stretchLabel, stretchTally } from '$lib/trophic/log';
+	import { albumWeek, groupDays } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import { queuedTodo } from '$lib/trophic/queued.svelte';
 	import { banner } from '$lib/trophic/banner-state.svelte';
@@ -116,8 +116,6 @@
 		void year;
 		overviewOpen = false;
 	});
-	/** Which quiet stretches the user has opened, by their first day. */
-	let expanded = $state<Set<string>>(new Set());
 
 	let menu = $state<{ x: number; y: number; entry: Entry } | null>(null);
 	let lightbox = $state<{ shots: Shot[]; index: number } | null>(null);
@@ -152,24 +150,16 @@
 	 *  the line the app had just found for you. See `.entry-held`. */
 	let held = $state('');
 
+	/** The day holding the line we were sent to. Handed to `AlbumFeed` as
+	 *  `reveal`: if that day is inside a folded quiet stretch it opens it and
+	 *  bumps `revealed`, which is a dependency of this effect, so the scroll
+	 *  below happens on the next pass once the row is actually drawn. */
+	const wantedDay = $derived(album?.entries.find((e) => e.id === wanted)?.day ?? '');
+	let revealed = $state(0);
+
 	$effect(() => {
+		void revealed;
 		if (!wanted || !column || days.length === 0 || landed === wanted) return;
-		// **Open the stretch it is inside first.** Quiet days are folded, and a
-		// line the reader was *sent* to is one of the likeliest to be in one:
-		// an overdue reminder is old by definition, and the far end of a reply
-		// thread is older still. Without this the jump found no row, returned,
-		// and did nothing at all — the `?entry=` stayed in the URL and the
-		// screen simply sat there.
-		const home = album?.entries.find((e) => e.id === wanted)?.day;
-		if (home) {
-			const folded = rows.find(
-				(row) => row.kind === 'stretch' && row.days.some((d) => d.key === home)
-			);
-			if (folded && folded.kind === 'stretch' && !expanded.has(folded.days[0].key)) {
-				toggleStretch(folded.days[0].key);
-				return; // and land on the next pass, once the rows are drawn
-			}
-		}
 		const row = column.querySelector<HTMLElement>(`[data-entry="${CSS.escape(wanted)}"]`);
 		if (!row) return;
 		landed = wanted;
@@ -226,7 +216,6 @@
 	}
 
 	const days = $derived(groupDays(album?.entries ?? []));
-	const rows = $derived(foldQuiet(days.slice(1), logSettings.mergeQuiet));
 	const lead = $derived(days[0] ?? null);
 	/** Every attachment in the album, newest first — the contact sheet. */
 	const shots = $derived(days.flatMap((d) => d.media));
@@ -265,14 +254,6 @@
 		held = '';
 	}
 
-	function toggleStretch(key: string) {
-		const next = new Set(expanded);
-		if (next.has(key)) next.delete(key);
-		else next.add(key);
-		expanded = next;
-	}
-
-	const albumHref = (target: string | null) => `/folders/${target ?? 'unfiled'}?year=${year}`;
 
 	async function act(work: Promise<unknown>) {
 		error = null;
@@ -487,55 +468,17 @@
 							/>
 						{/if}
 
-						<div class="flex flex-col gap-3">
-							{#each rows as row (row.kind === 'stretch' ? row.days[0].key : row.day.key)}
-								{#if row.kind === 'day'}
-									<LightDay
-										day={row.day}
-										onopen={(s, index) => (lightbox = { shots: s, index })}
-										ontoggle={onToggle}
-										onassign={(entry, x, y) => (menu = { x, y, entry })}
-										onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
-										onjump={jumpTo}
-										{held}
-									/>
-								{:else if expanded.has(row.days[0].key)}
-									{#each row.days as day (day.key)}
-										<LightDay
-											{day}
-											onopen={(s, index) => (lightbox = { shots: s, index })}
-											ontoggle={onToggle}
-											onassign={(entry, x, y) => (menu = { x, y, entry })}
-											onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
-											onjump={jumpTo}
-											{held}
-										/>
-									{/each}
-									<button
-										type="button"
-										class="self-start text-[12px] font-semibold text-neutral-700 transition-colors hover:text-ink"
-										onclick={() => toggleStretch(row.days[0].key)}
-									>
-										Collapse ▴
-									</button>
-								{:else}
-									<!-- A merge, never a hide: the strip says how many lines
-									     it is holding and expands into exactly the rows it
-									     replaced. -->
-									<button
-										type="button"
-										class="lift lift-sm flex items-baseline gap-4 rounded-[12px] bg-surface px-4 py-[13px] text-left text-neutral-700 shadow-sm"
-										onclick={() => toggleStretch(row.days[0].key)}
-									>
-										<span class="w-[92px] shrink-0 text-[13px] font-semibold">
-											{stretchLabel(row.days)}
-										</span>
-										<span class="flex-1 text-[14px]">{stretchTally(row.days)}</span>
-										<span class="text-[12px] font-semibold">Expand ▾</span>
-									</button>
-								{/if}
-							{/each}
-						</div>
+						<AlbumFeed
+							days={days.slice(1)}
+							onopen={(s, index) => (lightbox = { shots: s, index })}
+							ontoggle={onToggle}
+							onassign={(entry, x, y) => (menu = { x, y, entry })}
+							onholdmedia={(ref, x, y) => (heldMedia = { ref, x, y })}
+							onjump={jumpTo}
+							{held}
+							reveal={wantedDay}
+							bind:revealed
+						/>
 
 						<!-- The album's sentiment counts. Stored and drawn, never
 						     interpreted — a reading, not a verdict. -->

@@ -199,46 +199,8 @@ export async function sendPoster(ref: string, poster: Blob): Promise<void> {
 	}
 }
 
-/**
- * Upload everything, in order, attaching each file to `entryId` as it lands.
- *
- * **The entry is already written when this starts.** Making a line wait on a
- * two-gigabyte clip would turn the fastest screen in the app into the slowest,
- * so the text goes in immediately and its media catches up — each completed
- * upload appends one `attach-media` event, and the file appears in the log the
- * next time it reads.
- *
- * One failure does not stop the rest: the others are independent files and
- * there is no reason a bad one should take them with it. Failures are recorded
- * on the item so the caller can say which.
- */
-export async function uploadAll(
-	items: Attachment[],
-	entryId: string,
-	attach: (entryId: string, refs: string[]) => Promise<unknown>,
-	onchange: () => void
-): Promise<void> {
-	for (const item of items) {
-		try {
-			const done = await upload(item.file, (fraction) => {
-				item.progress = fraction;
-				onchange();
-			});
-			item.ref = done.path;
-			item.progress = 1;
-			onchange();
-
-			// Attach before the poster: the file is safe on the entry either
-			// way, and a poster that fails must not lose the clip.
-			await attach(entryId, [done.path]);
-
-			if (item.kind === 'video') {
-				const poster = await posterFor(item.file);
-				if (poster) await sendPoster(done.path, poster);
-			}
-		} catch (e) {
-			item.error = e instanceof Error ? e.message : 'upload failed';
-			onchange();
-		}
-	}
-}
+// The queue that actually runs these lives in `uploads.svelte.ts`. There used
+// to be a second copy of it here — `uploadAll`, same loop, same "attach before
+// the poster" rule, taking `attach` and `onchange` as parameters — with no
+// call site anywhere. Two implementations of the file-loss path, one of them
+// never executed and therefore never wrong in a way anyone would notice.

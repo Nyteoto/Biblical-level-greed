@@ -15,7 +15,7 @@
 	 * to show until it is opened.
 	 */
 	import { mediaViewUrl } from './api';
-	import { holdable } from './holdable';
+	import { hold } from './hold';
 	import { isVideo, plateFallback } from './media';
 
 	let {
@@ -33,7 +33,7 @@
 <button
 	type="button"
 	class="group lift lift-sm relative aspect-square w-full overflow-hidden rounded-[10px] bg-neutral-300 shadow-sm"
-	use:holdable={(x, y) => onhold?.(x, y)}
+	use:hold={(x, y) => onhold?.(x, y)}
 	onclick={() => onopen?.()}
 	aria-label={video ? 'play clip' : 'open photo'}
 >

@@ -44,7 +44,7 @@
 	import { mediaViewUrl, mediaUrl } from './api';
 	import RichText from './RichText.svelte';
 	import { clean, isBlank } from './richtext';
-	import { holdable } from './holdable';
+	import { hold } from './hold';
 	import Glyph from './Glyph.svelte';
 	import type { Folder } from './api';
 
@@ -202,7 +202,7 @@
 							href={mediaUrl(picture)}
 							target="_blank"
 							rel="noreferrer"
-							use:holdable={(x, y) => onholdpicture?.(x, y)}
+							use:hold={(x, y) => onholdpicture?.(x, y)}
 							class="float-left mr-[18px] mb-3 block h-[104px] w-[104px] overflow-hidden rounded-[14px] bg-neutral-200 shadow-md"
 						>
 							<img src={mediaViewUrl(picture)} alt="" class="h-full w-full object-cover" />

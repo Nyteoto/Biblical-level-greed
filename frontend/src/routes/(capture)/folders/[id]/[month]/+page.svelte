@@ -27,18 +27,12 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import AlbumSidebar from '$lib/trophic/AlbumSidebar.svelte';
-	import LightDay from '$lib/trophic/LightDay.svelte';
+	import AlbumFeed from '$lib/trophic/AlbumFeed.svelte';
 	import Lightbox from '$lib/trophic/Lightbox.svelte';
 	import MediaTile from '$lib/trophic/MediaTile.svelte';
 	import MonthSpine from '$lib/trophic/MonthSpine.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
-	import {
-		foldQuiet,
-		groupDays,
-		monthLabel,
-		stretchLabel,
-		stretchTally
-	} from '$lib/trophic/log';
+	import { groupDays, monthLabel } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import type { Shot } from '$lib/trophic/media';
 	import Glyph from '$lib/trophic/Glyph.svelte';
@@ -66,7 +60,6 @@
 	let album = $state<AlbumView | null>(null);
 	let shelf = $state<Shelf | null>(null);
 	let collapsed = $state(false);
-	let expanded = $state<Set<string>>(new Set());
 	let lightbox = $state<{ shots: Shot[]; index: number } | null>(null);
 	let loading = $state(true);
 	/** The chapter panel, from a hold on one of the sidebar's rows. The chapter
@@ -102,7 +95,6 @@
 	const days = $derived(
 		groupDays(album?.entries ?? []).filter((day) => day.key.slice(0, 7) === month)
 	);
-	const rows = $derived(foldQuiet(days, logSettings.mergeQuiet));
 	/** Everything made this month, newest first — the strip at the top. */
 	const shots = $derived(days.flatMap((d) => d.media));
 	const lines = $derived(days.reduce((n, d) => n + d.entries.length, 0));
@@ -131,13 +123,6 @@
 	async function onToggle(entry: Entry, line: number) {
 		const { entry: updated } = await toggleLine(entry.id, line);
 		if (album) album.entries = album.entries.map((e) => (e.id === updated.id ? updated : e));
-	}
-
-	function toggleStretch(key: string) {
-		const next = new Set(expanded);
-		if (next.has(key)) next.delete(key);
-		else next.add(key);
-		expanded = next;
 	}
 
 	/** The contact strip is the month at a glance, not the whole contact sheet:
@@ -247,44 +232,12 @@
 						</div>
 					{/if}
 
-					<div class="flex flex-col gap-3">
-						{#each rows as row (row.kind === 'stretch' ? row.days[0].key : row.day.key)}
-							{#if row.kind === 'day'}
-								<LightDay
-									day={row.day}
-									onopen={(s, i) => (lightbox = { shots: s, index: i })}
-									ontoggle={onToggle}
-									onjump={jumpTo}
-								/>
-							{:else if expanded.has(row.days[0].key)}
-								{#each row.days as day (day.key)}
-									<LightDay
-										{day}
-										onopen={(s, i) => (lightbox = { shots: s, index: i })}
-										ontoggle={onToggle}
-									onjump={jumpTo}
-									/>
-								{/each}
-								<button
-									type="button"
-									class="self-start text-[12px] font-semibold text-neutral-700 transition-colors hover:text-ink"
-									onclick={() => toggleStretch(row.days[0].key)}
-								>
-									Collapse ▴
-								</button>
-							{:else}
-								<button
-									type="button"
-									class="lift lift-sm flex items-baseline gap-4 rounded-[12px] bg-surface px-4 py-[13px] text-left text-[13px] text-neutral-700 shadow-sm"
-									onclick={() => toggleStretch(row.days[0].key)}
-								>
-									<span class="font-semibold">{stretchLabel(row.days)}</span>
-									<span>{stretchTally(row.days)}</span>
-									<span class="ml-auto font-semibold">Expand ▾</span>
-								</button>
-							{/if}
-						{/each}
-					</div>
+					<AlbumFeed
+						{days}
+						onopen={(s, i) => (lightbox = { shots: s, index: i })}
+						ontoggle={onToggle}
+						onjump={jumpTo}
+					/>
 				</div>
 			{/if}
 		</div>

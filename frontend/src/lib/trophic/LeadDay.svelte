@@ -23,9 +23,8 @@
 	import ColorizedText from './ColorizedText.svelte';
 	import ReplyBubble from './ReplyBubble.svelte';
 	import TodoEntryText from './TodoEntryText.svelte';
-	import { longpress } from './longpress';
 	import { mediaViewUrl } from './api';
-	import { holdable } from './holdable';
+	import { hold } from './hold';
 	import Glyph from './Glyph.svelte';
 	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel } from './log';
@@ -117,7 +116,7 @@
 			type="button"
 			class="lift lift-md relative block h-[250px] w-full overflow-hidden rounded-[16px] bg-neutral-300 shadow-lg"
 			style="animation:plate-fade-in 400ms ease-out both"
-			use:holdable={(x, y) => onholdmedia?.(hero.ref, x, y)}
+			use:hold={(x, y) => onholdmedia?.(hero.ref, x, y)}
 			onclick={() => onopen?.(shots, 0)}
 			aria-label="open the newest"
 		>
@@ -138,7 +137,7 @@
 	{/if}
 
 	{#if caption && caption.clean_text.trim()}
-		<div use:longpress={(x, y) => onassign?.(caption, x, y)}>
+		<div use:hold={(x, y) => onassign?.(caption, x, y)}>
 			<p
 				class="max-w-[640px] text-[19px] leading-[1.5] font-light tracking-[-0.01em]"
 				style="text-wrap:pretty"
@@ -154,7 +153,7 @@
 				<button
 					type="button"
 					class="lift lift-sm relative h-[70px] w-[96px] shrink-0 overflow-hidden rounded-[11px] bg-neutral-300 shadow-sm"
-					use:holdable={(x, y) => onholdmedia?.(shot.ref, x, y)}
+					use:hold={(x, y) => onholdmedia?.(shot.ref, x, y)}
 					onclick={() => onopen?.(shots, i + 1)}
 					aria-label={isVideo(shot.ref) ? 'play clip' : 'open photo'}
 				>
@@ -206,7 +205,7 @@
 					class:flex-row-reverse={answered}
 					class:entry-held={entry.id === held}
 					style="animation:entry-fade-in 400ms ease-out both;animation-delay:{i * 50}ms"
-					use:longpress={(x, y) => onassign?.(entry, x, y)}
+					use:hold={(x, y) => onassign?.(entry, x, y)}
 				>
 					<span class="w-[42px] shrink-0 pt-1 font-mono text-[11px] text-neutral-600">
 						{time(entry)}

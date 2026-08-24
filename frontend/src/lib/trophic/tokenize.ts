@@ -29,9 +29,35 @@ export type Token = {
   value: string // inner content, lowercased (empty for "text")
 }
 
-// Navigation commands that are full-line, not inline directives
-const NAV_COMMANDS = new Set([
-  "codex", "folders", "settings", "assign", "logout", "dev", "draw",
+// Navigation commands that are full-line, not inline directives: the word
+// after `--`, and the screen it opens.
+//
+// **The destination is here, beside the word, on purpose.** This used to be a
+// bare Set, and the capture bar kept its own `if (cmd === '--folders' || …)`
+// ladder saying where each one went. Two lists of the same vocabulary, and
+// they had drifted: `--log` was in the ladder and not in the set, so the
+// tokenizer read it as a directive and `validation.ts` painted it as a folder
+// that does not exist — a refusal, in red, under a word that works. `--draw`
+// had drifted the other way and was recognised by nobody who could act on it.
+//
+// `null` is a word this port knows and has no screen for. It still has to be
+// in here: a command the tokenizer does not recognise becomes a `--directive`,
+// and a directive naming no folder is a refusal.
+export const NAV_COMMANDS: ReadonlyMap<string, string | null> = new Map([
+  ["folders", "/log"],
+  // Keeps the source's name even though the screen it opens is called the
+  // log here — it is the same screen, under both words.
+  ["log", "/log"],
+  // The mapping screen, which the redesign made a page hanging off Settings
+  // rather than a tab of its own.
+  ["assign", "/mapping"],
+  ["settings", "/settings"],
+  ["codex", null],
+  ["logout", null],
+  ["dev", null],
+  // `--draw -Foldername` is a real command with an argument and is handled in
+  // `validation.ts`; bare `--draw` is the sketch pad this port does not have.
+  ["draw", null],
 ])
 
 const PATTERNS: { kind: Exclude<TokenKind, "text">; re: RegExp; group?: number; filter?: (value: string) => boolean }[] = [

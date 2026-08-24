@@ -82,12 +82,6 @@ export interface Folder {
 	tags: string[];
 }
 
-export interface FolderDetail {
-	folder: Folder;
-	entries: Entry[];
-	sentiments: { name: string; count: number }[];
-}
-
 export interface UnassignedTag {
 	tag: string;
 	count: number;
@@ -236,8 +230,6 @@ export const toggleLine = (id: string, line: number) =>
 		body: JSON.stringify({ toggle_line: line })
 	});
 
-export const getDates = () => call<{ dates: Record<string, number> }>('/dates');
-
 /** The year shelf. `year` of `'all'` — which is what the yearly-restart switch
  *  turned off sends — drops the filter without changing the shape. */
 export const getShelf = (year: string) => call<Shelf>(`/shelf?year=${year}`);
@@ -324,8 +316,6 @@ export const dismissReminder = (entry_id: string, line: number) =>
 // ── Folders ───────────────────────────────────────────────────────────────
 
 export const getFolders = () => call<{ folders: Folder[] }>('/folders');
-
-export const getFolder = (id: string) => call<FolderDetail>(`/folders/${id}`);
 
 export const createFolder = (name: string, tags: string[] = []) =>
 	call<{ folder: Folder }>('/folders', {

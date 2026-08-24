@@ -35,7 +35,7 @@ const PARTS = [
 	'trie.ts',
 	'richtext.ts',
 	'longpress.ts',
-	'holdable.ts',
+	'hold.ts',
 	'portal.ts',
 	'retry-queue.ts',
 	'validation.ts',

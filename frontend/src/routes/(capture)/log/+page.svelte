@@ -43,8 +43,9 @@
 	import GroupPanel from '$lib/trophic/GroupPanel.svelte';
 	import { collapsedGroups } from '$lib/trophic/collapsed.svelte';
 	import Glyph from '$lib/trophic/Glyph.svelte';
-	import { holdable } from '$lib/trophic/holdable';
-	import { moveBefore, sortable } from '$lib/trophic/sortable';
+	import { hold } from '$lib/trophic/hold';
+	import { sortable } from '$lib/trophic/sortable';
+	import { albumHref, reorderGroups, splitShelf } from '$lib/trophic/shelf';
 
 	let { data }: { data: { shelf?: Shelf; key?: string } } = $props();
 
@@ -179,24 +180,14 @@
 		}
 	}
 
-	const albumHref = (id: string | null) =>
-		`/folders/${id ?? 'unfiled'}?year=${shelf?.year ?? 'all'}`;
+	const href = (id: string | null) => albumHref(id, shelf?.year ?? 'all');
 
 	const folded = collapsedGroups();
 
-	/** The shelf in two parts: what has no group, then the named groups in the
-	 *  order the backend gives them. Ungrouped stays on top and keeps the plain
-	 *  grid, so a shelf nobody has arranged looks exactly as it did before
-	 *  groups existed — nothing is gained by making you scroll past an empty
-	 *  ceremonial heading to reach your folders.
-	 */
-	const ungrouped = $derived(shelf?.albums.filter((a) => !a.group) ?? []);
-	const sections = $derived(
-		(shelf?.groups ?? []).map((name) => ({
-			name,
-			albums: shelf?.albums.filter((a) => a.group === name) ?? []
-		}))
-	);
+	/** The same cut the album sidebar makes, from the same module. See
+	 *  `shelf.ts` for why the reading is shared and the markup is not. */
+	const ungrouped = $derived(splitShelf(shelf).loose);
+	const sections = $derived(splitShelf(shelf).sections);
 
 	/**
 	 * Arranging the shelf: hold a heading and drag it.
@@ -220,8 +211,8 @@
 		dragging = null;
 		dropAt = null;
 		if (!shelf || !year) return;
-		const next = moveBefore(shelf.groups, name, before);
-		if (next === shelf.groups) return;
+		const next = reorderGroups(shelf.groups, name, before);
+		if (!next) return;
 		shelf.groups = next;
 		act(orderGroups(year, next));
 	}
@@ -258,7 +249,7 @@
 		const hit = shelf?.albums.find(
 			(a) => a.name.toLowerCase().includes(needle) || a.tags.some((t) => t.includes(needle))
 		);
-		if (hit) goto(albumHref(hit.id));
+		if (hit) goto(href(hit.id));
 		else error = `nothing here matches “${query}”`;
 	}
 </script>
@@ -370,7 +361,7 @@
 				<div class="flex shrink-0 items-center gap-2.5">
 					{#if shelf && shelf.unfiled > 0}
 						<a
-							href={albumHref(null)}
+							href={href(null)}
 							class="flex items-center gap-2.5 rounded-[12px] border border-dashed border-neutral-400 px-3 py-[9px] text-neutral-600 transition-colors hover:border-neutral-500 hover:text-neutral-800"
 						>
 							<span class="text-[13px]">
@@ -462,8 +453,8 @@
 						     card is a derived read. -->
 						{#each part.lead as album (album.id)}
 							<a
-								href={albumHref(album.id)}
-								use:holdable={(x, y) => (panel = { folder: album, x, y })}
+								href={href(album.id)}
+								use:hold={(x, y) => (panel = { folder: album, x, y })}
 								class="lift lift-md flex flex-col gap-[13px] rounded-[16px] bg-surface p-4 shadow-md"
 							>
 								<Mosaic refs={album.lead} />
@@ -522,8 +513,8 @@
 						<!-- Everything else: one row each. Same information, less of it. -->
 						{#each part.quiet as album (album.id)}
 							<a
-								href={albumHref(album.id)}
-								use:holdable={(x, y) => (panel = { folder: album, x, y })}
+								href={href(album.id)}
+								use:hold={(x, y) => (panel = { folder: album, x, y })}
 								class="lift lift-sm flex items-center gap-3.5 rounded-[16px] bg-surface p-4 shadow-sm"
 							>
 								<div class="h-[54px] w-[72px] shrink-0">

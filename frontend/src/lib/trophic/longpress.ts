@@ -102,62 +102,12 @@ export class LongPress {
 	}
 }
 
-/**
- * The action. A wrapper component would put a `<div>` between the log's flex
- * column and its rows, and the entry stagger animation is on the row itself.
- */
-export function longpress(node: HTMLElement, onopen: LongPressAt) {
-	let handler = onopen;
-	const press = new LongPress((x, y) => handler(x, y));
-
-	const points = (e: TouchEvent): Point[] =>
-		Array.from(e.touches).map((t) => ({ x: t.clientX, y: t.clientY }));
-
-	const onTouchStart = (e: TouchEvent) => press.start(points(e));
-	const onTouchMove = (e: TouchEvent) => press.move(points(e));
-	const onTouchEnd = () => press.end();
-	const onClick = (e: MouseEvent) => {
-		if (!press.click()) return;
-		e.preventDefault();
-		e.stopPropagation();
-	};
-	const onContextMenu = (e: MouseEvent) => {
-		e.preventDefault();
-		handler(e.clientX, e.clientY);
-	};
-	// `HoldRing` runs the same gesture globally and draws it. This node already
-	// answers a hold with its assign menu, so it claims the global one to stop
-	// the ring marking the hold as landing on nothing. Claim only: the timer
-	// above is still what opens the menu, and both are the same `LongPress` with
-	// the same delay, so they cannot disagree about when a hold happened.
-	const onHold = (e: Event) => e.preventDefault();
-
-	node.addEventListener('touchstart', onTouchStart, { passive: true });
-	node.addEventListener('touchmove', onTouchMove, { passive: true });
-	node.addEventListener('touchend', onTouchEnd);
-	node.addEventListener('touchcancel', onTouchEnd);
-	node.addEventListener('click', onClick, true);
-	node.addEventListener('contextmenu', onContextMenu);
-	node.addEventListener('trophic:hold', onHold);
-	// Says in the DOM that this node answers a hold. Nothing styles it; it is
-	// there so the behaviour is findable from the outside — by a test, or by
-	// whoever next wonders why one hold opens a menu and another draws an ×.
-	node.setAttribute('data-longpress', '');
-
-	return {
-		update(next: LongPressAt) {
-			handler = next;
-		},
-		destroy() {
-			press.end();
-			node.removeEventListener('touchstart', onTouchStart);
-			node.removeEventListener('touchmove', onTouchMove);
-			node.removeEventListener('touchend', onTouchEnd);
-			node.removeEventListener('touchcancel', onTouchEnd);
-			node.removeEventListener('click', onClick, true);
-			node.removeEventListener('contextmenu', onContextMenu);
-			node.removeEventListener('trophic:hold', onHold);
-			node.removeAttribute('data-longpress');
-		}
-	};
-}
+// This file is the state machine and nothing else now.
+//
+// It used to also export a `longpress` Svelte action, which ran a *second*
+// `LongPress` per node alongside the global one in `HoldRing` and then claimed
+// the global one so the ring would not draw its × over the menu the node had
+// already opened. Two timers for one gesture, agreeing only because both were
+// constructed with the same delay. Answering a hold is one action now — see
+// `hold.ts` — and this is the one clock behind it, which is what the fourteen
+// fixtures describe.

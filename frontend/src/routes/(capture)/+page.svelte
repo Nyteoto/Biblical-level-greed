@@ -33,6 +33,7 @@
 	 * getting a thought out of your head; reading them back is the log's job.
 	 */
 	import { goto } from '$app/navigation';
+	import { NAV_COMMANDS } from '$lib/trophic/tokenize';
 	import SmoothTextarea from '$lib/trophic/SmoothTextarea.svelte';
 	import { banner } from '$lib/trophic/banner-state.svelte';
 	import { uiDim } from '$lib/trophic/dim.svelte';
@@ -41,14 +42,11 @@
 	import TodoTally from '$lib/trophic/TodoTally.svelte';
 	import {
 		capture,
-		captureBody,
 		createFolder,
 		dismissReminder,
 		getFolders,
 		getReminders,
 		getVocab,
-		CAPTURE_URL,
-		NetworkError,
 		type Folder,
 		type Reminder,
 		type Vocab
@@ -60,6 +58,7 @@
 	import { pinned } from '$lib/trophic/pinned.svelte';
 	import { startUploads } from '$lib/trophic/uploads.svelte';
 	import { browserEnv, enqueue, initRetryQueue, pendingCount } from '$lib/trophic/retry-queue';
+	import { send, type SubmitEnv } from '$lib/trophic/submission';
 	import { isReply, stripReply } from '$lib/trophic/reply';
 	import ColorizedText from '$lib/trophic/ColorizedText.svelte';
 	import { validate, CAP_WARN_AT, MAX_RAW_LEN } from '$lib/trophic/validation';
@@ -358,6 +357,17 @@
 		setTimeout(() => (shaking = false), 500);
 	}
 
+	/** Everything `send` needs to touch, in one place. It takes them rather
+	 *  than reaching for them so that `verify-ui.ts` can drive the same
+	 *  function with all four faked — see `submission.ts`. */
+	const submitEnv: SubmitEnv = {
+		capture,
+		upload: (entryId, files, folder) => void startUploads(entryId, files, folder),
+		enqueue: (url, body) => enqueue(browserEnv(), url, body),
+		pending: () => pendingCount(browserEnv()),
+		release
+	};
+
 	function flashSent() {
 		justSent = true;
 		setTimeout(() => (justSent = false), 900);
@@ -426,19 +436,15 @@
 			input?.focus();
 		}, 220);
 
-		// The pin's tag goes in here, at the last moment, so what is stored is a
-		// line that reads exactly as if it had been typed with the tag on it.
-		const line = pinTag ? withPinnedTag(answer, pinTag) : answer;
+		// What happens to the text and to the files is one decision, and it is
+		// in `submission.ts` — including the pairing this used to make by hand,
+		// where an offline send has to queue the line *and* give the files back.
+		// What is left here is what this screen does about the answer.
+		const outcome = await send({ text: answer, files: sent, pinTag, answering }, submitEnv);
 
-		try {
-			const { entry } = await capture(line, [], answering);
+		if (outcome.kind === 'sent') {
 			// The vocabulary just grew by whatever was in that line.
 			vocab = await getVocab();
-			// The folder as the line was written: the pinned one, else the first
-			// `<tag>` in it. Filename only — membership is still resolved.
-			if (sent.length > 0) startUploads(entry.id, sent, entry.folders?.[0] ?? '');
-			// A line carrying a `--todo` changes what the banner says and how
-			// much room is left under the cap. Cheap, and only on a real send.
 			// The reminder this answered was dismissed by the same call, so the
 			// strip above the box is now showing something that has been dealt
 			// with. Re-read it, and the next one in the queue surfaces.
@@ -449,45 +455,37 @@
 						/* the strip is stale for a moment; the next read fixes it */
 					});
 			}
-			if (entry.todo_lines.length > 0) {
-				// And the strip says so. The refresh is what makes it true; the
-				// announcement is what makes it noticed, and the wake is what
-				// makes it visible — four seconds of typing will have faded the
-				// chrome out from under it.
+			if (outcome.entry.todo_lines.length > 0) {
+				// A line carrying a `--todo` changes what the banner says and
+				// how much room is left under the cap. The refresh is what
+				// makes it true; the announcement is what makes it noticed, and
+				// the wake is what makes it visible — four seconds of typing
+				// will have faded the chrome out from under it.
 				wake();
 				banner()
 					.refresh()
 					.then(() => banner().announce());
 			}
-		} catch (e) {
-			// The two failures are not the same thing. A dead connection is not
-			// the user's problem: the line goes into the retry queue and is
-			// replayed when the browser comes back, so the draft stays gone and
-			// the thought is still kept. A refusal from a server that answered
-			// is the user's problem, and it gives the text back — losing a
-			// captured thought is the one thing this app cannot do.
-			if (e instanceof NetworkError) {
-				enqueue(browserEnv(), CAPTURE_URL, captureBody(line, [], answering));
-				queued = pendingCount(browserEnv());
-				// The files have nowhere to go: there is no entry id yet, and
-				// the queue replays a body, not an upload. Give them back.
-				if (sent.length > 0) {
-					sent.forEach(release);
-					error = `offline — the line is queued, but ${sent.length} file${
-						sent.length === 1 ? '' : 's'
-					} could not be sent. Attach again when you are back.`;
-				}
-			} else {
-				// A refusal from a server that answered. Put everything back —
-				// the text, the files that were going with it, and the copy in
-				// sessionStorage that a reload would read. Unconditionally, and
-				// whether or not the clear has already run: the draft on screen
-				// at this moment is either still the snapshot or already empty,
-				// and in both cases the snapshot is what belongs there.
-				restoreDraft(snapshot, sent);
-				error = `${e instanceof Error ? e.message : 'failed to save'} — restored your text`;
-				triggerShake();
+		} else if (outcome.kind === 'queued') {
+			// Not the user's problem: the line is queued and will be replayed,
+			// so the draft stays gone and the thought is still kept. The files
+			// could not go with it and have been handed back.
+			queued = outcome.pending;
+			if (outcome.lostFiles > 0) {
+				error = `offline — the line is queued, but ${outcome.lostFiles} file${
+					outcome.lostFiles === 1 ? '' : 's'
+				} could not be sent. Attach again when you are back.`;
 			}
+		} else {
+			// A refusal from a server that answered, and nothing was written.
+			// Put everything back — the text, the files that were going with
+			// it, and the copy in sessionStorage that a reload would read.
+			// Unconditionally, and whether or not the clear has already run:
+			// the draft on screen at this moment is either still the snapshot
+			// or already empty, and in both cases the snapshot belongs there.
+			restoreDraft(snapshot, sent);
+			error = `${outcome.message} — restored your text`;
+			triggerShake();
 		}
 	}
 
@@ -514,30 +512,22 @@
 		suppressGlow = true;
 		setTimeout(() => (suppressGlow = false), 100);
 
-		// The CLI. `--folders` keeps its name from the source even though what
-		// it opens here is called the log — it is the same screen.
+		// The CLI. Which words are navigation, and where each one goes, is
+		// `NAV_COMMANDS` in tokenize.ts — the same list the tokenizer reads to
+		// decide a word is not a directive. It used to be spelled twice, and
+		// the two copies disagreed; see the note there.
 		const cmd = draft.trim().toLowerCase();
-		if (cmd === '--folders' || cmd === '--log') {
-			draft = '';
-			goto('/log');
-			return;
-		}
-		// `--assign` keeps the source's name for the mapping screen, which the
-		// redesign made a page hanging off Settings rather than a tab of its own.
-		if (cmd === '--assign') {
-			draft = '';
-			goto('/mapping');
-			return;
-		}
-		if (cmd === '--settings') {
-			draft = '';
-			goto('/settings');
-			return;
-		}
-		if (cmd === '--codex' || cmd === '--logout' || cmd === '--dev') {
-			// Recognised by the tokenizer as navigation, so it would never be
-			// stored as a directive anyway. Say so rather than swallow it.
-			error = `${cmd} has no screen here yet`;
+		const word = cmd.startsWith('--') ? cmd.slice(2) : '';
+		if (NAV_COMMANDS.has(word)) {
+			const to = NAV_COMMANDS.get(word);
+			if (to) {
+				draft = '';
+				goto(to);
+			} else {
+				// Recognised by the tokenizer as navigation, so it would never
+				// be stored as a directive anyway. Say so rather than swallow it.
+				error = `${cmd} has no screen here yet`;
+			}
 			return;
 		}
 

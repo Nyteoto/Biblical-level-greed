@@ -201,7 +201,7 @@ export function sortable(node: HTMLElement, params: SortParams) {
 		document.removeEventListener('dragstart', onDragStart, true);
 	}
 
-	// The same claim `holdable` makes, for the same reason: the ring is
+	// The same claim `hold` makes, for the same reason: the ring is
 	// watching this return value and will draw its refusal × over a hold that
 	// nothing answered.
 	const onHold = (event: Event) => {

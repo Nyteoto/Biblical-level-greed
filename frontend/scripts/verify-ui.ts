@@ -49,6 +49,9 @@ import { todayKey } from '../src/lib/trophic/day.ts';
 import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
 import { albumWeek, foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
 import { dropBefore, moveBefore } from '../src/lib/trophic/sortable.ts';
+import { reorderGroups, splitShelf } from '../src/lib/trophic/shelf.ts';
+import { lineFor, send } from '../src/lib/trophic/submission.ts';
+import { NetworkError } from '../src/lib/trophic/api.ts';
 import { isReply, stripReply } from '../src/lib/trophic/reply.ts';
 import { COMMANDS } from '../src/lib/trophic/capture-bar.ts';
 import type { Entry, Vocab } from '../src/lib/trophic/api.ts';
@@ -810,9 +813,140 @@ async function localChecks(): Promise<string[]> {
 			}
 		}
 		// An unmoved order must come back as the same array, because that is
-		// what the screens test to decide whether to write anything at all.
+		// what `reorderGroups` tests to decide whether to write anything.
 		if (moveBefore(order, 'A', 'B') !== order) {
 			failures.push('  a move that changes nothing returned a new array; nothing would be a no-op');
+		}
+		// And the answer the two shelf screens actually read: null for "this
+		// drop changed nothing, do not append an `order-groups` event".
+		if (reorderGroups(order, 'A', 'B') !== null) {
+			failures.push('  reorderGroups did not report an unchanged drop as null');
+		}
+		if (JSON.stringify(reorderGroups(order, 'A', 'C')) !== JSON.stringify(['B', 'A', 'C'])) {
+			failures.push('  reorderGroups did not carry a real move through');
+		}
+	}
+
+	// ── Sending a capture ─────────────────────────────────────────────────
+	//
+	// The one path in this app that must never lose anything, and until it had
+	// an interface it had no oracle either: it lived inside a 127-line
+	// `submit()` in a Svelte component and could only be exercised by driving
+	// a browser. What is checked here is the pairing that used to be two
+	// statements next to each other — offline queues the *line* and gives the
+	// *files* back, because the queue replays a body and there is no entry to
+	// attach an upload to.
+	{
+		type Rec = {
+			uploaded: string[];
+			queued: { url: string; body: string }[];
+			released: number;
+		};
+		const envFor = (fail: unknown) => {
+			const rec: Rec = { uploaded: [], queued: [], released: 0 };
+			const env = {
+				capture: async (text: string) => {
+					if (fail) throw fail;
+					return {
+						entry: { id: 'e1', folders: ['garden'], todo_lines: [], raw_text: text } as never
+					};
+				},
+				upload: (entryId: string, _files: unknown[], folder: string) => {
+					rec.uploaded.push(`${entryId}:${folder}`);
+				},
+				enqueue: (url: string, body: string) => rec.queued.push({ url, body }),
+				pending: () => rec.queued.length,
+				release: () => void (rec.released += 1)
+			};
+			return { rec, env };
+		};
+		const twoFiles = [{ key: 'a' }, { key: 'b' }] as never[];
+
+		// The pin's tag reaches the *raw line*, which is what membership is
+		// resolved from. Never a folder id on the payload.
+		if (lineFor({ text: 'dug it over', files: [], pinTag: 'garden' }) !== 'dug it over <garden>') {
+			failures.push(`  lineFor did not append the pin's tag: ${lineFor({ text: 'dug it over', files: [], pinTag: 'garden' })}`);
+		}
+		if (lineFor({ text: 'plain', files: [], pinTag: null }) !== 'plain') {
+			failures.push('  lineFor appended something with nothing pinned');
+		}
+
+		{
+			const { rec, env } = envFor(null);
+			const out = await send({ text: 'a line', files: twoFiles, pinTag: null }, env);
+			if (out.kind !== 'sent') failures.push(`  a good send reported ${out.kind}`);
+			if (rec.uploaded.join() !== 'e1:garden') {
+				failures.push(`  the uploads did not start against the entry: ${rec.uploaded.join()}`);
+			}
+			if (rec.released !== 0) failures.push('  a successful send gave the files back');
+		}
+
+		{
+			const { rec, env } = envFor(new NetworkError('offline'));
+			const out = await send({ text: 'a line', files: twoFiles, pinTag: null }, env);
+			if (out.kind !== 'queued') {
+				failures.push(`  an offline send reported ${out.kind}, expected queued`);
+			} else if (out.lostFiles !== 2 || out.pending !== 1) {
+				failures.push(`  an offline send reported ${out.lostFiles} lost files, ${out.pending} pending`);
+			}
+			// The line is kept…
+			if (rec.queued.length !== 1 || !rec.queued[0].body.includes('a line')) {
+				failures.push('  an offline send did not queue the line');
+			}
+			// …and the files, which cannot be, are handed back rather than left
+			// holding object URLs for a send that will never happen.
+			if (rec.released !== 2) {
+				failures.push(`  an offline send released ${rec.released} of 2 files`);
+			}
+			if (rec.uploaded.length !== 0) failures.push('  an offline send started an upload');
+		}
+
+		{
+			const { rec, env } = envFor(new Error('too long'));
+			const out = await send({ text: 'a line', files: twoFiles, pinTag: null }, env);
+			if (out.kind !== 'refused') {
+				failures.push(`  a refusal reported ${out.kind}`);
+			} else if (out.message !== 'too long') {
+				failures.push(`  a refusal lost its message: ${out.message}`);
+			}
+			// Nothing was written, so nothing is queued — and the files are
+			// *not* released: the caller is about to put them back in the bar
+			// along with the text.
+			if (rec.queued.length !== 0) failures.push('  a refusal queued the line for replay');
+			if (rec.released !== 0) failures.push('  a refusal threw the files away');
+		}
+	}
+
+	// How a shelf splits into the loose grid and its named headings. Both
+	// screens showing a shelf read this, and they used to have a copy each.
+	{
+		const album = (id: string, group: string) => ({ id, group }) as never;
+		const shelf = {
+			groups: ['Making', 'Reading'],
+			albums: [album('a', ''), album('b', 'Reading'), album('c', 'Making'), album('d', '')]
+		} as never;
+
+		const { loose, sections } = splitShelf(shelf);
+		if (loose.map((a) => a.id).join(',') !== 'a,d') {
+			failures.push(`  the loose grid held ${loose.map((a) => a.id).join(',')}, expected a,d`);
+		}
+		// The shelf's own order, not the order the albums happen to arrive in.
+		if (sections.map((s) => s.name).join(',') !== 'Making,Reading') {
+			failures.push('  the headings did not come back in the shelf`s order');
+		}
+		if (sections[0].albums.map((a) => a.id).join(',') !== 'c') {
+			failures.push('  an album landed under the wrong heading');
+		}
+		// A heading with nothing under it is a place you have made and not
+		// filled. Dropping it would take that decision back for you.
+		const empty = splitShelf({ groups: ['Someday'], albums: [] } as never);
+		if (empty.sections.length !== 1 || empty.sections[0].albums.length !== 0) {
+			failures.push('  an empty group heading did not survive the split');
+		}
+		// The all-years shelf has no groups at all, and that is the flat list
+		// the screen had before groups existed rather than a case to handle.
+		if (splitShelf(null).sections.length !== 0 || splitShelf(null).loose.length !== 0) {
+			failures.push('  splitShelf(null) was not the empty shelf');
 		}
 	}
 
@@ -1051,43 +1185,77 @@ async function runFile(stem: string, verbose: boolean) {
 	return { status: failed ? 'fail' : 'ok', passed, failed, total: cases.length - deviated };
 }
 
-async function main(argv: string[]): Promise<number> {
-	const verbose = argv.includes('-v') || argv.includes('--verbose');
-	const wanted = argv.filter((a) => !a.startsWith('-'));
+// ── Runner: two halves, and only one of them needs the bundle ─────────────
+//
+// The corpus is an oracle this checkout may not have. `trophic/` is gitignored,
+// so it exists wherever the bundle was unpacked and nowhere else — which on a
+// dual-boot machine with two clones means one side has it and the other does
+// not. This used to be one gate in front of everything: a missing directory
+// returned 2 before a single assertion ran, `localChecks` included.
+//
+// That is the wrong place for the seam, and it is expensive in the exact way
+// the note above `KNOWN_BAD` describes. `localChecks` is where the rules the
+// corpus cannot pin are paid back — the local-midnight day key, the queue that
+// used to eat every entry behind the first failure — and it needs no fixtures
+// at all. Gating it on the bundle meant the half of the suite written *for*
+// the side without the bundle was the half that could not run there.
+//
+// So the corpus is an adapter that may be absent, reported as SKIP, and
+// `localChecks` always runs and always sets the exit code. An absent oracle
+// must never read as a pass: `corpusStems` returning null is printed, loudly,
+// and `--only` naming a file that is not there is still an error, because that
+// is a caller asking for something specific and not getting it.
 
-	if (!existsSync(CORPUS)) {
-		console.error(`corpus directory not found: ${CORPUS}`);
-		console.error('the trophic/ bundle is gitignored — see TROPHIC.md');
-		return 2;
-	}
-
-	let stems = readdirSync(CORPUS)
+function corpusStems(wanted: string[]): string[] | null {
+	if (!existsSync(CORPUS)) return null;
+	const stems = readdirSync(CORPUS)
 		.filter((f) => f.endsWith('.json') && f !== 'index.json')
 		.map((f) => f.slice(0, -5))
 		.filter((s) => s in ADAPTERS)
 		.sort();
-	if (wanted.length) stems = stems.filter((s) => wanted.includes(s));
-	if (!stems.length) {
-		console.error(`no corpus files matched: ${wanted.join(', ')}`);
-		return 2;
-	}
+	return wanted.length ? stems.filter((s) => wanted.includes(s)) : stems;
+}
 
-	console.log(`golden corpus, TypeScript side — ${stems.length} file(s)\n`);
+async function main(argv: string[]): Promise<number> {
+	const verbose = argv.includes('-v') || argv.includes('--verbose');
+	const wanted = argv.filter((a) => !a.startsWith('-'));
+
+	const stems = corpusStems(wanted);
 	let pass = 0;
 	let fail = 0;
 	let total = 0;
-	for (const stem of stems) {
-		const r = await runFile(stem, verbose);
-		pass += r.passed;
-		fail += r.failed;
-		total += r.total;
+
+	if (stems === null) {
+		console.log('golden corpus, TypeScript side — SKIP\n');
+		console.log(`  corpus directory not found: ${CORPUS}`);
+		console.log('  the trophic/ bundle is gitignored — see TROPHIC.md');
+		console.log('  the local checks below still run, and still decide the exit code.\n');
+		// A named file that cannot be read is a different answer from "no
+		// bundle here": the caller asked for one thing and got nothing.
+		if (wanted.length) {
+			console.error(`\ncannot run ${wanted.join(', ')} without the corpus`);
+			return 2;
+		}
+	} else if (!stems.length) {
+		console.error(`no corpus files matched: ${wanted.join(', ')}`);
+		return 2;
+	} else {
+		console.log(`golden corpus, TypeScript side — ${stems.length} file(s)\n`);
+		for (const stem of stems) {
+			const r = await runFile(stem, verbose);
+			pass += r.passed;
+			fail += r.failed;
+			total += r.total;
+		}
 	}
+
 	const local = await localChecks();
 	for (const line of local) console.log(line);
 	if (local.length) console.log(`  ${'local checks'.padEnd(20)} FAIL  ${local.length} problem(s)`);
 	else console.log(`  ${'local checks'.padEnd(20)} PASS  (no corpus, this port's own mistakes)`);
 
-	console.log(`\n${pass} passed, ${fail + local.length} failed (${total} cases)`);
+	const skipped = stems === null ? ', corpus skipped' : '';
+	console.log(`\n${pass} passed, ${fail + local.length} failed (${total} cases${skipped})`);
 	return fail || local.length ? 1 : 0;
 }
 
