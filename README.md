@@ -1,15 +1,26 @@
 # Personal Growth System
 
-A local tech tree for deliberate practice. One question: **what do I work on
-right now, and for how long?**
+Two sibling apps in one process, on one dual-boot machine, sharing one data
+disk.
 
-Linux and Windows, on one dual-boot machine sharing one data disk. The in-app
-**Manual** tab explains the model and why it is shaped this way; this file is
-reference.
+**Capture** — *Trophic* — is the app. A syntax-driven capture bar at `/` and a
+journal of what it caught. You type a line; the sigils in it file it, mark it,
+schedule it or turn it into a checkbox. It is documented at length in
+[TROPHIC.md](TROPHIC.md).
 
-The **Trophic** tab is a second app sharing this one's shell and disk — a
-syntax-driven capture bar and a log of what it caught. It is documented in
-[TROPHIC.md](TROPHIC.md) and summarised under [Trophic](#trophic) below.
+**The tech tree** is a local engine for deliberate practice: one question, what
+do I work on right now and for how long. Its API, its trees and its XP fold are
+live and tested; **its two screens are hidden** — `/today` and `/tree` redirect
+to `/`, and deleting `frontend/src/routes/today/+page.ts` and
+`frontend/src/routes/tree/+layout.ts` is the whole of putting them back. Hidden
+rather than deleted, deliberately: removing the tech tree is a decision to be
+made with evidence, not as a side effect of a redesign.
+
+They share a data root, a venv, a test suite and a tab bar. They share no
+models, no events and no fold.
+
+The in-app **Manual** (Settings → Manual) explains the syntax and why the log
+is append-only; this file is reference.
 
 ## Install
 
@@ -27,19 +38,155 @@ readable from that side:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install-windows.ps1
 pgs --data-dir F:\pgs-data        # the disk shared with Linux; see SYNC.md
+powershell -ExecutionPolicy Bypass -File .\install-windows-tasks.ps1   # backups
 ```
 
-Tests: `.venv/bin/python -m pytest backend/tests -q`
+The Windows installer writes `pgs.cmd` and a Start Menu shortcut, and re-running
+it after `git pull` is how you update — `frontend/build` is gitignored, so a
+pull that changed the UI serves the old one until the build step runs.
 
-Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm run dev`
+Tests: `.venv/bin/python -m pytest backend/tests -q` — 463 tests, ~3 s.
+On Windows, `.venv\Scripts\python.exe -m pytest backend\tests -q`.
 
+Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm run dev`.
+`./run.sh` builds the frontend and serves both halves from one port.
+
+- [TROPHIC.md](TROPHIC.md) — the capture app, the port, and its corpus
 - [MOBILE.md](MOBILE.md) — iPad/iPhone over Tailscale
-- [SYNC.md](SYNC.md) — backups, moving machines
+- [SYNC.md](SYNC.md) — backups, dual boot, moving machines
+- [docs/windows-bringup.md](docs/windows-bringup.md) — the Windows handoff, and what is still unproven there
 - [docs/sources.md](docs/sources.md) — where the six trees came from
 - [docs/domain-shapes.md](docs/domain-shapes.md) — the taxonomy argument
 - [docs/authoring-trees.md](docs/authoring-trees.md) — how a new tree gets generated
 
-## What decides the board
+## Screens
+
+Navigation is three words in one pill, in the same corner of every screen.
+
+| | |
+|---|---|
+| `/` | **Capture.** The bar, the standing tally, the due reminder, uploads. |
+| `/log` | **Log.** The year shelf — every album with anything in it this year. |
+| `/folders/{id}` | An album: one folder, one year. `/folders/{id}/{month}` is one volume of it. |
+| `/mapping` | Which tags point at which folder, and every tag nothing has claimed. |
+| `/settings` | Disk, Folders & tags, Log, Monitor — and the Manual. |
+| `/manual` | What the syntax does, and why the log is append-only. |
+| `/today` `/tree` | The tech tree. **Hidden**; both redirect to `/`. |
+
+The Log is a feed of days, not a date ruler: a sticky header, a contact sheet
+of that day's media, then its lines. Quiet stretches fold, and can be told not
+to (Settings → Log).
+
+## The syntax
+
+One line of text, files attached to it, or both. Three triggers and two
+directives are parsed out of it; plain words are ignored by design and the raw
+line is stored verbatim.
+
+| | | |
+|---|---|---|
+| `<pointer>` | folder / project tag | `<career>`, `<the backup-system>` |
+| `{time-link}` | a temporal marker; comes back when due | `{q3}`, `{2d}`, `{31/12/26}` |
+| `\pattern` | counted sentiment | `\win`, `\stuck`, `\burnout` |
+| `@place` | where you were | `@helsinki`, `@the-office` |
+| `--folder` | file it there; stripped from the text | `--work-log`, `--"the backup system"` |
+| `--todo` | that line becomes a checkbox | |
+| `--reply` | answers the reminder standing above the bar | |
+
+Captures are trimmed, lowercased and de-duplicated, keeping first-appearance
+order. `\ ` is a literal backslash; `@` opens a place only at the start of a
+word, because `a@b.com` is an address; text inside `"quotes"` triggers nothing.
+
+Enter sends, Shift+Enter is a newline, Tab takes the autocomplete, and on touch
+a rightward swipe sends. A whole line of `--folders` or `--log` opens the log,
+`--assign` opens mapping, `--settings` leaves for Settings; `--codex`,
+`--logout` and `--dev` say they have no screen here rather than failing
+silently.
+
+Validation fires on the draft. `--nowhere` locks the bar, blinks the token red
+and offers to create the folder inline; a directive and a tag that disagree
+about the destination blink both and refuse to send. A tag no folder has
+claimed is *not* a mistake — it is how tags start.
+
+Caps: 20 000 characters a capture, 60 a folder name, 32 a shelf heading. A
+capture that fails on a dead connection is queued and replayed when the
+connection returns, with the waiting count under the bar; one the *server*
+refused gives the text back instead.
+
+## Folders, albums and the shelf
+
+A folder is where lines land. **Membership is resolved on the read, never
+stored**, and there are three routes in — a mapped `<tag>`, a `--directive`
+naming the folder, and filing an entry by hand — all three of which resolve
+from the raw line. Pinning a folder appends its tag to the line you are
+writing, so a pinned capture is byte-identical to one you tagged yourself.
+
+A folder claims no tag of its own: the registry holds the words *you* chose to
+point somewhere. Renaming never un-files anything — a directive resolves
+against every name the folder has ever had.
+
+| | |
+|---|---|
+| state | `""` (no lifecycle), `active`, `shipped` |
+| album | one folder seen through one year; recorded nowhere, derived on the read |
+| chapter | a named stretch within an album; nameable by hand |
+| group | a heading on one year's shelf. Its order is one event carrying the whole order |
+| unfiled | what nothing has claimed, offered as an album of its own |
+
+**Lifting a tag changes how it reads and nothing else.** A lifted `<garden>`
+draws as `garden` everywhere and still files exactly where it did. It is a log
+event rather than a browser preference, because it is a decision about the
+writing. Only `<tags>` can be lifted.
+
+## Reminders and replies
+
+A `{time}` that has come due surfaces **one** prompt above the capture box,
+oldest first. `--reply <thought>` answers it: the command is stripped in the
+browser, the link rides on the capture event as `reply_to`, and answering
+dismisses the reminder it answered. `replied_by` is the derived other end, so
+the log draws the thread from both ends. An answer is otherwise an ordinary
+entry — its own `{time}` resolves, and can start the next round.
+
+## Media
+
+Photos and video enter through the capture bar and are attached to the entry
+they were sent with.
+
+```
+data/media/YYYY-MM/<hex16>.<ext>       the upload, byte for byte
+data/media/YYYY-MM/<hex16>.view.jpg    a display copy, if one could be made
+```
+
+The original is never touched. Nothing is read into memory — an upload streams
+to a temporary file and is `os.replace`d into place, flat in memory whether it
+is 40 KB or 4 GB. `GET /media/{path}` answers Range requests with 206, so video
+seeks. A video's poster frame is made by the browser, because a server-side one
+means ffmpeg on both halves of a dual-boot machine.
+
+## Todos, and the tally
+
+Ten `--todo` lines may stand open at once; the eleventh is refused at the
+write, including one entry carrying eleven at a time. A limit you can exceed by
+typing faster is not a limit.
+
+What became of the rest is the one figure the capture screen keeps on show — a
+standing tally of promises kept over promises made, all of history, in the
+bottom-left corner. It answers when either number moves. It is also a toy: take
+hold of it, spin it, flick it, and it runs down and settles back. That does
+nothing whatsoever, which is the point of it. The same pair, narrowed to one
+folder and one year, sits in that folder's overview beside its entry and media
+counts, and a todo nobody tagged belongs to the unfiled pile like anything
+else. Both are derived on the read: nothing records them.
+
+The markdown notes system and the tech tree's separate checklist were removed
+when the capture bar became the only place to type. `data/notes/` and
+`data/todos.jsonl` are left on disk untouched; nothing reads the first any
+more, and the second is still folded into XP so past errands keep the points
+they earned.
+
+## The tech tree
+
+Live behind the API, without screens. The board answers one question.
 
 1. **Within a domain** — the lowest-tier startable node. Ties break on
    declaration order. `available` outranks `open`.
@@ -49,7 +196,7 @@ Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm r
 
 `priority` sorts; `season` schedules. Everything is readable off the `.toml`.
 
-## Node kinds
+### Node kinds
 
 | kind | accrues | notes |
 |---|---|---|
@@ -59,7 +206,7 @@ Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm r
 | `exam` | prep days + `scheduled` | scored by someone else |
 | `social` | occasions | needs other people; never forced to complete |
 
-## Domain shapes
+### Domain shapes
 
 | shape | active at once |
 |---|---|
@@ -67,7 +214,7 @@ Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm r
 | `strands` | one per declared strand |
 | `cycles` | current project + the craft feeding it |
 
-## Seasons
+### Seasons
 
 Six domains acquiring at once is ~10 h/day; six merely held is ~33 min/day.
 
@@ -87,7 +234,7 @@ ends_on = "circuits-ac"          # ...or when this ships, whichever first
 
 Nothing auto-applies; the app reports the season is over and offers the switch.
 
-## Node schema
+### Node schema
 
 ```toml
 [[node]]
@@ -117,7 +264,7 @@ or later tier, unknown `kind`/`shape`, an edge that is both hard and soft, a
 `project` without `phases`, `phases` on a non-project, a `strands` domain
 declaring none, an undeclared strand, `season.state = "off"` where nodes decay.
 
-## Gate, entry, estimate
+### Gate, entry, estimate
 
 - **gate** — what done means. Never parsed; you decide.
 - **entry** — how to start: book, free course, search string.
@@ -126,30 +273,7 @@ declaring none, an undeclared strand, `season.state = "off"` where nodes decay.
 
 Each domain reports its estimating bias as a ratio of totals over settled nodes.
 
-## Writing things down
-
-There is one place: **the capture bar at `/`**. A line of text, files attached
-to it, or both. `<tags>` file it, `\patterns` mark it, `{times}` set a
-reminder and `--todo` turns a line into a checkbox. Trophic's log *is* the
-journal.
-
-The markdown notes system and the tech tree's separate checklist were removed
-when that became true — two more places to type the same thing, each with its
-own screen to go and look at. `data/notes/` and `data/todos.jsonl` are left on
-disk untouched; nothing reads the first any more, and the second is still
-folded into XP so past errands keep the points they earned.
-
-Ten `--todo` lines may stand open at once; the eleventh is refused at the
-write. What became of the rest is the one figure the capture screen keeps on
-show — a standing tally of promises kept over promises made, all of history,
-in the bottom-left corner. It answers when either number moves. It is also a
-toy: take hold of it, spin it, flick it, and it runs down and settles back. That
-does nothing whatsoever, which is the point of it. The same pair,
-narrowed to one folder and one year, sits in that folder's overview beside its
-entry and media counts, and a todo nobody tagged belongs to the unfiled pile
-like anything else. Both are derived on the read: nothing records them.
-
-## Levels and XP
+### Levels and XP
 
 XP began as decoration under the rule that it must never change what the board
 shows. That rule is gone: **starting a node above tier I costs XP**, so a node
@@ -181,15 +305,28 @@ properly, so nothing else is paid like it.
 
 ## API
 
+Capture, under `/api/capture`:
+
 | | |
 |---|---|
-| GET | `/api/health`, `/api/storage`, `/api/dashboard`, `/api/domains`, `/api/domains/{id}` |
+| entries | GET `/entries?date=` `?from=&to=` `&limit=` · POST `/entries` · PATCH `/entries/{id}` — tick a box, or file it by hand |
+| the bar | GET `/banner`, `/vocab`, `/dates`, `/reminders` · POST `/reminders/dismiss` |
+| folders | GET/POST `/folders` · GET/PATCH/DELETE `/folders/{id}` · PUT `.../chapter` `.../group` |
+| the shelf | GET `/shelf?year=`, `/album?folder=&year=` · POST `/groups/rename` `/groups/delete` `/groups/order` |
+| tags | GET `/tags`, `/tags/unassigned` · POST `/tags/lift` |
+| readings | GET `/cumulative?up_to=` |
+| admin | POST `/import`, `/reindex` · GET `/health` |
+
+The tech tree, under `/api`:
+
+| | |
+|---|---|
+| GET | `/health`, `/version`, `/storage`, `/backup`, `/dashboard`, `/domains`, `/domains/{id}` |
 | POST | `.../nodes/{n}/session` `/complete` `/phase` `/unlock` |
-| tools | GET/POST `/api/domains/{id}/tools` · PATCH/DELETE `.../tools/{tool_id}` |
-| media | POST `/api/media?name=` · GET `/media/{path}` (Range/206, so video seeks) |
-| POST | `/api/domains/{id}/season` |
-| POST | `/api/admin/reindex`, `/api/admin/reload` |
-| CRUD | `/api/domains`, `.../nodes`, `.../edges`, `.../reorder` (POST/PATCH/DELETE) |
+| tools | GET/POST `/domains/{id}/tools` · PATCH/DELETE `.../tools/{tool_id}` |
+| media | POST `/media?name=` · GET `/media/{path}` (Range/206, so video seeks) |
+| POST | `/domains/{id}/season`, `/backup`, `/restart`, `/admin/reindex`, `/admin/reload` |
+| CRUD | `/domains`, `.../nodes`, `.../edges`, `.../reorder` (POST/PATCH/DELETE) |
 
 Structural edits rewrite the `.toml`, validated before the write, atomic via
 `os.replace`. **Comments in the file do not survive a UI edit.**
@@ -199,14 +336,15 @@ Structural edits rewrite the `.toml`, validated before the write, atomic via
 ```
 data/
   seed/*.toml        the six researched trees, as shipped — the ONLY thing in git
-  domains/*.toml     your trees, hand-authored and rewritten by the UI
+  domains/*.toml     your trees, hand-authored and rewritten through the API
   log/YYYY-MM.jsonl  append-only: every session, completion, phase and unlock
   todos.jsonl        append-only, no longer written; still counted by XP
-  media/             photos and video at full quality, private
-                     <hex>.<ext> is the original; <hex>.view.jpg is a display copy
+  media/YYYY-MM/     photos and video at full quality, private
+                     <hex16>.<ext> is the original; <hex16>.view.jpg is a display copy
   index.sqlite       rebuildable cache — delete it any time
   capture/           Trophic's, and only Trophic's:
-    log/YYYY-MM.jsonl  append-only: every captured line, every tick
+    log/YYYY-MM.jsonl  append-only: captures, ticks, filings, folders,
+                       chapters, groups, lifted tags, dismissals
     index.sqlite       rebuildable cache — delete it any time
 ```
 
@@ -218,47 +356,30 @@ for what losing each file actually costs.
 
 The log is not a record of clicks — it is where the app's state lives. A ticked
 session *is* a `session` line; unticking appends an `undo` rather than editing
-one, which is why toggling shows up as two lines. XP, level, streak and every
-paid unlock are a fold over that file and are stored nowhere else.
+one, which is why toggling shows up as two lines. Capture works the same way:
+folders, times, patterns, places, the cleaned text and the todo lines are all
+derived on replay and none of them is in the log, so improving the parser
+improves every entry you have ever written. Ticking a checkbox appends a
+`check`; it edits nothing.
 
-Every event carries a `day` precomputed in GMT+7. Events sort by timestamp,
-stably, so duplicated or out-of-order lines resolve identically however they
-arrived.
+Every event carries a `day` precomputed in the configured zone. Events sort by
+timestamp, stably, so duplicated or out-of-order lines resolve identically
+however they arrived.
 
-## Trophic
-
-A second app under its own tab, being ported from a Next.js/Postgres original.
-Type a line; three triggers and two directives are parsed out of it:
-
-| | | |
-|---|---|---|
-| `<pointer>` | folder / project tag | `<career>`, `<the backup-system>` |
-| `{time-link}` | a temporal marker | `{q3}`, `{31/12/26}` |
-| `\pattern` | counted sentiment | `\win`, `\burnout` |
-| `--folder` | file it there; stripped from the text | `--work-log` |
-| `--todo` | that line becomes a checkbox | |
-
-Plain words are ignored by design, and the raw line is stored verbatim. Enter
-sends, Shift+Enter is a newline, Tab takes the autocomplete, and `--folders`
-opens the log.
-
-Same architecture as the tree: `data/capture/log/*.jsonl` is append-only truth,
-`data/capture/index.sqlite` is a projection you can delete. Everything the
-parser finds — folders, times, patterns, the cleaned text, the todo lines — is
-derived on replay and is *not* in the log, so improving the parser improves
-every entry you have ever written. Ticking a checkbox appends a `check`; it
-edits nothing.
-
-| | |
+| env | |
 |---|---|
-| GET | `/api/capture/entries?date=` `?from=&to=` `&limit=`, `/dates`, `/vocab`, `/cumulative?up_to=`, `/health` |
-| POST | `/api/capture/entries` |
-| PATCH | `/api/capture/entries/{id}` — `{"toggle_line": n}` |
+| `PGS_DATA_DIR` | the data root. Refuses to start if it is set and not mounted. |
+| `PGS_TZ_OFFSET_HOURS` | the day boundary. Default `7`. |
+| `PGS_CAPTURE_DATE_LOCALE` | which way `{03/04/26}` reads: `row` (default) or `us`. |
+| `PGS_INDEX_PATH` `PGS_CAPTURE_INDEX_PATH` | the two caches, if they belong elsewhere. |
+| `PGS_SERVICE` | the unit `POST /api/restart` restarts. Default `pgs.service`. |
 
 ## Deliberately absent
 
-Timers, minute tracking, notifications, multi-user, auth, editing the log, and
-anything adaptive. Metric readings are stored and drawn, never interpreted —
-which now covers Trophic's tag bars and sentiment chart too.
+Timers, minute tracking, push notifications, multi-user, auth, editing the log,
+and anything adaptive. Metric readings, tag bars and the sentiment chart are
+stored and drawn, never interpreted.
 
-Per-node cadence is the next obvious gap.
+Not built in capture: the codex and thinking-pond screens and the insight
+engine behind them, `--draw`, and onboarding. Encryption is refused rather than
+pending. Per-node cadence is the tech tree's one acknowledged gap.
