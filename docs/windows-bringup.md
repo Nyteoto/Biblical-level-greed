@@ -100,8 +100,12 @@ Assume more of the same. Nothing here has met an interpreter.
 
 ## The bugs found by running them
 
-Six, and none of them was findable by reading. They are listed newest lesson
-first, because the last two are the ones that would have wasted a day:
+Seven, and none of them was findable by reading. The last three share one
+lesson and it is the one worth carrying: **run these under `powershell`, not
+`pwsh`.** 5.1 is what that word means on a Windows machine, what the scheduled
+task runs, what `backup.py` shells out to and what every instruction in this
+repo names — and it differs from pwsh 7 in exactly the places these scripts
+live.
 
 1. **The frontend did not build at all.** `Banner.svelte` and `banner.svelte.ts`
    differ only in case, and Windows resolves `./banner.svelte` to the component
@@ -127,8 +131,16 @@ first, because the last two are the ones that would have wasted a day:
    button and the documented install command all run. All three carry a BOM now
    and `.gitattributes` says why.
 
-The shape of all six: the Linux side could not have caught any of them, and
-each was invisible until the exact command a user would type was typed.
+7. **The installer failed twice under 5.1** having passed cleanly under pwsh.
+   5.1 will not pass an embedded double quote to a native command, so the
+   Python version probe came back empty and the script announced a Python too
+   old to use without naming a version; and it wraps a native command's stderr
+   in ErrorRecords once merged into the pipeline, so with `Stop` set the first
+   npm warning became a terminating error on a build that had succeeded.
+
+The shape of all seven: the Linux side could not have caught any of them, and
+each was invisible until the exact command a user would type was typed, in the
+interpreter that user would have.
 
 ## Do this in an order that cannot lose data
 
