@@ -256,12 +256,14 @@ the Linux checkout. `install-windows.ps1`, `backup.ps1` and
 there — which means the suite cannot exercise them and neither can you.
 Change them only with a reason you could defend without running them.
 
-**If you are on Windows, read `docs/windows-bringup.md` before anything else.**
-Those three scripts were written from Linux and have never met an interpreter;
-that file carries the drive letters, the volume serial, the tailnet names, the
-four bugs already found by reading, and the order of operations that keeps an
-unproven backup script away from a real photo library. It is a handoff and is
-meant to be deleted once its checklist is green.
+**Run them with `powershell`, never `pwsh`.** On a Windows machine that word
+means 5.1, and 5.1 is what the scheduled task runs, what `backup.py` shells out
+to and what every instruction in this repo names. Three of the seven bugs the
+bring-up found were 5.1-versus-pwsh-7 differences, and all three were invisible
+under the interpreter that is nicer to test with: 5.1 reads a BOM-less `.ps1`
+as cp1252, will not pass an embedded double quote to a native command, and
+wraps a native command's stderr in ErrorRecords once merged into the pipeline.
+A script that passes under pwsh has not been tested.
 
 Tests point at a throwaway data dir via `conftest.py` before the app imports —
 they never touch `data/`. Keep it that way.

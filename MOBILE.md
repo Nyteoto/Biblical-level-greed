@@ -78,6 +78,17 @@ This was decided rather than inherited. The alternatives were worse:
 - **One icon behind an always-on box.** Correct, and needs hardware that is
   not on this desk.
 
+The two nodes are on one tailnet, `tail1a906a.ts.net`, and `serve` is
+configured per device — setting it up on one side does nothing for the other:
+
+| OS | node | address | icon |
+|---|---|---|---|
+| Linux | `p.tail1a906a.ts.net` | `100.67.160.15` | `Trophic` |
+| Windows | `pekka.tail1a906a.ts.net` | `100.66.133.50` | `Trophic W` |
+
+Both proxy `https://` to `127.0.0.1:8787`, where the logon unit and the
+scheduled task already serve.
+
 Two icons costs one glance to know which OS is up, and nothing else. Name them
 so that glance works — the label under an iOS icon is editable when you add it,
 so `Trophic` and `Trophic W` beats two identical ones.

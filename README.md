@@ -54,7 +54,6 @@ Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm r
 - [TROPHIC.md](TROPHIC.md) — the capture app, the port, and its corpus
 - [MOBILE.md](MOBILE.md) — iPad/iPhone over Tailscale
 - [SYNC.md](SYNC.md) — backups, dual boot, moving machines
-- [docs/windows-bringup.md](docs/windows-bringup.md) — the Windows handoff, and what is still unproven there
 - [docs/sources.md](docs/sources.md) — where the six trees came from
 - [docs/domain-shapes.md](docs/domain-shapes.md) — the taxonomy argument
 - [docs/authoring-trees.md](docs/authoring-trees.md) — how a new tree gets generated

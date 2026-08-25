@@ -83,6 +83,22 @@ one filesystem both operating systems mount without a third-party driver. The
 cost is that it carries no permissions and no symlinks, which is why only
 `data/` lives there and never the checkout.
 
+**`F:` is a letter, not the disk.** Windows assigns it and can reassign it; the
+disk is labelled `Extreme SSD` with serial `0663-9718`, which is what Linux
+calls its UUID and what Windows shows for the same volume. Identify it by the
+serial and never by position:
+
+```powershell
+Get-Volume | Where-Object FileSystemLabel -eq 'Extreme SSD'
+```
+
+If the letter ever moves, it appears in this file, `README.md`,
+`install-windows-tasks.ps1`'s `-DataDir` default and the installer's closing
+lines. A wrong letter is not silent: `config.check_data_dir` refuses to start
+when `PGS_DATA_DIR` names a directory holding no log, no trees and no capture
+dir, so the failure is a refusal rather than a second empty history. Do not
+create the directory to make that refusal go away.
+
 **The two backups do not meet, and do not need to.** `/mnt/data` is ext4, which
 Windows cannot read, so the Windows side writes its own copy to the internal
 disk instead. Both read the same shared data directory and neither ever
