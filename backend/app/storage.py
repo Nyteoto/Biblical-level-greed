@@ -3,11 +3,9 @@
 Media dwarfs everything else and is the only part not in git, so the split that
 matters is "things a backup already covers" against "the one copy of my photos".
 
-Capture's log and index are named separately from the tech tree's because they
-are the ones the Settings screen is actually about now: capture is the app, and
-"delete this and it rebuilds" is a different promise from "delete this and your
-history is gone". The tech tree's three parts are folded into one line for the
-same reason — it is support, and its size is a footnote rather than a subject.
+The log and the index are named separately because the promises differ:
+"delete this and it rebuilds" is a different sentence from "delete this and
+your history is gone", and the Settings screen exists to say which is which.
 """
 from __future__ import annotations
 
@@ -15,7 +13,7 @@ from pathlib import Path
 
 from ..capture.config import INDEX_PATH as CAPTURE_INDEX_PATH
 from ..capture.config import LOG_DIR as CAPTURE_LOG_DIR
-from .config import DATA_DIR, DOMAINS_DIR, INDEX_PATH, LOG_DIR
+from .config import DATA_DIR
 
 
 def _walk(root: Path) -> tuple[int, int]:
@@ -37,10 +35,6 @@ def _one(path: Path) -> tuple[int, int]:
     if not path.is_file():
         return 0, 0
     return path.stat().st_size, 1
-
-
-def _sum(*pairs: tuple[int, int]) -> tuple[int, int]:
-    return sum(p[0] for p in pairs), sum(p[1] for p in pairs)
 
 
 def report() -> dict:
@@ -69,13 +63,6 @@ def report() -> dict:
             _one(CAPTURE_INDEX_PATH),
             True,
         ),
-        (
-            "tree",
-            "tech tree",
-            "its own log, its trees and its index — the support half of the app",
-            _sum(_walk(LOG_DIR), _walk(DOMAINS_DIR), _one(INDEX_PATH)),
-            False,
-        ),
     ):
         parts.append(
             {
@@ -90,8 +77,9 @@ def report() -> dict:
 
     counted = sum(p["bytes"] for p in parts)
     total, total_files = _walk(DATA_DIR)
-    # Anything in data/ that none of the buckets above claimed — todos, stray
-    # files. Reported rather than hidden, so the parts always sum to the total.
+    # Anything in data/ that none of the buckets above claimed — a leftover
+    # from an older shape of the app, a stray file. Reported rather than
+    # hidden, so the parts always sum to the total.
     other = total - counted
     if other > 0:
         parts.append(

@@ -60,7 +60,6 @@
 		bytes,
 		getBackup,
 		getStorage,
-		reloadFromDisk,
 		runBackup,
 		type BackupStatus,
 		type StorageReport
@@ -503,14 +502,6 @@
 									onclick={() => act('reindex', reindex)}
 								>
 									{busy === 'reindex' ? 'rebuilding…' : 'Rebuild index'}
-								</button>
-								<button
-									type="button"
-									class="lift lift-sm rounded-[11px] bg-surface px-4 py-[11px] text-[13px] font-semibold shadow-sm disabled:opacity-50"
-									disabled={busy !== null}
-									onclick={() => act('reload', reloadFromDisk)}
-								>
-									{busy === 'reload' ? 'reading…' : 'Reload from disk'}
 								</button>
 								<button
 									type="button"

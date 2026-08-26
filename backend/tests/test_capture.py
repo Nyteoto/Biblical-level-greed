@@ -310,16 +310,24 @@ def test_an_email_address_is_not_a_place(capture_store):
     assert capture_store.entries(limit=1)[0]["places"] == ["oslo"]
 
 
-def test_capture_writes_nowhere_near_the_tech_tree(capture_store):
-    """Sibling app, own subtree. If this ever fails, the two logs have started
-    sharing a directory and one app's reindex can drop the other's events."""
-    from backend.app import config as tree_config
+def test_the_log_keeps_to_its_own_subtree(capture_store):
+    """The log lives under `data/capture/`, not loose in the data root.
+
+    This used to assert that capture wrote nowhere near the tech tree's log,
+    back when both shared a data root. The tree is gone and the subtree stayed,
+    which is the right way round: `data/` is the disk, and what the user wrote
+    is one directory inside it — alongside `media/`, which is the other thing
+    that is theirs and has one copy.
+    """
     from backend.capture import config as capture_config
 
     capture_store.capture("<job> a line")
 
-    assert capture_config.LOG_DIR != tree_config.LOG_DIR
-    assert not list(tree_config.LOG_DIR.glob("*.jsonl"))
+    written = list(capture_config.LOG_DIR.glob("*.jsonl"))
+    assert written
+    for path in written:
+        assert path.parent == capture_config.LOG_DIR
+    assert not list(capture_config.DATA_DIR.glob("*.jsonl"))
 
 
 def test_the_index_derives_the_same_thing_the_parser_does(capture_store):

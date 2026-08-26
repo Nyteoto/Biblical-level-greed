@@ -80,19 +80,13 @@ VENV_PY="$(.venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2]
 
 say "3/6  Data"
 # The repo holds the app, not your practice, so `data/` is created here rather
-# than arriving with the clone. The six researched trees are copied out of
-# data/seed/ — once, and only into an empty directory.
-#
-# Deliberately not a sync, and deliberately not done at startup. A tree you
-# deleted in the UI has to stay deleted, and one you have edited must never be
-# reverted by re-running this script.
-mkdir -p data/domains data/log
-if [ -z "$(ls -A data/domains 2>/dev/null)" ]; then
-	cp data/seed/*.toml data/domains/
-	ok "seeded data/domains/ with $(find data/seed -name '*.toml' | wc -l) trees"
-else
-	ok "data/domains/ already has trees — left untouched"
-fi
+# than arriving with the clone. There is nothing to seed any more — the six
+# researched trees went with the tech tree — so this only makes the directories
+# the app writes into. `data/capture/log/` is made by the app itself on the
+# first capture; making it here too costs nothing and means a fresh install has
+# somewhere to put a photograph before it has anything to say.
+mkdir -p data/capture/log data/media
+
 
 say "4/6  Frontend"
 if [ ! -d frontend/node_modules ]; then (cd frontend && npm install --silent); fi
@@ -116,7 +110,7 @@ cat >"$APPS/pgs.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Personal Growth System
-Comment=Local tech tree for deliberate practice
+Comment=Trophic — syntax-driven capture
 Exec=$BIN/pgs
 Icon=$ROOT/frontend/static/favicon.svg
 Terminal=false

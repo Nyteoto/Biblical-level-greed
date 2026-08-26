@@ -1,10 +1,11 @@
 """Paths and tunables for capture. Everything else imports locations from here.
 
-Reads `PGS_DATA_DIR` — the same variable the tech tree reads — and then claims
-its own subtree under it. That is the whole of the "sibling app" arrangement:
-one data root on one disk, backed up by one `backup.sh`, but two independent
-logs that never have to agree about anything. Tests get isolation for free,
-because `conftest.py` sets that variable before either app is imported.
+Reads `PGS_DATA_DIR` — the data root, which `backend/app/config.py` also reads
+— and then claims its own subtree under it. The subtree is worth keeping now
+that there is no sibling app to be separate from: `data/` is the disk, and
+`data/capture/` is what the user wrote, sitting beside `data/media/` as the
+other thing that is theirs and has exactly one copy. Tests get isolation for
+free, because `conftest.py` sets that variable before anything is imported.
 """
 from __future__ import annotations
 

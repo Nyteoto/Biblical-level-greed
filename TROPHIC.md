@@ -10,23 +10,25 @@ summary would.
 This file is the decisions the port has already made. It exists so a later
 session does not re-litigate them or, worse, quietly reverse one.
 
-## It is a sibling app, not a feature
+## It was a sibling app, and now it is the app
 
-One process, one port, one `run.sh`, one test suite, one tab bar. Two of
-everything else:
+Trophic was ported in beside a tech tree, as a second app in one process. The
+tech tree was removed on 2026-08-27 — see item 3 of "Left for next time" below,
+which is the argument that was eventually taken. What is left is a split that
+still means something, but no longer means "two apps":
 
-| | tech tree | Trophic |
+| | the machine | Trophic |
 |---|---|---|
 | backend | `backend/app/` | `backend/capture/` |
-| API | `/api/…` | `/api/capture/…` |
-| log | `data/log/*.jsonl` | `data/capture/log/*.jsonl` |
-| index | `data/index.sqlite` | `data/capture/index.sqlite` |
-| frontend | `src/routes/` + `src/lib/components/` | `src/routes/trophic/` + `src/lib/trophic/` |
+| API | `/api/health` `/version` `/storage` `/backup` `/media` | `/api/capture/…` |
+| owns | the process, the disk, the blob store, the backup | the log, the parser, the fold |
+| frontend | `src/lib/api.ts` | `src/routes/(capture)/` + `src/lib/trophic/` |
 
-They have no event kind, no model and no fold in common, and interleaving their
-logs would only teach every existing fold to skip lines it does not care about.
-Both are backed up by the same `backup.sh` and covered by the same
-`data/*` gitignore.
+The line held here is the one worth keeping: `backend/app/` knows nothing about
+what a capture *is*. It knows there is a data directory, that files go in it,
+and that something has a router. Everything about the syntax, the folders and
+the fold lives on the other side of that boundary, which is what made removing
+the tech tree a deletion rather than an untangling.
 
 The one deliberate coupling: `capture/eventlog.py` imports `app/timeutil.py`.
 The day boundary is a property of the *user*, not of an app, and this repo's
@@ -332,9 +334,9 @@ Four screens exist: the capture bar, the log, one folder, and mapping. The log
 no longer carries the full folder list the source's `/folders` does — folders
 are a rail of filter chips across its top, and creating, renaming and deleting
 one happens there and on the folder's own page. `--folders` and `--log`
-open the log, `--assign` opens mapping, `--settings` leaves for the tech tree's
-settings page; the source's other nav commands say they have no screen here
-rather than failing silently.
+open the log, `--assign` opens mapping, `--settings` opens Settings; the
+source's other nav commands say they have no screen here rather than failing
+silently.
 
 The validation layer now fires. `--nowhere` locks the bar, blinks the token red
 and offers to create the folder inline; `--work <garden>` when `<garden>` is
@@ -477,11 +479,14 @@ Deliberately left for next time, in the order they were argued for:
 1. **Chains** — a `follows` relation between folders, so a project that grew
    out of another one says so, and the candidate list that goes with it. This
    wants projects to exist first, which they now do.
-2. **Per-node cadence** on the tech tree — still the one acknowledged gap.
-3. **Deleting the tech tree.** Still on the table and still cheap: the log says
-   45 events across 3 days and 13 of 14 sessions undone immediately. Decide
-   with evidence, not a prediction, and not in the same session as anything
-   else.
+2. ~~**Per-node cadence** on the tech tree~~ — moot; the tech tree is gone.
+3. ~~**Deleting the tech tree.**~~ **Done, 2026-08-27**, at the user's request
+   and in a session of its own, as this entry asked for. It was as cheap as
+   predicted: fourteen backend modules, seven test files, two route trees and
+   `src/lib/components/` came out in one pass with no untangling, because the
+   two halves shared only `media.py`, `timeutil.py` and a data root. Nothing
+   under `data/` was touched — the tree's `log/`, `domains/` and `todos.jsonl`
+   are still on disk, unread, and are the user's to delete.
 4. **Pagination beyond a widening window.** The log fetches 200 and offers
    `load more`. That is months of this journal; revisit when it is not.
 

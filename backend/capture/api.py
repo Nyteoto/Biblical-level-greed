@@ -410,8 +410,8 @@ def reindex() -> dict:
 def cumulative(up_to: str) -> dict:
     """Word count, tag bars and the sentiment weekday chart, as of a day.
 
-    Readings, drawn and never interpreted — the same rule the tech tree's
-    metrics live under. Nothing here tells the user what any of it means.
+    Readings, drawn and never interpreted. Nothing here tells the user what
+    any of it means, and nothing should be added that does.
     """
     day = _day(up_to, "up_to")
     assert day is not None  # _day only returns None for a None input

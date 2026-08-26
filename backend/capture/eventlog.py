@@ -296,9 +296,12 @@ def append(
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False) + "\n")
         handle.flush()
-        # Synced for the same reason the tech tree's log is: this file is the
-        # only copy of what the user wrote. The index rebuilds from it on every
-        # launch, so an event lost here is lost outright.
+        # Synced, not merely flushed. `flush()` only moves the bytes into the
+        # kernel's page cache — enough to survive the process dying, but not
+        # the machine losing power before writeback runs. This file earns it:
+        # it is the only copy of what the user wrote, it is not in version
+        # control, and the index rebuilds from it on every launch, so an event
+        # lost here is lost outright.
         os.fsync(handle.fileno())
     return event
 

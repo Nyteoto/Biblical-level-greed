@@ -12,9 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR_ENV = os.environ.get("PGS_DATA_DIR")
 
 DATA_DIR = Path(DATA_DIR_ENV or ROOT / "data")
-DOMAINS_DIR = DATA_DIR / "domains"
-LOG_DIR = DATA_DIR / "log"
-INDEX_PATH = Path(os.environ.get("PGS_INDEX_PATH", DATA_DIR / "index.sqlite"))
+MEDIA_DIR = DATA_DIR / "media"
 
 # The user's day boundary. Every date in this system is computed in this zone.
 TZ_OFFSET_HOURS = int(os.environ.get("PGS_TZ_OFFSET_HOURS", "7"))
@@ -51,15 +49,19 @@ def check_data_dir() -> None:
         )
     # An empty directory at a mount point is what an unmounted disk looks
     # like. A real data directory always has at least one of these.
-    if not any((DATA_DIR / name).exists() for name in ("log", "domains", "capture")):
+    if not any((DATA_DIR / name).exists() for name in ("capture", "media")):
         raise DataDirMissing(
-            f"PGS_DATA_DIR is {DATA_DIR} but it holds no log, no trees and no "
-            "capture directory. That is what an unmounted disk looks like, so "
-            "this is a refusal rather than a fresh start. Use "
-            "`pgs --data-dir` if you really mean to begin a new one here."
+            f"PGS_DATA_DIR is {DATA_DIR} but it holds no capture directory and "
+            "no media. That is what an unmounted disk looks like, so this is a "
+            "refusal rather than a fresh start. Use `pgs --data-dir` if you "
+            "really mean to begin a new one here."
         )
 
 
 def ensure_dirs() -> None:
-    DOMAINS_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    """The data root itself. Capture makes its own subtree (`capture/config.py`)
+    and `media.py` makes each month's directory as it needs one, so there is
+    deliberately nothing else to create here — a directory this module makes
+    eagerly is one `check_data_dir` can no longer use as evidence that the disk
+    is really mounted."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)

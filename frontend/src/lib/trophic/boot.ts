@@ -18,18 +18,21 @@
 /** Real modules, backend and front. Kept honest — anything deleted from the
  *  repo must leave this list too, or the boot screen starts naming ghosts. */
 const PARTS = [
+	'main.py',
+	'config.py',
+	'media.py',
+	'storage.py',
+	'backup.py',
+	'version.py',
+	'timeutil.py',
 	'eventlog.py',
 	'index.py',
-	'state.py',
+	'store.py',
 	'parser.py',
 	'reminder.py',
-	'timeutil.py',
-	'conditions.py',
-	'foundation.py',
-	'watcher.py',
-	'storage.py',
 	'import_csv.py',
 	'colors.py',
+	'api.py',
 	'tokenize.ts',
 	'colorize.ts',
 	'trie.ts',
@@ -39,13 +42,18 @@ const PARTS = [
 	'portal.ts',
 	'retry-queue.ts',
 	'validation.ts',
+	'submission.ts',
+	'shelf.ts',
+	'reply.ts',
+	'pixelate.ts',
 	'monitor.svelte.ts',
 	'pinned.svelte.ts',
 	'uploads.svelte.ts',
-	'data/log/*.jsonl',
+	'lifted.svelte.ts',
+	'queued.svelte.ts',
 	'data/capture/log',
-	'index.sqlite',
-	'data/seed'
+	'data/media',
+	'data/capture/index.sqlite'
 ];
 
 /** What a line reports. None of it is a health check and none of it pretends

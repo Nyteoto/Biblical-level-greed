@@ -1,16 +1,28 @@
 # Working on this repo
 
-A local, single-user tech tree for deliberate practice, plus **Trophic**, a
-syntax-driven capture app being ported in beside it. FastAPI + SvelteKit,
-no auth and no multi-user — do not add either. It runs on both halves of one
-dual-boot machine, Fedora and Windows, sharing a single data disk.
+**Trophic**: a local, single-user, syntax-driven capture app. FastAPI +
+SvelteKit, no auth and no multi-user — do not add either. It runs on both
+halves of one dual-boot machine, Fedora and Windows, sharing a single data disk.
 
-The two are **sibling apps in one process**, not one app: `backend/app/` and
-`backend/capture/`, `/api/…` and `/api/capture/…`, `data/log/` and
-`data/capture/log/`. They share a data root, a venv, a test suite and a tab
-bar. They share no models, no events and no fold. Read `TROPHIC.md` before
-touching anything under `capture/` or `frontend/src/lib/trophic/` — the port
-has an oracle, and guessing at behaviour it already pins is wasted work.
+The repo used to hold two sibling apps in one process — a tech tree for
+deliberate practice, and Trophic beside it. **The tech tree is gone**: its
+modules, routes, screens, trees and tests were removed on 2026-08-27. What
+survives of that arrangement is the package split, and it now means something
+different from what it used to:
+
+- `backend/app/` is the **host and the shared floor** — the process, the data
+  directory, the blob store, the backup, the frontend. It is about the machine.
+- `backend/capture/` is **the app** — the log, the parser, the fold. It is
+  about what the user wrote.
+
+A module that knows about both is the thing this repo has spent its history not
+being. Read `TROPHIC.md` before touching anything under `capture/` or
+`frontend/src/lib/trophic/` — the port has an oracle, and guessing at behaviour
+it already pins is wasted work.
+
+If you find prose anywhere in this repo describing a board, a node, a tier, XP,
+a season or a domain, it is stale and predates the removal. Delete it rather
+than working around it.
 
 `README.md` documents *what the app does*. This file documents *what you must
 not break*. Read it before changing anything; it exists because the repo has
@@ -24,21 +36,42 @@ same kind: a rule that was load-bearing but only discoverable by reading code.
   gitignored. If you need a sample, make a scratch file. (`data/notes/**` was
   the same and the notes system is gone; any files still there are the user's
   and are equally off limits.)
+- **Never read the contents of `data/capture/log/**`.** The same rule as the media and for the same reason:
+  this is what the user wrote, and a journal that an agent has read is a
+  journal with someone else in it. **Grepping counts.** The harm is not in how
+  much came back — it is that the line was opened, and a grep opens every line
+  in the file to decide. So no `grep`, no `cat`, no `head`, no `jq`, no
+  "just the one entry to see the shape".
+  - The derived copies are the same act by a longer route.
+    `data/capture/index.sqlite` is a projection of the log and holds the raw
+    text verbatim; so does any `/api/capture/…` response. Reading one of those
+    instead is not a way round this.
+  - **What is fine is the shape**, and the shape is almost always what was
+    actually needed: count the lines, list the filenames, read the event kinds
+    out of `capture/eventlog.py`, follow the fold through `capture/index.py`.
+    Every field is documented in the code, which is where it is safe to learn
+    it.
+  - When you need data that behaves like real data — a UI change, a
+    destructive path, a migration — **generate it**: `scripts/fixture.py`
+    builds a whole data directory that exercises nearly every screen. It is
+    the answer to every question that begins "I only need to see one real
+    entry".
 - **Never `git restore` / `git checkout` anything under `data/`.** It is live
-  application state, not source. A whole-file revert destroys real practice
-  history. Fix data forward, by hand, one line at a time.
-- **Never put live data back in the repo.** `data/*` is gitignored with exactly
-  one exception, `data/seed/` — the six researched trees, as shipped, read-only
-  reference. The user's own trees, logs and media are theirs and stay on
-  their disk. Copying a live tree into `data/seed/` pushes it to the
-  remote, which is the thing this arrangement exists to prevent; a test asserts
-  that directory holds those six files and nothing else.
-- **Never edit or delete lines in `data/log/*.jsonl` or `data/todos.jsonl`.**
-  Append-only is the core design commitment, not a style preference. Everything
-  the UI shows is a fold over these files. A wrong event is corrected by
-  appending its inverse (`undo`, `reopen`), never by deletion.
-- **Never test a destructive path against real data.** Create a scratch domain
-  first. Deleting against live data has already cost an unrecoverable photo.
+  application state, not source. A whole-file revert destroys real history.
+  Fix data forward, by hand, one line at a time.
+- **Never put live data back in the repo.** `data/*` is gitignored with **no
+  exception** — the one that existed, `data/seed/`, went with the tech tree.
+  What the user wrote and what they photographed are theirs and stay on their
+  disk. Sample data comes from `scripts/fixture.py`, which generates it.
+- **Never edit or delete lines in `data/capture/log/*.jsonl`.** Append-only is
+  the core design commitment, not a style preference. Everything the UI shows is
+  a fold over these files. A wrong event is corrected by appending its inverse
+  (`uncheck`, `unassign`, `unmap-tag`), never by deletion.
+- **Never test a destructive path against real data.** Build a fixture data
+  directory first — `python scripts/fixture.py` — and point the app at it with
+  `--data-dir`. Deleting against live data has already cost an unrecoverable
+  photo. The tech tree removal is the largest destructive change this repo has
+  had, and it touched no file under `data/`; hold that line.
 - **Never weaken `backup.sh`'s refusals.** It exits rather than writing when the
   destination resolves to the same device as `data/`, and it has no `--delete`.
   Both look like over-caution and are not: the first is what catches an
@@ -50,46 +83,51 @@ same kind: a rule that was load-bearing but only discoverable by reading code.
 The log is the truth. Everything else is a projection.
 
 ```
-data/seed/*.toml ── copied once, by install-linux.sh, into ─┐
-                                                            ▼
-                                          data/domains/*.toml ─┐
-                                                               ├─→ state.py ─→ board ─→ API ─→ UI
-                                          data/log/*.jsonl ────┘      ↑
-                                    index.sqlite (disposable cache; rebuild() replays the log)
+data/capture/log/*.jsonl ──→ index.py ──→ store ──→ /api/capture/… ──→ UI
+        │                       ↑
+        │        capture/index.sqlite (disposable cache; rebuild() replays the log)
+        │
+data/media/YYYY-MM/…  ── referenced by the events, never derived from them
 ```
 
-Only `data/seed/` is in the repo. Everything to the right of it is the user's,
-lives on one disk, and is gitignored — see SYNC.md, which is the document that
-says what a loss of each file actually costs.
+None of it is in the repo. All of it is the user's, lives on one disk, and is
+gitignored — see SYNC.md, which is the document that says what a loss of each
+file actually costs.
 
-`data/index.sqlite` can be deleted at any moment and reproduced exactly. If a
-value cannot be recomputed from the log plus the TOML, it does not belong in the
-system.
+`data/capture/index.sqlite` can be deleted at any moment and reproduced
+exactly. If a value cannot be recomputed from the log, it does not belong in
+the system. The one thing that is *not* recoverable that way is the media
+itself: the log holds references, and the files behind them have one copy.
 
 ### Backend modules
 
+`backend/app/` — the machine. Nothing here knows what a capture is.
+
 | module | owns |
 |---|---|
-| `models.py` | plain dataclasses and constants. Reads nothing, touches nothing. |
 | `config.py` | every path and tunable. Locations are imported from here, never rebuilt. |
 | `timeutil.py` | **the only** place doing timezone math. Events carry a precomputed `day`; everything else compares date strings. |
-| `loader.py` | reads domain TOML and validates it. Never writes. |
-| `writer.py` | serialises a Domain back to TOML. Regenerates the whole file. |
-| `edits.py` | pure Domain→Domain transforms. Returns new objects, writes nothing. |
+| `media.py` | the blob store. Originals byte for byte, plus a derived display copy. |
+| `storage.py` | what the app is costing on disk, split by what a loss would mean. |
+| `backup.py` | starts `backup.sh`/`backup.ps1` and reads back their stamp. Reimplements none of it. |
+| `version.py` | the number the browser and the server have to agree on. Bump it when a route or payload changes. |
+| `main.py` | thin FastAPI layer: the machine's routes, capture's router, and the SPA. |
+
+`backend/capture/` — the app. Read `TROPHIC.md` first; this half has an oracle.
+
+| module | owns |
+|---|---|
+| `config.py` | capture's own paths and caps, under the shared data root. |
+| `parser.py` | raw line in, metadata out. Pure, and pinned by 1185 golden fixtures. |
+| `reminder.py` | `{time}` in, a due date out. Pure; the clock is a parameter. 104 fixtures. |
 | `eventlog.py` | append-only event log. The source of truth. |
 | `index.py` | SQLite projection of the log. Everything here is derived. |
-| `state.py` | derives the board. Stores nothing. |
-| `conditions.py` | what gates starting a node. Add a gate = one decorated function. |
-| `xp.py` | earning (derived) and prices (recorded). See below. |
-| `store.py` | holds loaded domains + index connection, serialises access, bumps `version`. |
-| `foundation.py` | the `mementomori` domain, compiled in rather than loaded. |
-| `watcher.py` | re-reads the TOML when it changes on disk, so hand-edits land without a restart. |
-| `media.py` | the blob store, shared with capture. Originals byte for byte, plus a derived display copy. |
-| `tools.py` `storage.py` | per-feature, self-describing docstrings. |
-| `todos.py` | read-only history. Nothing writes it; `xp.py` still folds it, so deleting it would unearn past XP. |
-| `main.py` | thin FastAPI layer: parse, call the store, return derived state. |
+| `store.py` | holds the index connection, serialises access, bumps `version`. Every write goes through `_commit`. |
+| `colors.py` | the folder palette and the rule for picking the next colour. |
+| `import_csv.py` | the one caller allowed to backdate an event. |
+| `api.py` | the `/api/capture/…` router: parse, call the store, return derived state. |
 
-`desktop.py` sits at the repo root, outside the table: it is the packaged
+`desktop.py` sits at the repo root, outside both tables: it is the packaged
 entrypoint, not part of the app. It picks a free loopback port, starts uvicorn
 and points a WebKitGTK window at it. Nothing else imports it.
 
@@ -99,38 +137,28 @@ usually not obvious from the code. **Keep that convention** in anything you add.
 
 ### Frontend
 
-SvelteKit 5 (runes; `.svelte.ts` stores), Tailwind 4, Milkdown Crepe for
-markdown. Built to `frontend/build`, which is **gitignored** — reverting or
-editing frontend source leaves the app serving stale UI until you run
-`npm run build` inside `frontend/`. Rebuild before claiming a UI change works.
+SvelteKit 5 (runes; `.svelte.ts` stores), Tailwind 4. Built to
+`frontend/build`, which is **gitignored** — reverting or editing frontend
+source leaves the app serving stale UI until you run `npm run build` inside
+`frontend/`. Rebuild before claiming a UI change works.
+
+`$lib/trophic/` is the app; `$lib/api.ts` is the machine's four endpoints
+(storage, backup, version, restart) and nothing else. There is no `$lib/components/`
+any more — it held the tech tree's node and domain UI and went with it.
 
 ## Invariants worth stating
 
-- **`foundation.py` is not deletable from the UI**, by design. It is the domain
-  the others attach to.
-- **TOML is the source of truth for structure; the app rewrites whole files.**
-  Comments and anything outside the schema do not survive a UI edit. That is
-  why rationale lives in `docs/` and never in the trees.
-- **Structural edits validate before they write**, and write atomically via
-  `os.replace`. A rejected edit must leave the file byte-identical.
-- **Soft prerequisites (`prefers`) can never block.** They advise. Keep them out
-  of `conditions.py` — a hint that can stop you is not a hint.
-- **XP earning is a read-only fold, stored nowhere.** Retuning a constant in
-  `xp.py` re-scores all history with no migration. **Spending is not derived:**
-  the price paid is written into the `unlock` event so retuning tomorrow cannot
-  make yesterday's purchase unaffordable. Preserve that asymmetry.
-  - Note the history here: XP *used* to be forbidden from affecting the board.
-    That rule is gone — `state.py` imports `xp`, and nodes above tier I are
-    `sealed` until their price is paid. Older prose asserting otherwise is stale.
 - **Out-of-order and duplicated log lines are handled *on read*** — events sort
-  by `ts` stably, and the fold is last-wins throughout. See `test_sync.py`. This
-  used to exist for `merge=union` in `.gitattributes`, which is gone now that
-  the streams are untracked; keep the read-side tolerance anyway, because a
-  restored backup or an interrupted write produces the same shapes.
-- **Capture is the app.** `/` is Trophic's capture bar; the tech tree is
-  support at `/today` and `/tree`. Text and media enter the system through the
-  capture bar and nowhere else — the markdown notes system and the PGS
-  checklist were removed when that became true.
+  by `ts` stably, and the fold is last-wins throughout. This used to exist for
+  `merge=union` in `.gitattributes`, which is gone now that the stream is
+  untracked; keep the read-side tolerance anyway, because a restored backup or
+  an interrupted write produces the same shapes. `test_capture.py` and
+  `scripts/fixture.py` both keep a duplicated line around on purpose.
+- **Capture is the whole app now.** `/` is the capture bar, `/log` the journal,
+  `/folders/…` the albums, `/mapping` the tag registry, `/settings` and
+  `/manual` the two support screens. Text and media enter the system through
+  the capture bar and nowhere else — the markdown notes system, the PGS
+  checklist and the tech tree were each removed as that became true.
 - **`/log` is the journal, and it is a feed of days.** Not a date ruler — the
   source's one is deleted, deliberately, and TROPHIC.md records what that cost
   the corpus. A day is a sticky header, a contact sheet of its media, then its
@@ -235,20 +263,35 @@ editing frontend source leaves the app serving stale UI until you run
 ## Deliberately absent
 
 Timers, minute tracking, notifications, multi-user, auth, log editing, and
-anything adaptive. Metric readings are stored and drawn, **never interpreted**.
-These are refusals, not gaps — do not helpfully add them. Per-node cadence is
-the one acknowledged gap.
+anything adaptive. What is captured is stored and drawn, **never interpreted**:
+no sentiment scoring on `\patterns`, no suggestions, no summaries of the
+user's own week. These are refusals, not gaps — do not helpfully add them.
+
+Also absent, and not coming back: the tech tree. Boards, nodes, tiers, XP,
+seasons, domains, `.toml` curricula and the six seed trees. Removed on
+2026-08-27 at the user's request, in full.
 
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 463 tests, ~3s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 243 tests. Run them.
+python scripts/fixture.py                       # → data.fixture/, a whole fake data dir
+python desktop.py --data-dir data.fixture       # ...and look at it
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend
 cd frontend && npm run check                    # svelte-check
 cd frontend && npm run verify:ui                # the corpus, TypeScript side
 ```
+
+`scripts/fixture.py` is how you look at a screen without looking at the user's
+log. It builds five folders across twenty-five days and thirty captures
+carrying every token the syntax knows — a renamed folder, a deleted one, a
+lifted tag, all three folder states, a named chapter, a shelf with groups and
+an order, a due reminder, a dismissed one, a reply, todos checked and
+unchecked, and a mosaic of thirteen photographs at eight aspect ratios. It
+refuses to write anywhere it did not create, so `--out` cannot be aimed at real
+data by accident.
 
 The Windows side has its own clone and its own venv; nothing here runs from
 the Linux checkout. `install-windows.ps1`, `backup.ps1` and
@@ -271,11 +314,11 @@ they never touch `data/`. Keep it that way.
 ## Conventions
 
 - **Commit messages read as prose, in the imperative, describing intent rather
-  than diff**: "Price the act of starting, and compile in the domain underneath
-  it", "Take the prose out of the trees". Match that voice.
+  than diff**: "Give the send, the hold and the feed one place each", "Fold the
+  log and mirror a write with the same code". Match that voice.
 - Comments explain *why*, and are worth writing when the reasoning would not
   survive being re-derived. The existing density is the target — neither strip
   it nor pad it.
-- `data/domains/*.toml` are hand-authored. To generate a new tree, read
-  `docs/authoring-trees.md` and nothing else; research everything, invent
-  nothing.
+- Sample data is **generated, never written by hand and never committed**:
+  `scripts/fixture.py` is the only source of it, and the reason is in its
+  docstring.

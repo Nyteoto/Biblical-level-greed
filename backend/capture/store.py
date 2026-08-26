@@ -1,15 +1,15 @@
 """Holds capture's index connection and serialises access to it.
 
-Deliberately a second Store rather than a member of the tech tree's: the two
-apps share a data root and nothing else. `version` increments on every change
-so the frontend can poll cheaply and know whether anything moved — the same
-contract the tech tree's store offers, because the frontend already knows how
-to consume it.
+`version` increments on every change so the frontend can poll cheaply and know
+whether anything moved.
 
 It imports `app.media` for the same reason `eventlog` imports `app.timeutil`:
-the blob store is a property of the *disk*, not of either app, and two of them
-would mean two directories of the user's photographs. That is the second and
-last deliberate coupling between the siblings.
+the blob store and the day boundary are properties of the *disk and the
+person*, not of this app, and a second copy of either would mean two
+directories of the user's photographs or two answers to what day it is. Those
+two imports are the whole of what this package takes from `app/`, which is why
+removing the tech tree from the other side of that boundary cost nothing
+here.
 """
 from __future__ import annotations
 

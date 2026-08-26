@@ -1,7 +1,7 @@
 ﻿# Copy data\ to a second physical disk. The Windows half of backup.sh.
 #
 # The repo holds the app; this machine holds everything you have done with it.
-# Neither operating system's copy of the event log, the trees, the captures or
+# Neither operating system's copy of the event log, the captures or
 # the photographs exists anywhere else, so this script is the only thing
 # standing between a dead disk and losing all of it.
 #
@@ -111,7 +111,7 @@ function Unslash([string]$path) {
 # No /MIR and no /PURGE, deliberately — this is the missing `--delete`.
 #
 # Everything here is append-only or hand-written, so the local copy shrinking is
-# never something to propagate: a truncated log, a tree deleted by a misclick or
+# never something to propagate: a truncated log, a folder deleted by a misclick or
 # a folder lost to a bad command would all be faithfully mirrored, and the
 # backup would destroy the very thing you wanted it for. Without /MIR the
 # destination only ever grows, which for a few hundred kilobytes a year is a

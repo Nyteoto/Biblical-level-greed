@@ -129,11 +129,12 @@
 	// The shell is now almost nothing: a ground, an upload bar, and the page.
 	//
 	// The tab bar that used to live here is gone, and so is the XP meter beside
-	// it. Both belonged to the arrangement where the tech tree was the app and
-	// capture was a fifth tab; capture is the app, the tree's screens are
-	// hidden, and there is no XP economy on screen to meter. Navigation is one
-	// white pill (`TabPill.svelte`) that each screen places for itself, because
-	// it does not sit in the same corner on all three — see that file.
+	// it. Both belonged to the arrangement where a tech tree was the app and
+	// capture was a fifth tab. That tree was removed outright on 2026-08-27:
+	// capture is the whole app now, and there is no economy left to meter.
+	// Navigation is one white pill (`TabPill.svelte`) that each screen places
+	// for itself, because it does not sit in the same corner on all of them —
+	// see that file.
 </script>
 
 <svelte:head>

@@ -33,4 +33,9 @@ thing that is not wrong. That case is a page reload, which the message says.
 # 5 — `name-chapter`, its route, and `derived`/`named` beside a chapter's name.
 #     The panel reads both to decide whether it can offer the chapter back to
 #     the reader that named it.
-API_VERSION = 5
+# 6 — the tech tree is gone, and with it every `/api/domains*` route,
+#     `/api/dashboard` and `/api/admin/*`. A browser holding the old bundle
+#     would keep asking for those and get a 404 per screen, which reads as an
+#     app that half-loaded. This is the one kind of change the number exists
+#     for: routes that used to answer and now do not.
+API_VERSION = 6
