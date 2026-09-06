@@ -8,9 +8,24 @@ dual-boot machine, Fedora and Windows, sharing a single data disk.
 The two are **sibling apps in one process**, not one app: `backend/app/` and
 `backend/capture/`, `/api/…` and `/api/capture/…`, `data/log/` and
 `data/capture/log/`. They share a data root, a venv, a test suite and a tab
-bar. They share no models, no events and no fold. Read `TROPHIC.md` before
-touching anything under `capture/` or `frontend/src/lib/trophic/` — the port
-has an oracle, and guessing at behaviour it already pins is wasted work.
+bar. They share no models, no events and no fold.
+
+**Capture was ported from another codebase, and the port has an oracle.** The
+`trophic/` bundle — gitignored, local to this disk — holds 2268 input→output
+fixtures generated from the original TypeScript, and they are the specification
+for `backend/capture/` and `frontend/src/lib/trophic/`. Before changing
+behaviour in either, run both verifiers and know what they say; guessing at
+something the corpus already pins is wasted work, and a "cleanup" that
+normalises a tuned constant will fail a fixture rather than a review.
+
+```bash
+python3 trophic/golden/verify_golden.py     # the Python side, 1348 passing
+cd frontend && npm run verify:ui            # the TypeScript side, 770 passing
+```
+
+A fresh clone has neither the bundle nor the verifier. `trophic/README.md`
+explains the bundle; `frontend/scripts/verify-ui.ts` carries the deviations,
+the colour table and where to fetch the bundle again.
 
 `README.md` documents *what the app does*. This file documents *what you must
 not break*. Read it before changing anything; it exists because the repo has
@@ -131,11 +146,19 @@ editing frontend source leaves the app serving stale UI until you run
   support at `/today` and `/tree`. Text and media enter the system through the
   capture bar and nowhere else — the markdown notes system and the PGS
   checklist were removed when that became true.
-- **`/log` is the journal, and it is a feed of days.** Not a date ruler — the
-  source's one is deleted, deliberately, and TROPHIC.md records what that cost
-  the corpus. A day is a sticky header, a contact sheet of its media, then its
-  lines. Anything that reintroduces one-day-at-a-time navigation is going
-  backwards.
+- **The journal is three rungs, and `/log` is the top one.** `/log` is the
+  **year shelf** and shows no entries at all — which albums exist this year,
+  how big each is, when each was busy. `/folders/[id]` is one album (one folder
+  through one year) and `/folders/[id]/[month]` is one month of it; the feed of
+  days lives in those two, where a day is a sticky header, a contact sheet of
+  its media, then its lines. The source's date ruler is deleted, deliberately:
+  it cost the corpus `timeline_draw`'s 22 cases and retired
+  `timeline_interaction`'s 27, which is a deviation rather than a debt —
+  there is no ruler left for them to describe.
+  **Scrolling is for reading, never for travelling** — the year rail, the month
+  spine, the chapter list and the jump field are all constant-cost, and
+  anything that reintroduces one-day-at-a-time navigation, or pages the reading
+  view, is going backwards.
 - **The monitor is a layer, not a style.** The scanlines, vignette, grain, glow,
   sheen, rim and bezel are seven fixed `pointer-events: none` siblings in
   `+layout.svelte` that know nothing about the app. Content can be rewritten

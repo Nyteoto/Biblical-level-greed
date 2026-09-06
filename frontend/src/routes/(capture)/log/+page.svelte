@@ -159,9 +159,12 @@
 			return;
 		}
 		try {
-			// No tags passed: a folder claims the tag of its own name at creation,
-			// so `New folder → Garden` is already collecting `<garden>` before you
-			// have opened the mapping screen. See TROPHIC.md.
+			// No tags passed, and the folder claims none of its own: a new folder
+			// collects nothing until you point a tag at it. The name still files
+			// things — `--garden` resolves against every name the folder has ever
+			// had, at read time — but it does so without putting a word nobody
+			// typed into the tag registry. See `create_folder` in
+			// `backend/capture/store.py`, which is where that was reversed.
 			const { folder } = await createFolder(name);
 			// And it starts `running`, which is not an assumption about what you
 			// meant — it is the only way the thing you just made is on the screen

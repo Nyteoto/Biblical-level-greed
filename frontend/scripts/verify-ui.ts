@@ -291,7 +291,8 @@ ADAPTERS.retry_queue = (i: {
 	};
 
 	// The corpus's flush step is asynchronous; the adapter is not, so the
-	// runner awaits this one. See the note about this file in TROPHIC.md.
+	// runner awaits this one. Why this file reports CORPUS? rather than passing
+	// or failing is in the `retry_queue` branch of `runFile` below.
 	return (async () => {
 		const trace: unknown[] = [];
 		for (const step of i.steps) {
@@ -317,17 +318,21 @@ ADAPTERS.colorize = (i: { text: string }) => {
 
 // ── The one declared deviation: colour ────────────────────────────────────
 //
-// The source was painted against white and this app is painted on `#f3f2f2`
-// in Archivo, so every colour was re-lit. That is written down in TROPHIC.md
-// as a deliberate deviation — but "we changed the colours" is the kind of
-// excuse that hides a real mistake, so it is spelled out here instead: each
+// The source was painted against white; this app is a green-phosphor tube on
+// `#0a1116`, so every colour was re-lit. "We changed the colours" is the kind
+// of excuse that hides a real mistake, so it is spelled out here instead: each
 // colour this port emits, and the source colour(s) it stands in for. Anything
 // else is a failure. Geometry, ordering and op counts are compared exactly.
 //
-// This table has been rewritten once already, when the shell went from
-// `#14100c` back to paper. That it was the *only* thing that had to change is
-// the point of keeping it: the hues never moved, only their lightness, and a
-// one-line-per-colour table is what proves that rather than asserts it.
+// This table has been rewritten twice — when the shell went from `#14100c` to
+// paper, and again when paper became the tube. That it is the *only* thing
+// that has to change each time is the point of keeping it.
+//
+// **It is many-to-one now, and that is why it translates source→port.** The
+// re-light collapsed five syntax hues onto one phosphor, so several source
+// colours map to the same `#4fff9f` and the reverse lookup has no answer.
+// Translate the expectation forward and then demand an exact match; do not
+// try to read a port colour back to the hue it came from.
 
 const THEME: Record<string, string[]> = {
 	// lib/colors.ts — the syntax hues, now collapsed onto one phosphor.
@@ -1228,7 +1233,12 @@ async function main(argv: string[]): Promise<number> {
 	if (stems === null) {
 		console.log('golden corpus, TypeScript side — SKIP\n');
 		console.log(`  corpus directory not found: ${CORPUS}`);
-		console.log('  the trophic/ bundle is gitignored — see TROPHIC.md');
+		console.log('  the trophic/ bundle is gitignored and lives only on this disk.');
+		console.log('  it came from ~/pekka/LearningNext/scheduler, branch pivot,');
+		console.log('  commit 105181c; regenerate there with `pnpm golden` and re-copy');
+		console.log('  corpus/, generate.ts, generate-ui.ts, harness.ts and README.md.');
+		console.log('  leave golden/verify_golden.py alone — the parser adapter wired');
+		console.log('  into it is an edit to an untracked file and a re-copy reverts it.');
 		console.log('  the local checks below still run, and still decide the exit code.\n');
 		// A named file that cannot be read is a different answer from "no
 		// bundle here": the caller asked for one thing and got nothing.

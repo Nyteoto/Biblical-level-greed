@@ -5,8 +5,7 @@ disk.
 
 **Capture** — *Trophic* — is the app. A syntax-driven capture bar at `/` and a
 journal of what it caught. You type a line; the sigils in it file it, mark it,
-schedule it or turn it into a checkbox. It is documented at length in
-[TROPHIC.md](TROPHIC.md).
+schedule it or turn it into a checkbox.
 
 **The tech tree** is a local engine for deliberate practice: one question, what
 do I work on right now and for how long. Its API, its trees and its XP fold are
@@ -51,7 +50,6 @@ On Windows, `.venv\Scripts\python.exe -m pytest backend\tests -q`.
 Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm run dev`.
 `./run.sh` builds the frontend and serves both halves from one port.
 
-- [TROPHIC.md](TROPHIC.md) — the capture app, the port, and its corpus
 - [MOBILE.md](MOBILE.md) — iPad/iPhone over Tailscale
 - [SYNC.md](SYNC.md) — backups, dual boot, moving machines
 - [docs/sources.md](docs/sources.md) — where the six trees came from
