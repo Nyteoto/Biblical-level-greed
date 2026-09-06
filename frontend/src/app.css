@@ -109,6 +109,20 @@
 	/* The rung accent-coloured *text* uses. The dimmer ones are for fills. */
 	--color-accent-700: #4fff9f;
 
+	/* **The one exception to the single hue, and the only one there will be.**
+	   A refusal exists to contradict you, and a refusal folded onto the
+	   phosphor ramp looks like output — which is the whole reason `phosphorize`
+	   in `colors.ts` passes this value through untouched.
+
+	   It is the same `#ff6a5a` as `UI_COLORS.error`, and it is here because it
+	   was *only* there: the capture bar blinks a token in it through an inline
+	   style, so the colour existed in TypeScript and had no CSS home at all.
+	   A `text-error` written in a component therefore resolved to nothing and
+	   rendered in the phosphor — a refusal that looked exactly like output,
+	   which is the failure the rule above is written to prevent. Keep the two
+	   values equal; there is no third place to change. */
+	--color-error: #ff6a5a;
+
 	/* One step apart, and used as a ladder: a card at rest is `md`, lifted is
 	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two.
 	   Read these as emission, not as cast shadow — the ring is the edge of the

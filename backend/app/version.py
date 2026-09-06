@@ -33,4 +33,11 @@ thing that is not wrong. That case is a page reload, which the message says.
 # 5 — `name-chapter`, its route, and `derived`/`named` beside a chapter's name.
 #     The panel reads both to decide whether it can offer the chapter back to
 #     the reader that named it.
-API_VERSION = 5
+# 6 — the folder clock: `log-time`/`unlog-time`, `POST /folders/{id}/time` and
+#     `DELETE /time/{id}`, and `seconds` on a folder, an album and a shelf
+#     card, plus `time_volumes` and `sessions` on an album. This is the case
+#     the number exists for and it was missed once already: against a server
+#     without the route, stopping a timer reported `not logged — retry` and
+#     every retry 404'd identically, so the screen said the send had failed
+#     and could not say that the *server* was the thing that was old.
+API_VERSION = 6

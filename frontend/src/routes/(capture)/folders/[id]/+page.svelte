@@ -232,8 +232,14 @@
 	let timerOpen = $state(false);
 	/** A send that failed, kept where the folder's own screen can show it. The
 	 *  seconds are still in hand: the timer was already banked, so this is a
-	 *  number waiting to be re-sent rather than one that has been lost. */
-	let unsent = $state<{ seconds: number; message: string } | null>(null);
+	 *  number waiting to be re-sent rather than one that has been lost.
+	 *
+	 *  `tries` is what makes a retry visible. A second attempt against the same
+	 *  broken thing fails with the same message, so without a count the screen
+	 *  is byte-identical before and after the press and the button reads as
+	 *  dead — which is exactly how this was first reported. */
+	let unsent = $state<{ seconds: number; message: string; tries: number } | null>(null);
+	let sending = $state(false);
 
 	async function send(seconds: number) {
 		// Zero is not worth a line in the log. Started and stopped by accident
@@ -244,13 +250,30 @@
 		// with a null id — but the type says otherwise and a silent send to
 		// `/folders/null/time` is the wrong way to find that out.
 		if (!folderId) return;
+		sending = true;
+		const attempt = (unsent?.tries ?? 0) + 1;
 		try {
 			await logTime(folderId, seconds);
 			unsent = null;
 			await refresh();
 		} catch (e) {
-			unsent = { seconds, message: e instanceof Error ? e.message : String(e) };
+			const raw = e instanceof Error ? e.message : String(e);
+			unsent = { seconds, message: explain(raw), tries: attempt };
 		}
+		sending = false;
+	}
+
+	/** Turn a wire failure into something that says what to do about it.
+	 *
+	 *  `Not Found` is what a server without the route answers, and on its own
+	 *  it is the least useful sentence in the app — it reads as "your session
+	 *  is gone" when the session is fine and the *server* is old. The shell
+	 *  already has the machinery for that case and offers a restart; this only
+	 *  has to stop the screen contradicting it. */
+	function explain(raw: string): string {
+		if (/not found/i.test(raw)) return 'this server is too old to record time — restart it';
+		if (/offline|failed to fetch|networkerror/i.test(raw)) return 'no connection';
+		return raw;
 	}
 
 	async function stopAndLog() {
@@ -484,14 +507,25 @@
 			     in hand — the timer banked it before the send — so this offers
 			     the number back rather than reporting a loss. -->
 			{#if unsent}
-				<button
-					type="button"
-					class="rounded-lg px-[11px] py-1.5 text-error hover:underline"
-					title={unsent.message}
-					onclick={() => send(unsent!.seconds)}
-				>
-					{duration(unsent.seconds)} not logged — retry
-				</button>
+				<!-- The reason is on the screen, not in a `title`. This app is
+				     read on an iPad, where there is no hover and a tooltip is a
+				     thing that does not exist — a failure whose explanation
+				     lives in one is a failure with no explanation. -->
+				<span class="flex items-center gap-2 text-error">
+					<span>{duration(unsent.seconds)} not logged — {unsent.message}</span>
+					<button
+						type="button"
+						class="rounded-lg px-2 py-1 font-semibold underline disabled:no-underline
+						       disabled:opacity-60"
+						disabled={sending}
+						onclick={() => send(unsent!.seconds)}
+					>
+						{sending ? 'sending…' : 'retry'}
+					</button>
+					{#if unsent.tries > 1}
+						<span class="tabular-nums opacity-80">{unsent.tries} tries</span>
+					{/if}
+				</span>
 			{/if}
 
 			{#if shots.length && !overviewOpen}
