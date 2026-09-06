@@ -414,11 +414,12 @@
 	   cosmetic — `letter-spacing` especially, which produces a drift small
 	   enough to argue about and large enough to see.
 
-	   The draft is Archivo at 22px rather than a mono at 18px. That is the
-	   redesign's largest single change to how the bar feels: the thought reads
-	   as prose while it is being written, and the mono is kept for the things
-	   that are actually machine-shaped — timestamps, file names, paths and the
-	   syntax keys. */
+	   The draft is 22px rather than the 18px everything else reads at, which is
+	   what gives the bar its weight: the thought is the largest thing on the
+	   screen while it is being written. It was briefly set in Archivo, on the
+	   argument that a draft should read as prose; the phosphor re-light took
+	   that back, because a monitor sets everything in one face and a second
+	   one reads as a different program. */
 	.smooth-layout {
 		font-family: var(--font-sans);
 		font-size: 22px;

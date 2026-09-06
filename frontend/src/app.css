@@ -1,12 +1,15 @@
 @import 'tailwindcss';
 
-/* Archivo and JetBrains Mono, self-hosted. The app is read on an iPad over
-   Tailscale with no route to the open internet, so a webfont CDN would simply
-   not resolve there; these are variable woff2 files served off the same origin
-   as everything else. Variable rather than five static weights because the
-   design uses 400 through 800 and a single axis file is smaller than two of
-   them. */
-@import '@fontsource-variable/archivo';
+/* JetBrains Mono, self-hosted. The app is read on an iPad over Tailscale with
+   no route to the open internet, so a webfont CDN would simply not resolve
+   there; this is a variable woff2 served off the same origin as everything
+   else. Variable rather than five static weights because the app uses 400
+   through 800 and a single axis file is smaller than two of them.
+
+   It is the only face. Archivo was imported here through the paper round and
+   the phosphor re-light took the last use of it, leaving a download nothing
+   drew — `--font-sans` and `--font-mono` are both this. The app is mono
+   throughout, which is what a terminal is. */
 @import '@fontsource-variable/jetbrains-mono';
 
 /*
