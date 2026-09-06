@@ -67,6 +67,21 @@ YEAR_RE = re.compile(r"^\d{4}$")
 # A limit you can exceed by typing faster is not a limit.
 MAX_OPEN_TODOS = 10
 
+# The longest single timer session that will be accepted, in seconds.
+#
+# Not a judgement about how long anyone should work — it is there to catch the
+# timer that was started and forgotten, which is the one failure mode an active
+# timer has. Twelve hours is comfortably longer than any session anybody means
+# to log and far shorter than the days a forgotten one would accumulate, and a
+# refusal is the right answer rather than a silent clamp: a number this large
+# is a mistake, and quietly writing a *different* number into an append-only
+# log is worse than saying no.
+#
+# The forgotten session is not lost by refusing it — the browser still holds
+# the running timer, so it can be stopped, refused, and logged by hand as
+# whatever it actually was.
+MAX_SESSION_SECONDS = 12 * 60 * 60
+
 # Where a folder is in its life. The empty one is the default and means "no
 # lifecycle" — an interest you keep rather than a project you finish. Kept
 # small on purpose: a longer list is a taxonomy, and a taxonomy is something

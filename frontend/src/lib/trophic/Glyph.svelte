@@ -22,18 +22,31 @@
 	 * word from the DOM as well as the screen would be trading clarity for
 	 * density rather than buying it.
 	 */
-	type Kind = 'entries' | 'album' | 'media' | 'todo';
+	type Kind = 'entries' | 'album' | 'media' | 'todo' | 'time';
 
 	let {
 		kind,
 		count,
-		size = 13
+		size = 13,
+		align = 'baseline'
 	}: {
 		kind: Kind;
 		/** Used for the label only — `1 entry` rather than `1 entries`. The
 		 *  number itself is printed by the caller, beside this. */
 		count?: number;
 		size?: number;
+		/** How the mark sits in its line.
+		 *
+		 *  `baseline` — the default and what almost every use here wants — drops
+		 *  it a hair so it optically centres against the digits beside it. An
+		 *  svg box aligned to the text baseline sits visibly high otherwise,
+		 *  because the box is the full em and the digits are not.
+		 *
+		 *  `center` turns that off, and is for a mark that is **alone in a
+		 *  centred box** rather than in a line of text. There is nothing for it
+		 *  to align to there, so the nudge is not a correction, it is a 1.4px
+		 *  error — which is exactly how it read in the round timer button. */
+		align?: 'baseline' | 'center';
 	} = $props();
 
 	const NOUN: Record<Kind, [string, string]> = {
@@ -42,7 +55,11 @@
 		media: ['photograph or clip', 'media'],
 		// Read beside a `done/made` pair rather than beside one number, so the
 		// singular is the one case where it would be read at all.
-		todo: ['todo', 'todos']
+		todo: ['todo', 'todos'],
+		// Never pluralised in practice — the number beside it is a *duration*
+		// (`3h 20m`), not a count of anything — so both spellings are the noun
+		// the mark stands for rather than a quantity of them.
+		time: ['time clocked', 'time clocked']
 	};
 
 	const label = $derived(NOUN[kind][count === 1 ? 0 : 1]);
@@ -59,7 +76,7 @@
 	stroke-linejoin="round"
 	role="img"
 	aria-label={label}
-	class="inline-block shrink-0 translate-y-[0.09em]"
+	class="inline-block shrink-0 {align === 'baseline' ? 'translate-y-[0.09em]' : ''}"
 >
 	<title>{label}</title>
 	{#if kind === 'entries'}
@@ -84,6 +101,20 @@
 		     than a smear when the whole mark is a dozen pixels wide. -->
 		<circle cx="8" cy="8" r="6.1" />
 		<path d="M5.2 8.3 7.1 10.3 10.9 5.9" />
+	{:else if kind === 'time'}
+		<!-- A clock face: the same ring the todo uses, with two hands.
+		     Deliberately the *same* ring, at the same radius — a clock and a
+		     ticked todo are both "an object with something inside it", and
+		     drawing the ring twice at two sizes is how a set of marks stops
+		     looking like a set.
+
+		     The hands read 10-past-2 rather than straight up: two hands on top
+		     of each other at twelve is a single stroke at 13px, and a clock
+		     with one hand does not read as a clock. They are short of the ring
+		     so neither touches it, which is what keeps the face open at the
+		     sizes this is actually drawn at. -->
+		<circle cx="8" cy="8" r="6.1" />
+		<path d="M8 4.6V8l2.6 1.6" />
 	{:else}
 		<!-- A photograph: a frame, a sun, and the hill the light falls on. The
 		     frame is drawn a little wide because at 13px a square reads as a

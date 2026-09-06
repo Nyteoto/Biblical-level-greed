@@ -29,6 +29,7 @@ from .config import (
     GROUP_NAME_MAX,
     MAX_NAME_LEN,
     MAX_RAW_LEN,
+    MAX_SESSION_SECONDS,
     YEAR_RE,
 )
 from .import_csv import compose_line, flex_parse_time, parse_import_csv
@@ -732,6 +733,59 @@ class Store:
             if index.folder(self.conn, folder_id) is None:
                 raise NotFound(f"no such folder: {folder_id}")
             self._commit(eventlog.DELETE_FOLDER, folder_id)
+
+    def log_time(self, folder_id: str, seconds: int) -> dict:
+        """Record one measured stretch of work on a folder.
+
+        The session gets its own id and the folder rides beside it, which is
+        what makes a duplicated log line idempotent rather than a double count
+        — see `log-time` in eventlog.py, where the argument is written down.
+
+        Nothing about *when within the day* is stored. The event's `ts` says
+        when it was stopped and its `seconds` says how long it ran, and the
+        difference is not the start: a paused timer would make that a lie, and
+        a start time nobody can rely on is worse than no start time. What the
+        app claims is exactly what it measured.
+        """
+        with self._lock:
+            if index.folder(self.conn, folder_id) is None:
+                raise NotFound(f"no such folder: {folder_id}")
+
+            try:
+                length = int(seconds)
+            except (TypeError, ValueError):
+                raise CaptureError("a session length must be a whole number of seconds")
+            if length < 0:
+                raise CaptureError("a session cannot be negative")
+            if length > MAX_SESSION_SECONDS:
+                hours = MAX_SESSION_SECONDS // 3600
+                raise CaptureError(
+                    f"that session is longer than {hours} hours — "
+                    "if the timer was left running, log what you actually did"
+                )
+
+            session_id = eventlog.new_id()
+            self._commit(
+                eventlog.LOG_TIME, session_id, folder=folder_id, seconds=length
+            )
+            return {"id": session_id, "seconds": length}
+
+    def unlog_time(self, session_id: str) -> None:
+        """Take back a session logged by mistake.
+
+        The inverse rather than a deletion, which is the rule everywhere in
+        this log: the `log-time` line stays where it was written and this one
+        says it does not count. A replay of both, in either order, is the same
+        answer — `unlog-time` is last-wins on the session, and the session's
+        row is keyed on the id both events name.
+        """
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT id FROM time_sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            if row is None:
+                raise NotFound(f"no such session: {session_id}")
+            self._commit(eventlog.UNLOG_TIME, session_id)
 
     def map_tag(self, folder_id: str, tag: str) -> dict:
         with self._lock:

@@ -63,6 +63,7 @@ TABLES = (
     "folder_groups",
     "chapter_names",
     "lifted_tags",
+    "time_sessions",
 )
 
 # Dropped and recreated by `rebuild` alongside the tables. A view holds no
@@ -236,6 +237,29 @@ CREATE INDEX IF NOT EXISTS entry_folders_by_folder ON entry_folders (folder_id);
 CREATE TABLE IF NOT EXISTS lifted_tags (
     tag TEXT PRIMARY KEY
 );
+
+-- Measured stretches of work on a folder. One row per timer session.
+--
+-- Keyed on the session rather than the folder, which is what keeps this
+-- summable *and* idempotent: totals are `sum(seconds)` over these rows, and a
+-- log line applied twice replaces its own row instead of adding to it. See
+-- `log-time` in eventlog.py for the argument.
+--
+-- `day` is stored rather than derived from `ts` because every other read here
+-- compares date strings and exactly one module is allowed to do timezone
+-- math. It is what lets a total be cut by year for an album and by month for
+-- the spine, off the same key shape the entries use.
+--
+-- Nothing here is a fact the log does not carry: drop the table, replay, and
+-- every row comes back identical.
+CREATE TABLE IF NOT EXISTS time_sessions (
+    id        TEXT PRIMARY KEY,
+    folder_id TEXT NOT NULL,
+    seconds   INTEGER NOT NULL,
+    day       TEXT NOT NULL,
+    ts        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS time_sessions_by_folder ON time_sessions (folder_id, day);
 
 -- ── The membership rule, and the only place it is written ─────────────────
 --
@@ -670,6 +694,29 @@ def apply(conn: sqlite3.Connection, event: dict) -> None:
             (refs[0] if refs else "", subject),
         )
 
+    # ── Time ──────────────────────────────────────────────────────────────
+    elif kind == eventlog.LOG_TIME:
+        folder_id = event.get("folder") or ""
+        # A session on a folder that has since been deleted is dropped, the
+        # same way `set-group` checks. The folder is the only thing that makes
+        # the number mean anything — an hour attributed to nothing is not a
+        # figure anyone can read, and the event stays in the log either way.
+        if folder_id and _folder_exists(conn, folder_id):
+            conn.execute(
+                "INSERT OR REPLACE INTO time_sessions (id, folder_id, seconds, day, ts) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    subject,
+                    folder_id,
+                    max(0, int(event.get("seconds") or 0)),
+                    event.get("day", ""),
+                    event.get("ts", ""),
+                ),
+            )
+
+    elif kind == eventlog.UNLOG_TIME:
+        conn.execute("DELETE FROM time_sessions WHERE id = ?", (subject,))
+
     elif kind == eventlog.DELETE_FOLDER:
         conn.execute("DELETE FROM folders WHERE id = ?", (subject,))
         # Cascade, the same one Prisma declares on FolderTag and the same one
@@ -681,6 +728,12 @@ def apply(conn: sqlite3.Connection, event: dict) -> None:
         conn.execute("DELETE FROM folder_groups WHERE folder_id = ?", (subject,))
         # The half the targeted mirror used to miss.
         conn.execute("DELETE FROM chapter_names WHERE folder_id = ?", (subject,))
+        # Time goes with the folder, unlike the entries. An entry is only
+        # *resolved* into a folder and survives it being deleted intact; a
+        # session is a measurement *of* that folder and cannot be re-resolved
+        # onto anything. Leaving the rows would make `sum(seconds)` count time
+        # against a folder nothing can open.
+        conn.execute("DELETE FROM time_sessions WHERE folder_id = ?", (subject,))
 
     # ── The shelf ─────────────────────────────────────────────────────────
     elif kind == eventlog.SET_GROUP:
@@ -1170,6 +1223,10 @@ def folders(conn: sqlite3.Connection, counts: bool = True) -> list[dict]:
         else {}
     )
 
+    # All-time, like `entry_count` beside it, and skipped with it: `vocab()`
+    # wants neither and is called after every keystroke.
+    clocked: dict[str, int] = folder_seconds(conn) if counts else {}
+
     return [
         {
             "id": row["id"],
@@ -1178,6 +1235,7 @@ def folders(conn: sqlite3.Connection, counts: bool = True) -> list[dict]:
             "created_ts": row["created_ts"],
             "state": row["state"],
             "entry_count": tallies.get(row["id"], 0),
+            "seconds": clocked.get(row["id"], 0),
             "tags": tags.get(row["id"], []),
             "overview": row["overview"],
             "overview_media": row["overview_media"],
@@ -1194,6 +1252,76 @@ def folder(conn: sqlite3.Connection, folder_id: str) -> dict | None:
         if item["id"] == folder_id:
             return item
     return None
+
+
+def folder_seconds(
+    conn: sqlite3.Connection, year: str | None = None
+) -> dict[str, int]:
+    """`folder id -> seconds logged`, for one year or for all of them.
+
+    A sum over rows, computed on every read and stored nowhere — the same
+    contract as `entry_count` beside it. Retuning nothing can make yesterday's
+    hour disagree with the log, because the log is where the hour is.
+
+    Folders with no sessions are absent rather than zero. Every caller is
+    filling in a figure for a folder it already has, so a `.get(id, 0)` is the
+    honest shape and a row of zeroes would just be a longer way to say it.
+    """
+    clause, args = _year_clause(year)
+    # `day LIKE '2026-%'` rather than a range: the same predicate the rest of
+    # this module cuts years with, off the same precomputed day key.
+    rows = conn.execute(
+        "SELECT folder_id, sum(seconds) AS n FROM time_sessions "
+        f"WHERE 1 {clause} GROUP BY folder_id",
+        args,
+    ).fetchall()
+    return {row["folder_id"]: int(row["n"] or 0) for row in rows}
+
+
+def folder_time_volumes(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+) -> list[int]:
+    """Twelve seconds-per-month totals, January first — the time-shaped twin of
+    `_volumes`, and drawn on the same twelve bars.
+
+    `folder_id=None` is the unfiled pile, which can never have any: a session
+    is logged *against a folder* from that folder's own screen, so there is no
+    gesture that produces an unfiled one.
+    """
+    out = [0] * 12
+    if folder_id is None:
+        return out
+    clause, args = _year_clause(year)
+    rows = conn.execute(
+        "SELECT day, seconds FROM time_sessions WHERE folder_id = ?" + clause,
+        [folder_id] + args,
+    ).fetchall()
+    for row in rows:
+        out[int(row["day"][5:7]) - 1] += int(row["seconds"])
+    return out
+
+
+def time_sessions(
+    conn: sqlite3.Connection, folder_id: str, year: str | None = None
+) -> list[dict]:
+    """One folder's sessions, newest first. What the album lists so a session
+    logged by mistake can be found and taken back."""
+    clause, args = _year_clause(year)
+    rows = conn.execute(
+        "SELECT id, seconds, day, ts FROM time_sessions WHERE folder_id = ?"
+        + clause
+        + " ORDER BY ts DESC, id DESC",
+        [folder_id] + args,
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "seconds": int(row["seconds"]),
+            "day": row["day"],
+            "ts": row["ts"],
+        }
+        for row in rows
+    ]
 
 
 def tag_owner(conn: sqlite3.Connection, tag: str) -> str | None:
@@ -1636,6 +1764,13 @@ def album(
         "volumes": _volumes(rows),
         "chapters": chapters(rows, owned, chapter_names(conn, folder_id, year)),
         "media_count": sum(len(json.loads(r["media"])) for r in rows),
+        # The album's clock: the total for this year, the twelve monthly
+        # totals that draw beside `volumes`, and the sessions themselves so
+        # one logged by mistake can be found and taken back. All three are
+        # sums over `time_sessions` and none of them is stored.
+        "seconds": folder_seconds(conn, year).get(folder_id or "", 0),
+        "time_volumes": folder_time_volumes(conn, folder_id, year),
+        "sessions": time_sessions(conn, folder_id, year) if folder_id else [],
         # Promises made in here and promises kept, off the same rows the twelve
         # bars are counted from. The unfiled pile gets one like any other album
         # — a todo nobody tagged is still a todo, and the pile is a real album
@@ -1706,6 +1841,11 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
         if latest is None or newest["ts"] > latest["ts"]:
             latest = {"folder": folder_id, "day": newest["day"], "ts": newest["ts"]}
 
+    # One query for the whole shelf rather than one per card: this is the same
+    # shape as `_shelf_buckets` above it, and for the same reason — a figure
+    # every card carries should cost one read, not one per album.
+    clocked = folder_seconds(conn, year)
+
     for record in folders(conn):
         rows = buckets.get(record["id"], [])
         # Nothing in it this year: drop it, but only if there is a *year* it
@@ -1739,6 +1879,10 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
                     "made": sum(r["made"] for r in rows),
                     "done": sum(r["done"] for r in rows),
                 },
+                # Time logged into this album this year. `entry_count` above is
+                # scoped to the year and `all_time_count` is not; this follows
+                # `entry_count`, because the card is a card *about a year*.
+                "seconds": clocked.get(record["id"], 0),
                 "volumes": volumes,
                 "months": _month_range(volumes),
                 "chapters": len(_runs(volumes)),

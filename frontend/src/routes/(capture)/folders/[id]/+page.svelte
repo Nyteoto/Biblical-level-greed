@@ -44,6 +44,8 @@
 	import MonthSpine from '$lib/trophic/MonthSpine.svelte';
 	import Segmented from '$lib/trophic/Segmented.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
+	import Timer from '$lib/trophic/Timer.svelte';
+	import { clockFace, duration, timer } from '$lib/trophic/timer.svelte';
 	import { todayKey } from '$lib/trophic/day';
 	import { albumWeek, groupDays } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';
@@ -57,6 +59,7 @@
 		getAlbum,
 		getShelf,
 		getUnassignedTags,
+		logTime,
 		nameChapter,
 		orderGroups,
 		patchFolder,
@@ -215,6 +218,47 @@
 		loading = false;
 	}
 
+	/**
+	 * The clock.
+	 *
+	 * The running session is device-local and lives in `timer.svelte.ts`; the
+	 * total under the album's name is a derived read like every other figure on
+	 * this screen. They meet in exactly one place — `stopAndLog` — and the
+	 * ordering there is the same one the backend keeps: bank the number first,
+	 * then send it, so a failed send leaves something to retry rather than a
+	 * cleared clock.
+	 */
+	const clock = timer();
+	let timerOpen = $state(false);
+	/** A send that failed, kept where the folder's own screen can show it. The
+	 *  seconds are still in hand: the timer was already banked, so this is a
+	 *  number waiting to be re-sent rather than one that has been lost. */
+	let unsent = $state<{ seconds: number; message: string } | null>(null);
+
+	async function send(seconds: number) {
+		// Zero is not worth a line in the log. Started and stopped by accident
+		// is the commonest way to produce one, and a log full of `0s` sessions
+		// makes the real ones harder to read.
+		if (seconds <= 0) return;
+		// The unfiled pile has no clock and no button, so this is unreachable
+		// with a null id — but the type says otherwise and a silent send to
+		// `/folders/null/time` is the wrong way to find that out.
+		if (!folderId) return;
+		try {
+			await logTime(folderId, seconds);
+			unsent = null;
+			await refresh();
+		} catch (e) {
+			unsent = { seconds, message: e instanceof Error ? e.message : String(e) };
+		}
+	}
+
+	async function stopAndLog() {
+		const done = clock.stop();
+		timerOpen = false;
+		if (done) await send(done.seconds);
+	}
+
 	const days = $derived(groupDays(album?.entries ?? []));
 	const lead = $derived(days[0] ?? null);
 	/** Every attachment in the album, newest first — the contact sheet. */
@@ -357,8 +401,89 @@
 		     Only when there is something to see, and not while the overview has
 		     the column: the overview replaces the days, so a toggle that swapped
 		     what is underneath it would appear to do nothing. -->
-		{#if shots.length && !overviewOpen}
-			<div class="flex items-center gap-2 text-[12px] text-neutral-700">
+		<div class="flex items-center gap-3 text-[12px] text-neutral-700">
+			<!-- ── The clock ────────────────────────────────────────────────
+			     On the folder's own screen and nowhere else, because a session
+			     is time spent on *this* project and there is no gesture that
+			     would produce an unattributed one. The unfiled pile has no
+			     button for the same reason — it is an album you can read, not a
+			     project you can work on.
+
+			     The button says the total when there is one, so the figure and
+			     the way to add to it are the same object rather than a number
+			     with a control next to it. -->
+			{#if album?.folder}
+				{@const clocked = album.folder.id}
+				<!-- ── The one round control in the app ──────────────────────
+				     Every other control on this screen is a rounded rectangle
+				     with a word in it. This one is a circle with a mark in it,
+				     and the difference is doing work: it is the only control
+				     here that starts something that goes on running after you
+				     look away, and it should not read as one more thing you
+				     could tap. A circle in a row of pills is found without
+				     being looked for.
+
+				     The word moves into the label rather than disappearing —
+				     the same rule `Glyph` follows — so the tooltip and the
+				     screen reader both still say what it is and how much is on
+				     it. -->
+				<button
+					type="button"
+					aria-label={clock.isOn(clocked)
+						? `timer, ${clock.running ? 'running' : 'paused'}`
+						: 'timer'}
+					title={clock.isOn(clocked)
+						? `timer ${clock.running ? 'running' : 'paused'}`
+						: `timer — ${duration(album.seconds)} clocked`}
+					class="lift lift-sm flex h-[34px] w-[34px] shrink-0 items-center justify-center
+					       rounded-full transition-colors {clock.isOn(clocked)
+						? 'bg-ink text-ground'
+						: 'bg-surface text-neutral-800 shadow-sm hover:text-ink'}"
+					onclick={() => {
+						// Opening the screen is what starts it, so the button is
+						// one press rather than two. Already running on this
+						// folder: just look at it.
+						if (!clock.isOn(clocked)) clock.start(clocked, name);
+						timerOpen = true;
+					}}
+				>
+					<!-- `align="center"` because the mark is alone in a centred
+					     box: the baseline nudge every inline use wants is a
+					     1.4px drop here with nothing to align against. The
+					     remaining pixel and a half is optical — the clock's
+					     visible mass is its ring, and a ring reads low in a
+					     ring. Both together are the ~3px this needed by eye. -->
+					<span class="-translate-y-[1.5px]">
+						<Glyph kind="time" size={16} align="center" />
+					</span>
+				</button>
+
+				<!-- The running clock, beside the button rather than inside it,
+				     so the button stays a circle. Only while a session is open
+				     on this folder: the *total* is on the card, and printing it
+				     here too would be the second place saying the same thing. -->
+				{#if clock.isOn(clocked)}
+					<span class="tabular-nums {clock.running ? 'text-ink' : 'text-neutral-600'}">
+						{clockFace(clock.elapsedSeconds)}
+					</span>
+				{/if}
+			{/if}
+
+			<!-- A session that was measured and could not be sent. It is still
+			     in hand — the timer banked it before the send — so this offers
+			     the number back rather than reporting a loss. -->
+			{#if unsent}
+				<button
+					type="button"
+					class="rounded-lg px-[11px] py-1.5 text-error hover:underline"
+					title={unsent.message}
+					onclick={() => send(unsent!.seconds)}
+				>
+					{duration(unsent.seconds)} not logged — retry
+				</button>
+			{/if}
+
+			{#if shots.length && !overviewOpen}
 				<button
 					type="button"
 					aria-pressed={sheet}
@@ -371,8 +496,8 @@
 					<span class="tabular-nums">{shots.length}</span>
 					<span>{sheet ? 'reading' : 'contact sheet'}</span>
 				</button>
-			</div>
-		{/if}
+			{/if}
+		</div>
 	</div>
 
 	<div class="flex min-h-0 flex-1">
@@ -426,6 +551,7 @@
 							group={album.group}
 							entries={album.entries.length}
 							media={album.media_count}
+							seconds={album.seconds}
 							todos={album.todos}
 							sentiments={album.sentiments}
 						/>
@@ -666,4 +792,19 @@
 			</span>
 		</button>
 	</HoldMenu>
+{/if}
+
+<!-- ── The timer, taking the screen ────────────────────────────────────────
+     Last in the file and outside every other block, so nothing on this page can
+     clip it or tear it down mid-session. It is not `crt-exempt`: the glass
+     covers it, because unlike a photograph it is the app talking. -->
+{#if timerOpen}
+	<Timer
+		onstop={stopAndLog}
+		onclose={() => (timerOpen = false)}
+		ondiscard={() => {
+			clock.discard();
+			timerOpen = false;
+		}}
+	/>
 {/if}

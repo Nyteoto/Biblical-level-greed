@@ -391,6 +391,30 @@ def album(folder: str | None = None, year: str | None = None) -> dict:
     return {**store.album(target, _year(year)), "version": store.version}
 
 
+class TimeIn(BaseModel):
+    """`seconds` and nothing else. The client measured it; the server records
+    it and stamps it with now."""
+
+    seconds: int
+
+
+@router.post("/folders/{folder_id}/time", status_code=201)
+def log_time(folder_id: str, body: TimeIn) -> dict:
+    """Record a finished timer session against this folder.
+
+    On the folder rather than on an entry: a session is time spent on the
+    project, not a thing that was written. Nothing in the journal changes.
+    """
+    return {"session": store.log_time(folder_id, body.seconds), "version": store.version}
+
+
+@router.delete("/time/{session_id}")
+def unlog_time(session_id: str) -> dict:
+    """Take back a session. Appends the inverse; deletes nothing."""
+    store.unlog_time(session_id)
+    return {"ok": True, "version": store.version}
+
+
 @router.post("/reindex")
 def reindex() -> dict:
     """Throw the index away and replay the log.

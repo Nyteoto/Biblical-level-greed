@@ -46,6 +46,7 @@
 	import { clean, isBlank } from './richtext';
 	import { hold } from './hold';
 	import Glyph from './Glyph.svelte';
+	import { duration } from './timer';
 	import type { Folder } from './api';
 
 	let {
@@ -57,6 +58,7 @@
 		group = '',
 		entries = 0,
 		media = 0,
+		seconds = 0,
 		todos = { made: 0, done: 0 },
 		sentiments = []
 	}: {
@@ -75,6 +77,9 @@
 		group?: string;
 		entries?: number;
 		media?: number;
+		/** Seconds clocked into this album this year. Passed in with the rest of
+		 *  the album's facts, for the same reason they are. */
+		seconds?: number;
 		/** Promises made in here and promises kept. A fact about the folder in
 		 *  the same way the entry count is, which is why it sits in the row of
 		 *  figures and not under the readings — a reading is drawn and never
@@ -268,6 +273,20 @@
 								{media.toLocaleString()}
 							</dd>
 						</div>
+						{#if seconds > 0}
+							<!-- Only when there is time on it, like the todos below. A
+							     project with no clock on it is not a project with a zero;
+							     it is one you have not timed, and those are different. -->
+							<div class="flex flex-col gap-1">
+								<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+									Clocked
+								</dt>
+								<dd class="flex items-center gap-1.5 tabular-nums">
+									<Glyph kind="time" size={12} />
+									{duration(seconds)}
+								</dd>
+							</div>
+						{/if}
 						{#if todos.made > 0}
 							<!-- Kept over made, in that order, because it is the same pair
 							     the capture screen stands a badge on — a ratio that swapped

@@ -43,6 +43,7 @@
 	import GroupPanel from '$lib/trophic/GroupPanel.svelte';
 	import { collapsedGroups } from '$lib/trophic/collapsed.svelte';
 	import Glyph from '$lib/trophic/Glyph.svelte';
+	import { duration } from '$lib/trophic/timer';
 	import { hold } from '$lib/trophic/hold';
 	import { sortable } from '$lib/trophic/sortable';
 	import { albumHref, reorderGroups, splitShelf } from '$lib/trophic/shelf';
@@ -487,6 +488,16 @@
 												{album.media_count}
 											</span>
 										{/if}
+										{#if album.seconds}
+											<!-- Time clocked into this album this year. Hidden at
+											     nought like the two above it — a project you have not
+											     put a clock on has no figure, and `—` in a row of
+											     counts reads as a fault rather than as an absence. -->
+											<span class="flex items-center gap-1.5" title="time clocked">
+												<Glyph kind="time" size={12} />
+												{duration(album.seconds)}
+											</span>
+										{/if}
 										{#if album.todos.made}
 											<!-- Kept over made, the same way round as the overview and
 											     the badge. Only when something was promised in here:
@@ -528,6 +539,10 @@
 									<div class="mt-[3px] flex items-center gap-1.5 text-[12px] text-neutral-600">
 										<Glyph kind="entries" count={album.entry_count} size={12} />
 										<span class="tabular-nums">{album.entry_count}</span>
+										{#if album.seconds}
+											<Glyph kind="time" size={12} />
+											<span class="tabular-nums">{duration(album.seconds)}</span>
+										{/if}
 										{#if album.months}<span class="ml-1.5">{album.months}</span>{/if}
 									</div>
 								</div>

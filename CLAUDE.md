@@ -248,6 +248,26 @@ editing frontend source leaves the app serving stale UI until you run
   platform conditional is one that gets removed in a hurry. They write to
   different disks by necessity (ext4 is unreadable from Windows) and that is
   two complete copies, not two halves.
+- **A folder's clock is a sum of sessions, and the session is the subject.**
+  `log-time` carries its own id with the folder in the `folder` field, not the
+  other way round. That is not a style choice: every other fold in this log is
+  last-wins on a state, so a duplicated line says the same thing twice and
+  lands the same way, while a *summed* fold keyed on the folder would count a
+  restored backup's line twice and inflate a total nobody can check by eye.
+  Keyed on the session, applying the same line twice is the same total. The
+  inverse is `unlog-time` on that session id — never a negative duration, which
+  would make the total right and the history absurd. Totals are
+  `sum(seconds)`, derived on every read, stored nowhere, and cut by year for an
+  album exactly as `entry_count` is.
+  - **The running timer is not in the log, and must not be.** It lives in
+    `localStorage` via `timer.svelte.ts` until you stop it, because a session
+    is a draft until it ends — the same bargain the capture bar's text makes.
+    A `start` event would put an unmatched start in an append-only file for
+    every timer anyone ever forgot, and no fold could tell those from the real
+    ones. The cost is accepted: close the tab mid-session and that time is on
+    that machine only. Elapsed is computed from wall-clock stamps and never
+    accumulated by a tick, because a background tab's timers are throttled and
+    a sleeping phone's stop entirely.
 - **The shelf's group order is one event carrying the whole order.**
   `order-groups` names the year and lists its headings. A "moved to third"
   event would land somewhere else on a replay, and duplicated or out-of-order
@@ -257,10 +277,19 @@ editing frontend source leaves the app serving stale UI until you run
 
 ## Deliberately absent
 
-Timers, minute tracking, notifications, multi-user, auth, log editing, and
-anything adaptive. Metric readings are stored and drawn, **never interpreted**.
-These are refusals, not gaps — do not helpfully add them. Per-node cadence is
-the one acknowledged gap.
+Notifications, multi-user, auth, log editing, and anything adaptive. Metric
+readings are stored and drawn, **never interpreted**. These are refusals, not
+gaps — do not helpfully add them. Per-node cadence is the one acknowledged gap.
+
+**Timers and minute tracking used to head that list, and no longer do.** A
+folder has a clock now — see the invariant above. The refusal was written when
+the only thing that could have been timed was a practice session, and timing
+those is the thing that turns practice into a score you can lose at. Capture
+has no score, and time on a project is a fact about the project rather than a
+judgement about you: `41h` beside `96 entries` reads the way `96 entries`
+does. What the old rule was protecting still holds and is worth keeping —
+**the number is drawn and never interpreted.** No targets, no streaks, no
+average session length, no "you have not worked on this in nine days".
 
 ## Commands
 

@@ -36,6 +36,7 @@ import { view, handleKey, caretStyle, acceptSuggestion } from '../src/lib/trophi
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
+import { clockFace, duration } from '../src/lib/trophic/timer.ts';
 import {
 	enqueue,
 	flush,
@@ -1057,6 +1058,59 @@ async function localChecks(): Promise<string[]> {
 		if (!isReply(accepted.value + 'it came back')) {
 			failures.push('  a --reply accepted from the panel does not read as a reply');
 		}
+	}
+
+	// ── The clock's two formatters ────────────────────────────────────────
+	//
+	// No corpus covers these: the source has no timer. They are here for the
+	// same reason `pinned.ts` is — they are pure, they are this port's own, and
+	// a number read wrong on a screen is the kind of mistake that survives a
+	// hundred glances. The rounding cases are the ones worth pinning; the rest
+	// are here so a rewrite has something to fail against.
+	const faces: [number, string][] = [
+		[0, '0:00'],
+		[9, '0:09'],
+		[70, '1:10'],
+		[600, '10:00'],
+		// The hour is where the shape changes, and both sides of it matter.
+		[3599, '59:59'],
+		[3600, '1:00:00'],
+		[3661, '1:01:01'],
+		[36000, '10:00:00'],
+		// A negative can only arrive from a clock set backwards mid-session.
+		// It reads as zero rather than as a minus sign.
+		[-5, '0:00'],
+		// A server one deploy behind the client sends no field at all. That is
+		// a normal state in this app — see the note on `duration`.
+		[NaN, '0:00'],
+		[undefined as unknown as number, '0:00']
+	];
+	for (const [input, want] of faces) {
+		const got = clockFace(input);
+		if (got !== want) failures.push(`  clockFace(${input}) = ${got}, expected ${want}`);
+	}
+
+	const durations: [number, string][] = [
+		[0, '—'],
+		[45, '45s'],
+		[60, '1m'],
+		[90, '2m'],
+		[3600, '1h'],
+		[5400, '1h 30m'],
+		// 59m30s rounds up to a full sixty minutes, which has to carry into the
+		// hour rather than print `0h 60m`.
+		[3570, '1h'],
+		[7170, '2h'],
+		// And the same carry one rung down, where there is no hour to carry to.
+		[3540, '59m'],
+		// The bug this pair was added for: the button read `NaNh NaNm` against
+		// a backend that predated the field.
+		[NaN, '—'],
+		[undefined as unknown as number, '—']
+	];
+	for (const [input, want] of durations) {
+		const got = duration(input);
+		if (got !== want) failures.push(`  duration(${input}) = ${got}, expected ${want}`);
 	}
 
 	return failures;
