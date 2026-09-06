@@ -20,27 +20,69 @@
 // this is for. The interval below only tells the screen to re-read the clock;
 // it never *is* the clock.
 
+import { armChime, chime } from './chime';
+import { pomodoroAt, type Phase } from './timer';
+
 /** The shape kept in localStorage. `startedAt` is null while paused, and
- *  `accumulatedMs` holds everything banked before the current run. */
+ *  `accumulatedMs` holds everything banked before the current run.
+ *
+ *  **`accumulatedMs` is wall-clock time, not work time**, in both modes. In a
+ *  pomodoro the split between work and rest is *derived* from it by
+ *  `pomodoroAt`, which is what lets the phase be correct after any sleep of
+ *  any length. Storing "work so far" instead would mean maintaining it from a
+ *  callback, and the callback is the thing that does not fire. */
 type Running = {
 	folderId: string;
 	folderName: string;
 	/** Epoch ms when the current run began, or null while paused. */
 	startedAt: number | null;
 	accumulatedMs: number;
+	/** `stopwatch` counts up and logs everything. `pomodoro` alternates work
+	 *  and rest, and logs only the work. */
+	mode: Mode;
+	/** The two stretch lengths, in ms. Carried on the session rather than read
+	 *  from the preference at render time, so that changing the default
+	 *  mid-session cannot retroactively re-cut a pomodoro that is already
+	 *  running — the phase you are in would jump, and the work already banked
+	 *  would change value. */
+	workMs: number;
+	restMs: number;
 };
 
+export type Mode = 'stopwatch' | 'pomodoro';
+
 const KEY = 'trophic-running-timer';
+/** The lengths a *new* pomodoro starts with. A preference about this machine,
+ *  like the pin — not a fact about what you did. */
+const PREF_KEY = 'trophic-pomodoro-lengths';
+const MUTE_KEY = 'trophic-timer-muted';
+
+/** Fifty and ten. The classic twenty-five is tuned for a task you are dreading;
+ *  the work this app is used for is the kind you have to be pulled out of, and
+ *  a fifty-minute stretch is one pass at something rather than a fragment of
+ *  one. Both are editable and neither is enforced. */
+export const DEFAULT_WORK_MIN = 50;
+export const DEFAULT_REST_MIN = 10;
 
 const state = $state({
 	session: null as Running | null,
 	loaded: false,
+	muted: false,
+	/** The lengths a new pomodoro will be started with, in minutes. */
+	workMin: DEFAULT_WORK_MIN,
+	restMin: DEFAULT_REST_MIN,
 	/** Bumped by the interval purely to invalidate `elapsedMs`. The value is
 	 *  meaningless; that it changed is the whole signal. */
 	tick: 0
 });
 
 let handle: ReturnType<typeof setInterval> | null = null;
+/** The phase the last tick saw. Module state and deliberately **not**
+ *  persisted: a reload should not sound a chime for a boundary that was
+ *  crossed and heard an hour ago. `null` means "nothing seen yet", which is
+ *  the state a fresh load is in and the reason the first tick after a reload
+ *  is silent. */
+let lastPhase: Phase | null = null;
 
 function read(): Running | null {
 	try {
@@ -52,7 +94,15 @@ function read(): Running | null {
 		// makes with its own storage.
 		if (typeof parsed?.folderId !== 'string') return null;
 		if (typeof parsed?.accumulatedMs !== 'number') return null;
-		return parsed;
+		// A session stored before the pomodoro existed has no mode. It was a
+		// stopwatch, and reading it as one is what keeps a timer that was
+		// running across the upgrade.
+		return {
+			...parsed,
+			mode: parsed.mode === 'pomodoro' ? 'pomodoro' : 'stopwatch',
+			workMs: typeof parsed.workMs === 'number' ? parsed.workMs : DEFAULT_WORK_MIN * 60000,
+			restMs: typeof parsed.restMs === 'number' ? parsed.restMs : DEFAULT_REST_MIN * 60000
+		};
 	} catch {
 		return null;
 	}
@@ -70,7 +120,26 @@ function write(next: Running | null) {
 function load() {
 	if (state.loaded || typeof localStorage === 'undefined') return;
 	state.session = read();
+	try {
+		state.muted = localStorage.getItem(MUTE_KEY) === '1';
+		const raw = localStorage.getItem(PREF_KEY);
+		if (raw) {
+			const parsed = JSON.parse(raw) as { workMin?: number; restMin?: number };
+			if (Number.isFinite(parsed?.workMin)) state.workMin = clampMinutes(parsed.workMin!);
+			if (Number.isFinite(parsed?.restMin)) state.restMin = clampMinutes(parsed.restMin!);
+		}
+	} catch {
+		// The defaults are good defaults.
+	}
 	state.loaded = true;
+}
+
+/** One minute to four hours. The floor is what stops a mistyped `0` making a
+ *  pomodoro that changes phase every frame and chimes forever; the ceiling is
+ *  well under the twelve-hour session the server refuses outright. */
+function clampMinutes(value: number): number {
+	if (!Number.isFinite(value)) return 1;
+	return Math.min(240, Math.max(1, Math.round(value)));
 }
 
 /** Start ticking only while something is actually running. A paused timer and
@@ -78,11 +147,42 @@ function load() {
 function sync() {
 	const shouldRun = state.session?.startedAt != null;
 	if (shouldRun && handle === null) {
-		handle = setInterval(() => (state.tick += 1), 250);
+		handle = setInterval(() => {
+			state.tick += 1;
+			watchPhase();
+		}, 250);
 	} else if (!shouldRun && handle !== null) {
 		clearInterval(handle);
 		handle = null;
 	}
+	if (!shouldRun) lastPhase = null;
+}
+
+/**
+ * Sound the boundary when the derived phase changes.
+ *
+ * It lives in the store rather than in `Timer.svelte` on purpose: the point of
+ * `back — keep running` is that the timer goes on while you use the app, and a
+ * chime that only fired on the screen you had left would be a chime that never
+ * fired when it mattered. The store outlives every component in the tab.
+ *
+ * A boundary crossed while the tab was asleep is announced **when the tab wakes
+ * up**, once, however many boundaries were actually missed. That is a decision
+ * rather than a limitation: the alternative is a burst of chimes for stretches
+ * that are long over, and what you want to be told on waking is which phase you
+ * are in now.
+ */
+function watchPhase() {
+	const s = state.session;
+	if (!s || s.mode !== 'pomodoro' || s.startedAt === null) {
+		lastPhase = null;
+		return;
+	}
+	const { phase } = pomodoroAt(elapsed(s), s.workMs, s.restMs);
+	// The first observation of a session only records where it is; there is no
+	// boundary behind it to announce.
+	if (lastPhase !== null && phase !== lastPhase && !state.muted) chime(phase);
+	lastPhase = phase;
 }
 
 function elapsed(session: Running | null): number {
@@ -114,29 +214,123 @@ export function timer() {
 			void state.tick;
 			return elapsed(state.session);
 		},
-		/** Whole seconds, which is what gets logged. Floor rather than round:
-		 *  the app should never claim a second that did not finish. */
+		/** Whole seconds on the clock, both modes. Floor rather than round: the
+		 *  app should never claim a second that did not finish. */
 		get elapsedSeconds() {
 			void state.tick;
 			return Math.floor(elapsed(state.session) / 1000);
 		},
 
+		/** **What actually gets logged.** In a stopwatch it is the whole
+		 *  elapsed time; in a pomodoro it is the work stretches only, with
+		 *  every break taken out. A pomodoro that logged its own rest would
+		 *  make an hour at the desk read as an hour and ten, and the number on
+		 *  the card would stop meaning "time worked". */
+		get workedSeconds() {
+			void state.tick;
+			const s = state.session;
+			if (!s) return 0;
+			if (s.mode !== 'pomodoro') return Math.floor(elapsed(s) / 1000);
+			return Math.floor(pomodoroAt(elapsed(s), s.workMs, s.restMs).workedMs / 1000);
+		},
+
+		/** Where the pomodoro is, or null in a stopwatch. Derived on every
+		 *  read from the elapsed time, so it is correct after any sleep. */
+		get pomodoro() {
+			void state.tick;
+			const s = state.session;
+			if (!s || s.mode !== 'pomodoro') return null;
+			return pomodoroAt(elapsed(s), s.workMs, s.restMs);
+		},
+
+		get mode(): Mode {
+			return state.session?.mode ?? 'stopwatch';
+		},
+
+		// ── The lengths a new pomodoro gets, and the sound ────────────────
+		get workMin() {
+			return state.workMin;
+		},
+		get restMin() {
+			return state.restMin;
+		},
+		get muted() {
+			return state.muted;
+		},
+		setLengths(workMin: number, restMin: number) {
+			state.workMin = clampMinutes(workMin);
+			state.restMin = clampMinutes(restMin);
+			try {
+				localStorage.setItem(
+					PREF_KEY,
+					JSON.stringify({ workMin: state.workMin, restMin: state.restMin })
+				);
+			} catch {
+				/* the lengths still apply to this session */
+			}
+		},
+		setMuted(next: boolean) {
+			state.muted = next;
+			try {
+				localStorage.setItem(MUTE_KEY, next ? '1' : '0');
+			} catch {
+				/* nothing to do */
+			}
+		},
+
 		/** Open a timer on a folder. Refuses to displace one already running on
 		 *  a different folder — losing an unlogged session to a mis-tap is the
 		 *  one thing this must not do. */
-		start(folderId: string, folderName: string): boolean {
+		start(folderId: string, folderName: string, mode?: Mode): boolean {
 			load();
 			if (state.session && state.session.folderId !== folderId) return false;
 			if (state.session?.startedAt != null) return true;
+			// Unlock the audio device here, because here is where the user
+			// gesture is. A chime forty minutes from now has no gesture near it
+			// and a context created then would be born suspended.
+			armChime();
+			const resuming = state.session;
 			state.session = {
 				folderId,
 				folderName,
 				startedAt: Date.now(),
-				accumulatedMs: state.session?.accumulatedMs ?? 0
+				accumulatedMs: resuming?.accumulatedMs ?? 0,
+				// Resuming keeps the mode and the lengths it was started with;
+				// only a fresh session reads the preference. Changing the
+				// default mid-pomodoro would re-cut the cycle underneath it and
+				// move work that has already been banked.
+				mode: mode ?? resuming?.mode ?? 'stopwatch',
+				workMs: resuming?.workMs ?? state.workMin * 60000,
+				restMs: resuming?.restMs ?? state.restMin * 60000
 			};
 			write(state.session);
 			sync();
 			return true;
+		},
+
+		/** Swap a running session between counting up and running a cycle,
+		 *  keeping the time already on it.
+		 *
+		 *  Allowed mid-session because the elapsed clock means the same thing
+		 *  in both modes — what changes is how it is *cut*. Going to a pomodoro
+		 *  mid-way does re-read the elapsed time as cycles, which will bank
+		 *  less than the clock shows if a break falls inside it; that is
+		 *  correct rather than surprising, and it is why the screen shows both
+		 *  numbers. */
+		setMode(mode: Mode) {
+			const s = state.session;
+			if (!s) return;
+			state.session = {
+				...s,
+				mode,
+				workMs: state.workMin * 60000,
+				restMs: state.restMin * 60000
+			};
+			write(state.session);
+			// The phase under the new mode has not been "seen" yet, so the next
+			// tick records it silently instead of announcing a change that is
+			// really just the mode switch.
+			lastPhase = null;
 		},
 
 		pause() {
@@ -158,7 +352,11 @@ export function timer() {
 		stop(): { folderId: string; seconds: number } | null {
 			const s = state.session;
 			if (!s) return null;
-			const seconds = Math.floor(elapsed(s) / 1000);
+			// Work, not clock. See `workedSeconds`.
+			const seconds =
+				s.mode === 'pomodoro'
+					? Math.floor(pomodoroAt(elapsed(s), s.workMs, s.restMs).workedMs / 1000)
+					: Math.floor(elapsed(s) / 1000);
 			state.session = null;
 			write(null);
 			sync();

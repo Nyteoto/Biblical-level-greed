@@ -53,3 +53,62 @@ export function duration(totalSeconds: number): string {
 	if (hours === 0) return minutes === 0 ? `${s}s` : `${minutes}m`;
 	return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
 }
+
+// ── The pomodoro ──────────────────────────────────────────────────────────
+//
+// A cycle is one work stretch followed by one rest stretch, repeating. The
+// whole of it is derived from a single number — how long the timer has been
+// running — and that is the point rather than an economy.
+//
+// **The phase is computed, never driven by a callback.** The obvious build is
+// a `setTimeout` for the end of the work stretch that flips a flag and sets
+// the next one. It is wrong here for the same reason an accumulating tick is
+// wrong for the clock: a background tab's timers are throttled and a sleeping
+// phone's do not fire at all, so a phone locked halfway through a 50-minute
+// stretch wakes with the work phase still "running" an hour later. Deriving
+// the phase from elapsed time means the answer after any sleep of any length
+// is simply correct, and the only thing the interval does is ask again.
+//
+// It follows that a phase change can be discovered *late* — the tab was asleep
+// across it. `timer.svelte.ts` handles what that means for the sound.
+
+export type Phase = 'work' | 'rest';
+
+export interface PomodoroState {
+	phase: Phase;
+	/** Milliseconds left in the current phase. Counts down. */
+	remainingMs: number;
+	/** Work done so far, across every completed stretch plus the current one
+	 *  if it is a work stretch. **Rest is not in here**, which is the whole
+	 *  reason this function exists: what gets written to the log is time
+	 *  worked, and a pomodoro that logged its own breaks would make an hour at
+	 *  the desk read as an hour and ten. */
+	workedMs: number;
+	/** Completed work+rest cycles. Drawn as a row of marks. */
+	cycles: number;
+}
+
+export function pomodoroAt(elapsedMs: number, workMs: number, restMs: number): PomodoroState {
+	const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+	const work = Number.isFinite(workMs) ? Math.max(0, workMs) : 0;
+	const rest = Number.isFinite(restMs) ? Math.max(0, restMs) : 0;
+	const cycle = work + rest;
+
+	// No cycle to be in. A zero-length pomodoro is a stopwatch that has been
+	// asked a nonsensical question; answer it as work with nothing left rather
+	// than dividing by nothing.
+	if (cycle <= 0) return { phase: 'work', remainingMs: 0, workedMs: elapsed, cycles: 0 };
+
+	const cycles = Math.floor(elapsed / cycle);
+	const position = elapsed - cycles * cycle;
+	const working = position < work;
+
+	return {
+		phase: working ? 'work' : 'rest',
+		remainingMs: working ? work - position : cycle - position,
+		// Completed cycles contributed a whole work stretch each. The current
+		// one contributes where it has got to, or all of it once rest began.
+		workedMs: cycles * work + (working ? position : work),
+		cycles
+	};
+}

@@ -36,7 +36,7 @@ import { view, handleKey, caretStyle, acceptSuggestion } from '../src/lib/trophi
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
-import { clockFace, duration } from '../src/lib/trophic/timer.ts';
+import { clockFace, duration, pomodoroAt } from '../src/lib/trophic/timer.ts';
 import {
 	enqueue,
 	flush,
@@ -1111,6 +1111,58 @@ async function localChecks(): Promise<string[]> {
 	for (const [input, want] of durations) {
 		const got = duration(input);
 		if (got !== want) failures.push(`  duration(${input}) = ${got}, expected ${want}`);
+	}
+
+	// ── The pomodoro's arithmetic ─────────────────────────────────────────
+	//
+	// This one decides what gets written into an append-only log, so it is the
+	// most load-bearing pure function this port owns. Rest must never reach
+	// `workedMs`, and the whole thing has to be right after an arbitrary sleep
+	// — which is exactly what a table of elapsed times is a test of.
+	const MIN = 60_000;
+	// A 50/10 cycle, which is the default.
+	const pom: [number, string, number, number][] = [
+		// [elapsed ms, phase, remaining ms, worked ms]
+		[0, 'work', 50 * MIN, 0],
+		[10 * MIN, 'work', 40 * MIN, 10 * MIN],
+		// The boundary belongs to the phase that is starting, not the one that
+		// ended: at exactly 50 minutes you are resting, with a full break left.
+		[50 * MIN, 'rest', 10 * MIN, 50 * MIN],
+		[55 * MIN, 'rest', 5 * MIN, 50 * MIN],
+		// Rest does not add to the work total, however long it runs.
+		[59 * MIN, 'rest', 1 * MIN, 50 * MIN],
+		// Second cycle.
+		[60 * MIN, 'work', 50 * MIN, 50 * MIN],
+		[70 * MIN, 'work', 40 * MIN, 60 * MIN],
+		[110 * MIN, 'rest', 10 * MIN, 100 * MIN],
+		// A phone asleep for five hours wakes up in the right place, which is
+		// the whole reason this is derived rather than driven by a callback.
+		[300 * MIN, 'work', 50 * MIN, 250 * MIN]
+	];
+	for (const [elapsed, phase, remaining, worked] of pom) {
+		const got = pomodoroAt(elapsed, 50 * MIN, 10 * MIN);
+		const label = `pomodoroAt(${elapsed / MIN}m)`;
+		if (got.phase !== phase) failures.push(`  ${label}.phase = ${got.phase}, expected ${phase}`);
+		if (got.remainingMs !== remaining) {
+			failures.push(`  ${label}.remainingMs = ${got.remainingMs / MIN}m, expected ${remaining / MIN}m`);
+		}
+		if (got.workedMs !== worked) {
+			failures.push(`  ${label}.workedMs = ${got.workedMs / MIN}m, expected ${worked / MIN}m`);
+		}
+	}
+	// Cycle counting, which draws the marks.
+	if (pomodoroAt(0, 50 * MIN, 10 * MIN).cycles !== 0) failures.push('  0m is not 0 cycles');
+	if (pomodoroAt(59 * MIN, 50 * MIN, 10 * MIN).cycles !== 0) failures.push('  59m is not 0 cycles');
+	if (pomodoroAt(60 * MIN, 50 * MIN, 10 * MIN).cycles !== 1) failures.push('  60m is not 1 cycle');
+	// A cycle with no rest in it is all work and never leaves the work phase.
+	const noRest = pomodoroAt(120 * MIN, 50 * MIN, 0);
+	if (noRest.phase !== 'work' || noRest.workedMs !== 120 * MIN) {
+		failures.push(`  a rest-less cycle banked ${noRest.workedMs / MIN}m as ${noRest.phase}`);
+	}
+	// Nonsense in, something readable out — never a divide by zero.
+	const zero = pomodoroAt(90 * MIN, 0, 0);
+	if (zero.phase !== 'work' || zero.workedMs !== 90 * MIN) {
+		failures.push('  a zero-length cycle did not degrade to a stopwatch');
 	}
 
 	return failures;

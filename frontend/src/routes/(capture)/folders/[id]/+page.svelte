@@ -461,10 +461,21 @@
 				<!-- The running clock, beside the button rather than inside it,
 				     so the button stays a circle. Only while a session is open
 				     on this folder: the *total* is on the card, and printing it
-				     here too would be the second place saying the same thing. -->
+				     here too would be the second place saying the same thing.
+
+				     A pomodoro shows the stretch it is in, counting down, and
+				     says which — the same thing the takeover shows, because a
+				     glance at this row and a glance at that screen should never
+				     have to be reconciled. -->
 				{#if clock.isOn(clocked)}
-					<span class="tabular-nums {clock.running ? 'text-ink' : 'text-neutral-600'}">
-						{clockFace(clock.elapsedSeconds)}
+					{@const pom = clock.pomodoro}
+					<span
+						class="tabular-nums {clock.running && pom?.phase !== 'rest'
+							? 'text-ink'
+							: 'text-neutral-600'}"
+					>
+						{pom ? clockFace(Math.ceil(pom.remainingMs / 1000)) : clockFace(clock.elapsedSeconds)}
+						{#if pom}<span class="ml-1 text-[11px]">{pom.phase}</span>{/if}
 					</span>
 				{/if}
 			{/if}

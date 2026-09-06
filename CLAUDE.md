@@ -268,6 +268,24 @@ editing frontend source leaves the app serving stale UI until you run
     that machine only. Elapsed is computed from wall-clock stamps and never
     accumulated by a tick, because a background tab's timers are throttled and
     a sleeping phone's stop entirely.
+  - **A pomodoro logs its work and never its rest.** `pomodoroAt` in
+    `timer.ts` cuts one elapsed number into phases, and `stop()` writes
+    `workedMs`. A cycle that banked its own breaks would make an hour at the
+    desk read as an hour and ten, and the figure on the card would stop
+    meaning "time worked" — which is the only thing it is allowed to mean.
+    **The phase is derived from elapsed time, never flipped by a callback**,
+    for the same reason the clock is: the `setTimeout` that would end the work
+    stretch does not fire in a slept tab, so a phone locked mid-stretch would
+    wake an hour later still "working". Deriving it makes the answer after any
+    sleep simply correct, and the pinned table in `localChecks()` is what holds
+    that — it is the most load-bearing pure function this port owns, because
+    its output is what reaches an append-only log.
+  - The chime is synthesised in `chime.ts` rather than shipped as a file: two
+    sine tones, rising into work and falling into rest. The audio context is
+    unlocked on the press that starts the timer, because a boundary forty
+    minutes later has no user gesture near it. One chime on waking, however
+    many boundaries were slept through — what you want to be told is which
+    phase you are in now.
 - **The shelf's group order is one event carrying the whole order.**
   `order-groups` names the year and lists its headings. A "moved to third"
   event would land somewhere else on a replay, and duplicated or out-of-order
