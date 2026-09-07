@@ -38,7 +38,7 @@ import calendar
 import json
 import sqlite3
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import eventlog
@@ -1324,6 +1324,136 @@ def time_sessions(
     ]
 
 
+# ── Points: the one figure that counts a day ──────────────────────────────
+#
+# A day in a folder is worth **one point per entry, plus one per twenty
+# minutes clocked**. Both halves are deliberate and neither is a measure of
+# quality: an entry counts the same whether it is a word or a paragraph,
+# because the app has never had an opinion about how much you wrote, and
+# twenty minutes is a coarse enough grain that the clock cannot out-shout the
+# writing — an eight-hour day is worth 24, which is a lot and is not infinite.
+#
+# Integer division, and it truncates. Nineteen minutes is worth nothing, and
+# that is the honest reading of "every twenty minutes" rather than a rounding
+# bug. It also keeps the sum idempotent in the same way `folder_seconds` is:
+# these are folds over rows, computed on every read and stored nowhere.
+#
+# **Nothing here interprets.** The cap that keeps a very loud day from
+# out-glowing a merely good one is a drawing decision and lives in the
+# component that draws it; the numbers that leave this module are the counts
+# themselves, uncapped, because the order of the shelf is a sum over them.
+SECONDS_PER_POINT = 20 * 60
+
+#: How far back the shelf looks when it asks what you are working on *now*.
+#: A month, so a project you put down three weeks ago is still visibly warm
+#: and one you finished in spring is not.
+MOMENTUM_DAYS = 30
+
+
+def points(entries: int, seconds: int) -> int:
+    """A day's score. The one place the rule above is spelled."""
+    return entries + seconds // SECONDS_PER_POINT
+
+
+def folder_heat(
+    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+) -> list[dict]:
+    """A folder's days, oldest first — `{day, entries, seconds, points}`.
+
+    Only days with something on them. A year is 365 cells and at most a
+    couple of hundred of them are ever non-empty, so sending the empty ones
+    would be sending the calendar, which the client can work out for itself.
+
+    A day where a five-minute session was logged and nothing was written comes
+    back with `points` of 0 rather than being dropped. It is a day you worked,
+    the row is what the readout says when the cell is pressed, and a fold that
+    silently forgot short sessions would be the same class of mistake as
+    rounding them up.
+
+    The unfiled pile has no clock and no overview to draw this on, so it is
+    empty rather than an error — the same shape `folder_time_volumes` takes.
+    """
+    if folder_id is None:
+        return []
+    clause, args = _year_clause(year)
+    made: dict[str, int] = {}
+    for row in conn.execute(
+        f"SELECT day, count(*) AS n FROM entries WHERE id IN ({_MEMBERSHIP})"
+        + clause
+        + " GROUP BY day",
+        [folder_id] + args,
+    ).fetchall():
+        made[row["day"]] = int(row["n"])
+    clocked: dict[str, int] = {}
+    for row in conn.execute(
+        "SELECT day, sum(seconds) AS n FROM time_sessions WHERE folder_id = ?"
+        + clause
+        + " GROUP BY day",
+        [folder_id] + args,
+    ).fetchall():
+        clocked[row["day"]] = int(row["n"] or 0)
+    return [
+        {
+            "day": day,
+            "entries": made.get(day, 0),
+            "seconds": clocked.get(day, 0),
+            "points": points(made.get(day, 0), clocked.get(day, 0)),
+        }
+        for day in sorted(made.keys() | clocked.keys())
+    ]
+
+
+def momentum_window(today: str) -> tuple[str, str]:
+    """The span the shelf is ordered by: `MOMENTUM_DAYS` ending today,
+    inclusive of both ends. Given a day rather than read off a clock, because
+    exactly one module in this codebase is allowed to know what time it is."""
+    since = date.fromisoformat(today) - timedelta(days=MOMENTUM_DAYS - 1)
+    return since.isoformat(), today
+
+
+def momentum(
+    conn: sqlite3.Connection, since: str, until: str
+) -> dict[str, int]:
+    """`folder id -> points` over one span of days, both ends inclusive.
+
+    The shelf's sort key, and the reason it is computed here rather than
+    folded out of `folder_heat` once per folder: that would be one membership
+    resolution per card, which is precisely the O(folders x entries) read that
+    `_shelf_buckets` exists to have stopped doing. Two queries, whatever the
+    shelf holds.
+
+    The span is not cut by the shelf's year. It is a rolling month and it
+    crosses New Year the way the work does — asking on the 3rd of January
+    what you have been doing lately and being told "nothing, the year is new"
+    would be an answer about the calendar rather than about the work.
+
+    Folders with nothing in the span are absent rather than zero, like
+    `folder_seconds`; every caller is filling in a figure for a folder it
+    already has.
+    """
+    made: dict[str, int] = {}
+    for row in conn.execute(
+        "SELECT m.folder_id AS folder_id, count(DISTINCT m.entry_id) AS n"
+        "  FROM membership m"
+        "  JOIN entries e ON e.id = m.entry_id"
+        " WHERE e.day BETWEEN ? AND ?"
+        " GROUP BY m.folder_id",
+        (since, until),
+    ).fetchall():
+        made[row["folder_id"]] = int(row["n"])
+    clocked: dict[str, int] = {}
+    for row in conn.execute(
+        "SELECT folder_id, sum(seconds) AS n FROM time_sessions "
+        "WHERE day BETWEEN ? AND ? GROUP BY folder_id",
+        (since, until),
+    ).fetchall():
+        clocked[row["folder_id"]] = int(row["n"] or 0)
+    return {
+        folder_id: points(made.get(folder_id, 0), clocked.get(folder_id, 0))
+        for folder_id in made.keys() | clocked.keys()
+    }
+
+
 def tag_owner(conn: sqlite3.Connection, tag: str) -> str | None:
     """Which folder holds this tag, if any. At most one, by construction."""
     row = conn.execute(
@@ -1777,6 +1907,11 @@ def album(
         # you can open.
         "todos": rows_tally(rows),
         "sentiments": folder_sentiments(conn, folder_id) if folder_id else [],
+        # The heatmap: every day of this year that has anything on it, and
+        # what it is worth. A reading like the sentiments beside it — the
+        # counts are drawn, the brightness is the count, and nothing here says
+        # whether a dim week was a bad one.
+        "heat": folder_heat(conn, folder_id, year),
         # The group is a fact about this folder *in this year*, so it belongs
         # to the album rather than to the folder record beside it.
         "group": groups_for(conn, year)[0].get(folder_id or "", ""),
@@ -1805,7 +1940,7 @@ def groups_for(conn: sqlite3.Connection, year: str | None) -> tuple[dict, list]:
     return {r["folder_id"]: r["name"] for r in rows}, names
 
 
-def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
+def shelf(conn: sqlite3.Connection, year: str | None, today: str | None = None) -> dict:
     """The year shelf: which albums exist, how big each is, when each was busy.
 
     Every album in the year, whether or not it has a lifecycle, plus the
@@ -1817,6 +1952,9 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
     no year it belongs to, so dropping it drops it from everywhere; it stays on
     whatever shelf you are looking at until something lands in it. See the note
     on the filter below.
+
+    `today` is the caller's day — the clock is read in `store`, never here —
+    and it is what makes the order mean anything. See the sort below.
     """
     available = years(conn)
     in_group, group_names = groups_for(conn, year)
@@ -1845,6 +1983,10 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
     # shape as `_shelf_buckets` above it, and for the same reason — a figure
     # every card carries should cost one read, not one per album.
     clocked = folder_seconds(conn, year)
+    # What each project is worth over the last month, in the same points the
+    # heatmap draws. Two queries for the whole shelf, and it is asked for once
+    # here rather than per card — see `momentum`.
+    warm = momentum(conn, *momentum_window(today)) if today else {}
 
     for record in folders(conn):
         rows = buckets.get(record["id"], [])
@@ -1890,13 +2032,30 @@ def shelf(conn: sqlite3.Connection, year: str | None) -> dict:
                 # Empty for a folder in the loose grid above the groups, which
                 # is where a folder starts and where most of them stay.
                 "group": in_group.get(record["id"], ""),
+                # The sort key, carried so the order has a stated cause rather
+                # than being a rule you have to read the server to know. It is
+                # **not a figure to draw**: a number per project that goes up
+                # when you work and down when you stop is a score, and a score
+                # is the thing the clock was allowed in here without becoming.
+                "momentum": warm.get(record["id"], 0),
             }
         )
         _mark(record["id"], rows)
 
-    # Busiest first: the shelf is read to find what you were doing, and what
-    # you were doing most is the best first guess.
-    albums.sort(key=lambda a: (-a["entry_count"], a["name"].lower()))
+    # **Warmest first: the shelf is ordered by what you are doing now.**
+    #
+    # It used to be by the year's entry count, which is a fact about how big a
+    # project got rather than about whether it is alive — a finished thing you
+    # poured a spring into sat at the front of the shelf for the rest of the
+    # year, above the one you actually opened this morning. Sorting on the last
+    # month's points puts the shelf in the order you would put it in yourself
+    # if you had to rewrite the list every Monday.
+    #
+    # Size is the tiebreak rather than the key, and it is what a shelf of a
+    # past year falls back to entirely: momentum is about now, so every album
+    # of 2024 has none of it and that shelf reads exactly as it always did.
+    # Name last, so a reload can never reorder a list you are reading.
+    albums.sort(key=lambda a: (-a["momentum"], -a["entry_count"], a["name"].lower()))
 
     unfiled_rows = buckets.get(None, [])
     # The unfiled pile is a place you can be taken back to like any other. It

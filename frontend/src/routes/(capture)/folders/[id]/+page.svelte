@@ -599,6 +599,8 @@
 							seconds={album.seconds}
 							todos={album.todos}
 							sentiments={album.sentiments}
+							heat={album.heat}
+							{today}
 						/>
 					</div>
 				{/if}

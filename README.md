@@ -135,6 +135,24 @@ draws as `garden` everywhere and still files exactly where it did. It is a log
 event rather than a browser preference, because it is a decision about the
 writing. Only `<tags>` can be lifted.
 
+### Points, the heatmap and the order of the shelf
+
+A day in a folder is worth **one point per entry, plus one per twenty minutes
+on that folder's clock**. An entry counts the same whether it is a word or a
+paragraph.
+
+Those points are drawn twice. The folder's overview has a year of days under
+`Readings`, beside the `\pattern` counts — one cell per day, brighter with the
+score, topping out at ten and then simply lit. Press a cell and it says what
+that day was: the points, the entries, the time. And the same points, summed
+over **the last thirty days**, are the order the year shelf comes back in, so
+the first card is the thing you are actually working on rather than the thing
+you once worked on most. The window rolls and ignores the calendar; a shelf of
+a past year has no momentum and reads busiest-first as it always did.
+
+Neither the score nor the order is interpreted anywhere. There is no target,
+no streak, and no figure on a card saying how warm a project is.
+
 ## Reminders and replies
 
 A `{time}` that has come due surfaces **one** prompt above the capture box,

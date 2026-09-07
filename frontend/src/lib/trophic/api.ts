@@ -128,6 +128,12 @@ export interface Album extends Folder {
 	 *  beside it and unlike the folder record's own `seconds`, because a card
 	 *  is a card about a year. */
 	seconds: number;
+	/** Heatmap points over the last month — the order this shelf comes back
+	 *  in, carried so the order has a stated cause. **Not for drawing.** A
+	 *  number per project that rises when you work and falls when you stop is
+	 *  a score, and the clock was let into this app on the promise of not
+	 *  becoming one. It sorts; it does not appear. */
+	momentum: number;
 }
 
 /** A contiguous run of months inside one album-year, named from the user's own
@@ -191,6 +197,24 @@ export interface AlbumView {
 	 *  found and taken back. Empty for the unfiled pile, which cannot be
 	 *  clocked: a session is logged from a folder's own screen. */
 	sessions: TimeSession[];
+	/** Every day of this year with anything on it, oldest first — the
+	 *  heatmap. Empty days are absent rather than zero: a year is 365 cells
+	 *  and the client can lay out a calendar without being sent one. */
+	heat: HeatDay[];
+}
+
+/** One day of one folder, and what it is worth: **one point per entry, one
+ *  per twenty minutes clocked.** Both counts come along beside the total so
+ *  pressing a cell can say where the points came from rather than only how
+ *  many there were.
+ *
+ *  `points` is uncapped. The ceiling that stops a very loud day out-glowing a
+ *  good one is a property of the ramp and lives in `Heatmap.svelte`. */
+export interface HeatDay {
+	day: string;
+	entries: number;
+	seconds: number;
+	points: number;
 }
 
 export interface Reminder {

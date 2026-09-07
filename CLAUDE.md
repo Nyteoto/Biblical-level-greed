@@ -286,6 +286,34 @@ editing frontend source leaves the app serving stale UI until you run
     minutes later has no user gesture near it. One chime on waking, however
     many boundaries were slept through — what you want to be told is which
     phase you are in now.
+- **A day is worth one point per entry and one per twenty minutes clocked,
+  and that number does two jobs.** It is what a folder's heatmap draws — the
+  grid in the overview's `Readings`, beside the `\pattern` counts — and,
+  summed over a rolling thirty days, it is the order the year shelf comes back
+  in. `points()` in `index.py` is the one place the rule is spelled, and
+  `test_momentum_agrees_with_the_days_the_heatmap_draws` is what stops the two
+  readings drifting: the order of the shelf has to stay explainable by
+  pointing at cells. An entry counts the same whether it is a word or a
+  paragraph, for the reason nothing else here measures length either.
+  - **The cap is the light, not the count.** Ten points is where the ramp tops
+    out and a day past it is simply lit. It keeps counting — in the readout
+    and in the sum — because a ceiling that also discarded what it clipped
+    would make the number you can read disagree with the order you can see.
+    `PEAK` lives in `Heatmap.svelte` because it is a drawing decision; nothing
+    on the wire is capped.
+  - **The window is a rolling month and does not respect the year.** Asked on
+    the 3rd of January what you have been doing lately, a shelf cut to the
+    calendar would answer "nothing, the year is new" — which is an answer
+    about the planet rather than about the work. `store.shelf()` reads the
+    clock and hands `index` a day; `index` never reads one. A past year has no
+    momentum at all and falls all the way back to the old order, busiest first
+    then by name, which is why every shelf you are not living in reads exactly
+    as it did.
+  - **`momentum` is a sort key and is never drawn.** It rides on the shelf
+    payload so the order has a stated cause, and that is the whole of its job.
+    A number per project that rises when you work and falls when you stop is a
+    score, and the clock was let into this app on the promise of not becoming
+    one. A heatmap draws days; a figure on a card would be a verdict.
 - **The shelf's group order is one event carrying the whole order.**
   `order-groups` names the year and lists its headings. A "moved to third"
   event would land somewhere else on a replay, and duplicated or out-of-order
@@ -307,12 +335,15 @@ has no score, and time on a project is a fact about the project rather than a
 judgement about you: `41h` beside `96 entries` reads the way `96 entries`
 does. What the old rule was protecting still holds and is worth keeping —
 **the number is drawn and never interpreted.** No targets, no streaks, no
-average session length, no "you have not worked on this in nine days".
+average session length, no "you have not worked on this in nine days". The
+heatmap and the shelf's order are not exceptions and must not become the road
+to one: a grid of days is a record of what happened, and the moment it grows a
+streak count or a target it has stopped being that.
 
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 463 tests, ~3s. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 506 tests, ~3s. Run them.
 ./run.sh                                        # build frontend + serve on 8787
 uvicorn backend.app.main:app --reload --port 8787   # dev backend
 cd frontend && npm run dev                      # dev frontend

@@ -152,8 +152,12 @@ class Store:
             }
 
     def shelf(self, year: str | None) -> dict:
+        """The clock is read here and nowhere below, like `due_reminders`:
+        the shelf's order depends on what day it is, and `index` is not
+        allowed to know."""
+        today = day_key()
         with self._lock:
-            return index.shelf(self.conn, year)
+            return index.shelf(self.conn, year, today)
 
     def album(self, folder_id: str | None, year: str | None) -> dict:
         with self._lock:
