@@ -45,7 +45,7 @@
 	import Segmented from '$lib/trophic/Segmented.svelte';
 	import TabPill from '$lib/trophic/TabPill.svelte';
 	import Timer from '$lib/trophic/Timer.svelte';
-	import { clockFace, duration, timer } from '$lib/trophic/timer.svelte';
+	import { clockFace, duration, timer } from '$lib/trophic/timer.svelte.js';
 	import { todayKey } from '$lib/trophic/day';
 	import { albumWeek, groupDays } from '$lib/trophic/log';
 	import { logSettings } from '$lib/trophic/settings.svelte';

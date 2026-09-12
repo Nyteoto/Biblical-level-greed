@@ -20,7 +20,7 @@
 	 * were counting towards something — and this counts away from a start with
 	 * no target at all. The one moving thing is the seconds place.
 	 */
-	import { clockFace, duration, timer } from './timer.svelte';
+	import { clockFace, duration, timer } from './timer.svelte.js';
 	import Glyph from './Glyph.svelte';
 
 	let {
