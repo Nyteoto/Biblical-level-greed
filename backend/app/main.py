@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,13 @@ from . import backup, config, edits, eventlog, media, storage, tools, watcher, x
 from .config import ROOT
 from .media import MediaError
 from .version import API_VERSION
+
+# The supervisor differs by platform and so does its name for our unit. Stated
+# here rather than inside the handler for the same reason `backup.py` states
+# its two scripts at module level: a platform conditional is a bad place to
+# keep a fact somebody has to be able to find.
+_WINDOWS = sys.platform == "win32"
+_DEFAULT_UNIT = "PGS Server" if _WINDOWS else "pgs.service"
 
 # When this process came up. The version check reads it too: a server that
 # restarted is a server whose Python is as new as its files.
@@ -318,22 +326,86 @@ def api_version() -> dict:
     return {"api": API_VERSION, "since": _STARTED}
 
 
+def _restart_command(unit: str) -> list[str]:
+    """The argv that restarts the supervisor in front of this process.
+
+    Two supervisors, one gesture. On Fedora it is the systemd user unit; on
+    Windows it is the `PGS Server` scheduled task that
+    `install-windows-tasks.ps1` registers, which is the same arrangement by a
+    different name — start at logon, restart on failure, no console window.
+
+    Task Scheduler has no verb for "restart", so it is spelled out, and the
+    sleep is load-bearing: the task is registered `-MultipleInstances
+    IgnoreNew`, so a start issued before the stop has finished is discarded
+    without an error and the app simply never comes back.
+
+    `powershell`, never `pwsh` — 5.1 is what the task itself runs and what
+    everything else in this repo names. The unit name is single-quoted for
+    PowerShell with its own quotes doubled, because it arrives from the
+    environment and a task name is allowed to contain one.
+    """
+    if _WINDOWS:
+        quoted = unit.replace("'", "''")
+        return [
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            f"Stop-ScheduledTask -TaskName '{quoted}'; "
+            "Start-Sleep -Seconds 1; "
+            f"Start-ScheduledTask -TaskName '{quoted}'",
+        ]
+    return ["systemctl", "--user", "restart", unit]
+
+
 @app.post("/api/restart")
 def restart_server() -> dict:
     """Restart the service in front of this process.
 
     The app cannot restart *itself* — `Restart=on-failure` means a clean exit
-    stays exited — so this asks systemd to do it. Spawned and abandoned rather
-    than waited on, because the thing being restarted is the process that would
-    do the waiting: the reply has to leave before the server does.
+    stays exited — so this asks the supervisor to do it. Spawned and abandoned
+    rather than waited on, because the thing being restarted is the process
+    that would do the waiting: the reply has to leave before the server does.
+
+    Which means the child has to outlive its parent, and that is the one part
+    the two platforms do not spell the same way. `start_new_session` is a
+    POSIX call and is ignored on Windows, where it takes two flags — and the
+    obvious third one is a trap:
+
+    - `CREATE_BREAKAWAY_FROM_JOB` leaves the *job object* behind, which is
+      what actually matters here. Task Scheduler runs a task inside a job and
+      stops it by killing that job, so a helper still inside it is killed by
+      the very `Stop-ScheduledTask` it just issued: the start never runs and
+      the app stays down, having already answered `{"ok": true}`.
+    - `CREATE_NO_WINDOW` keeps the console hidden, for the reason
+      `install-windows-tasks.ps1` gives for `pythonw.exe` — a black rectangle
+      on the desktop is not an acceptable cost of restarting.
+    - **Not** `DETACHED_PROCESS`, which reads like the right flag and is not.
+      It is documented as mutually exclusive with `CREATE_NO_WINDOW`, and the
+      failure is silent in the worst way: `CreateProcess` returns success,
+      `Popen` raises nothing, and the child simply never runs. Measured here —
+      every combination containing it failed to start `powershell.exe` at all,
+      from an ordinary parent, with no job object anywhere in the picture.
+
+    Nothing equivalent is needed under systemd: `start_new_session` puts the
+    child in its own session and `systemctl restart` targets the unit's
+    cgroup, which the new session has already left.
     """
-    unit = os.environ.get("PGS_SERVICE", "pgs.service")
+    unit = os.environ.get("PGS_SERVICE", _DEFAULT_UNIT)
+    spawn: dict = (
+        {
+            "creationflags": subprocess.CREATE_NO_WINDOW
+            | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        }
+        if _WINDOWS
+        else {"start_new_session": True}
+    )
     try:
         subprocess.Popen(
-            ["systemctl", "--user", "restart", unit],
-            start_new_session=True,
+            _restart_command(unit),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            **spawn,
         )
     except (OSError, ValueError) as exc:
         raise HTTPException(500, f"could not restart {unit}: {exc}") from exc
