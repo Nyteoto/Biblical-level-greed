@@ -25,7 +25,12 @@
 // in private mode throws on setItem, and a preference is not worth an error.
 //
 // The environment is injected rather than read from globals so the behaviour
-// can be replayed. See the note in TROPHIC.md about `retry_queue.json`.
+// can be replayed. Note that `retry_queue.json` cannot be satisfied and the
+// runner reports it as CORPUS? rather than failing forever: its fixtures
+// contradict the module they were generated from — a successful send is
+// expected to leave the entry in storage, and every case reports `pending: 0`
+// beside a three-entry queue. This module follows the corpus file's *notes*,
+// which are accurate. See the `retry_queue` branch in `scripts/verify-ui.ts`.
 
 export const STORAGE_KEY = 'trophic-retry-queue';
 export const MAX_AGE_MS = 24 * 60 * 60 * 1000;

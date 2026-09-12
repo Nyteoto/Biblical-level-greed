@@ -294,7 +294,9 @@ def test_a_place_is_a_tag_that_points_nowhere(capture_store):
     The two halves that matter: a place reaches the index as its own list, and
     it does *not* reach `folders`. Only `<tag>` and `--directive` can put an
     entry anywhere, and a second route into folder membership is the one thing
-    the folder model cannot survive — see TROPHIC.md.
+    the folder model cannot survive: membership is resolved on the read, never
+    stored, which is what makes mapping retroactive. See `_MEMBERSHIP` in
+    `backend/capture/index.py`.
     """
     capture_store.capture("coffee @helsinki with <work>")
     entry = capture_store.entries(limit=1)[0]

@@ -16,9 +16,26 @@ different from what it used to:
   about what the user wrote.
 
 A module that knows about both is the thing this repo has spent its history not
-being. Read `TROPHIC.md` before touching anything under `capture/` or
-`frontend/src/lib/trophic/` — the port has an oracle, and guessing at behaviour
-it already pins is wasted work.
+being.
+
+**Capture was ported from another codebase, and the port has an oracle.** The
+`trophic/` bundle — gitignored, local to this disk — holds 2268 input→output
+fixtures generated from the original TypeScript, and they are the specification
+for `backend/capture/` and `frontend/src/lib/trophic/`. Before changing
+behaviour in either, run both verifiers and know what they say; guessing at
+something the corpus already pins is wasted work, and a "cleanup" that
+normalises a tuned constant will fail a fixture rather than a review.
+
+```bash
+python3 trophic/golden/verify_golden.py     # the Python side, 1348 passing
+cd frontend && npm run verify:ui            # the TypeScript side, 770 passing
+```
+
+A fresh clone has neither the bundle nor the verifier. `trophic/README.md`
+explains the bundle; `frontend/scripts/verify-ui.ts` carries the deviations,
+the colour table and where to fetch the bundle again. There is no `TROPHIC.md`
+any more and there should not be one again: a second account of the app beside
+the app drifted out of true and was still being read as current.
 
 If you find prose anywhere in this repo describing a board, a node, a tier, XP,
 a season or a domain, it is stale and predates the removal. Delete it rather
@@ -113,7 +130,8 @@ itself: the log holds references, and the files behind them have one copy.
 | `version.py` | the number the browser and the server have to agree on. Bump it when a route or payload changes. |
 | `main.py` | thin FastAPI layer: the machine's routes, capture's router, and the SPA. |
 
-`backend/capture/` — the app. Read `TROPHIC.md` first; this half has an oracle.
+`backend/capture/` — the app. This half has an oracle; run the verifiers above
+before changing what it does.
 
 | module | owns |
 |---|---|
@@ -149,7 +167,8 @@ any more — it held the tech tree's node and domain UI and went with it.
 ## Invariants worth stating
 
 - **Out-of-order and duplicated log lines are handled *on read*** — events sort
-  by `ts` stably, and the fold is last-wins throughout. This used to exist for
+  by `ts` stably, and the fold is last-wins throughout. See `test_sync.py`. This
+  used to exist for
   `merge=union` in `.gitattributes`, which is gone now that the stream is
   untracked; keep the read-side tolerance anyway, because a restored backup or
   an interrupted write produces the same shapes. `test_capture.py` and
@@ -159,11 +178,19 @@ any more — it held the tech tree's node and domain UI and went with it.
   `/manual` the two support screens. Text and media enter the system through
   the capture bar and nowhere else — the markdown notes system, the PGS
   checklist and the tech tree were each removed as that became true.
-- **`/log` is the journal, and it is a feed of days.** Not a date ruler — the
-  source's one is deleted, deliberately, and TROPHIC.md records what that cost
-  the corpus. A day is a sticky header, a contact sheet of its media, then its
-  lines. Anything that reintroduces one-day-at-a-time navigation is going
-  backwards.
+- **The journal is three rungs, and `/log` is the top one.** `/log` is the
+  **year shelf** and shows no entries at all — which albums exist this year,
+  how big each is, when each was busy. `/folders/[id]` is one album (one folder
+  through one year) and `/folders/[id]/[month]` is one month of it; the feed of
+  days lives in those two, where a day is a sticky header, a contact sheet of
+  its media, then its lines. The source's date ruler is deleted, deliberately:
+  it cost the corpus `timeline_draw`'s 22 cases and retired
+  `timeline_interaction`'s 27, which is a deviation rather than a debt —
+  there is no ruler left for them to describe.
+  **Scrolling is for reading, never for travelling** — the year rail, the month
+  spine, the chapter list and the jump field are all constant-cost, and
+  anything that reintroduces one-day-at-a-time navigation, or pages the reading
+  view, is going backwards.
 - **The monitor is a layer, not a style.** The scanlines, vignette, grain, glow,
   sheen, rim and bezel are seven fixed `pointer-events: none` siblings in
   `+layout.svelte` that know nothing about the app. Content can be rewritten
@@ -253,6 +280,72 @@ any more — it held the tech tree's node and domain UI and went with it.
   platform conditional is one that gets removed in a hurry. They write to
   different disks by necessity (ext4 is unreadable from Windows) and that is
   two complete copies, not two halves.
+- **A folder's clock is a sum of sessions, and the session is the subject.**
+  `log-time` carries its own id with the folder in the `folder` field, not the
+  other way round. That is not a style choice: every other fold in this log is
+  last-wins on a state, so a duplicated line says the same thing twice and
+  lands the same way, while a *summed* fold keyed on the folder would count a
+  restored backup's line twice and inflate a total nobody can check by eye.
+  Keyed on the session, applying the same line twice is the same total. The
+  inverse is `unlog-time` on that session id — never a negative duration, which
+  would make the total right and the history absurd. Totals are
+  `sum(seconds)`, derived on every read, stored nowhere, and cut by year for an
+  album exactly as `entry_count` is.
+  - **The running timer is not in the log, and must not be.** It lives in
+    `localStorage` via `timer.svelte.ts` until you stop it, because a session
+    is a draft until it ends — the same bargain the capture bar's text makes.
+    A `start` event would put an unmatched start in an append-only file for
+    every timer anyone ever forgot, and no fold could tell those from the real
+    ones. The cost is accepted: close the tab mid-session and that time is on
+    that machine only. Elapsed is computed from wall-clock stamps and never
+    accumulated by a tick, because a background tab's timers are throttled and
+    a sleeping phone's stop entirely.
+  - **A pomodoro logs its work and never its rest.** `pomodoroAt` in
+    `timer.ts` cuts one elapsed number into phases, and `stop()` writes
+    `workedMs`. A cycle that banked its own breaks would make an hour at the
+    desk read as an hour and ten, and the figure on the card would stop
+    meaning "time worked" — which is the only thing it is allowed to mean.
+    **The phase is derived from elapsed time, never flipped by a callback**,
+    for the same reason the clock is: the `setTimeout` that would end the work
+    stretch does not fire in a slept tab, so a phone locked mid-stretch would
+    wake an hour later still "working". Deriving it makes the answer after any
+    sleep simply correct, and the pinned table in `localChecks()` is what holds
+    that — it is the most load-bearing pure function this port owns, because
+    its output is what reaches an append-only log.
+  - The chime is synthesised in `chime.ts` rather than shipped as a file: two
+    sine tones, rising into work and falling into rest. The audio context is
+    unlocked on the press that starts the timer, because a boundary forty
+    minutes later has no user gesture near it. One chime on waking, however
+    many boundaries were slept through — what you want to be told is which
+    phase you are in now.
+- **A day is worth one point per entry and one per twenty minutes clocked,
+  and that number does two jobs.** It is what a folder's heatmap draws — the
+  grid in the overview's `Readings`, beside the `\pattern` counts — and,
+  summed over a rolling thirty days, it is the order the year shelf comes back
+  in. `points()` in `index.py` is the one place the rule is spelled, and
+  `test_momentum_agrees_with_the_days_the_heatmap_draws` is what stops the two
+  readings drifting: the order of the shelf has to stay explainable by
+  pointing at cells. An entry counts the same whether it is a word or a
+  paragraph, for the reason nothing else here measures length either.
+  - **The cap is the light, not the count.** Ten points is where the ramp tops
+    out and a day past it is simply lit. It keeps counting — in the readout
+    and in the sum — because a ceiling that also discarded what it clipped
+    would make the number you can read disagree with the order you can see.
+    `PEAK` lives in `Heatmap.svelte` because it is a drawing decision; nothing
+    on the wire is capped.
+  - **The window is a rolling month and does not respect the year.** Asked on
+    the 3rd of January what you have been doing lately, a shelf cut to the
+    calendar would answer "nothing, the year is new" — which is an answer
+    about the planet rather than about the work. `store.shelf()` reads the
+    clock and hands `index` a day; `index` never reads one. A past year has no
+    momentum at all and falls all the way back to the old order, busiest first
+    then by name, which is why every shelf you are not living in reads exactly
+    as it did.
+  - **`momentum` is a sort key and is never drawn.** It rides on the shelf
+    payload so the order has a stated cause, and that is the whole of its job.
+    A number per project that rises when you work and falls when you stop is a
+    score, and the clock was let into this app on the promise of not becoming
+    one. A heatmap draws days; a figure on a card would be a verdict.
 - **The shelf's group order is one event carrying the whole order.**
   `order-groups` names the year and lists its headings. A "moved to third"
   event would land somewhere else on a replay, and duplicated or out-of-order
@@ -262,19 +355,32 @@ any more — it held the tech tree's node and domain UI and went with it.
 
 ## Deliberately absent
 
-Timers, minute tracking, notifications, multi-user, auth, log editing, and
-anything adaptive. What is captured is stored and drawn, **never interpreted**:
-no sentiment scoring on `\patterns`, no suggestions, no summaries of the
-user's own week. These are refusals, not gaps — do not helpfully add them.
+Notifications, multi-user, auth, log editing, and anything adaptive. What is
+captured is stored and drawn, **never interpreted**: no sentiment scoring on
+`\patterns`, no suggestions, no summaries of the user's own week. These are
+refusals, not gaps — do not helpfully add them.
 
 Also absent, and not coming back: the tech tree. Boards, nodes, tiers, XP,
 seasons, domains, `.toml` curricula and the six seed trees. Removed on
 2026-08-27 at the user's request, in full.
 
+**Timers and minute tracking used to head that list, and no longer do.** A
+folder has a clock now — see the invariant above. The refusal was written when
+the only thing that could have been timed was a practice session, and timing
+those is the thing that turns practice into a score you can lose at. Capture
+has no score, and time on a project is a fact about the project rather than a
+judgement about you: `41h` beside `96 entries` reads the way `96 entries`
+does. What the old rule was protecting still holds and is worth keeping —
+**the number is drawn and never interpreted.** No targets, no streaks, no
+average session length, no "you have not worked on this in nine days". The
+heatmap and the shelf's order are not exceptions and must not become the road
+to one: a grid of days is a record of what happened, and the moment it grows a
+streak count or a target it has stopped being that.
+
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q     # 243 tests. Run them.
+.venv/bin/python -m pytest backend/tests -q     # 290 tests. Run them.
 python scripts/fixture.py                       # → data.fixture/, a whole fake data dir
 python desktop.py --data-dir data.fixture       # ...and look at it
 ./run.sh                                        # build frontend + serve on 8787

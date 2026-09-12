@@ -38,4 +38,19 @@ thing that is not wrong. That case is a page reload, which the message says.
 #     would keep asking for those and get a 404 per screen, which reads as an
 #     app that half-loaded. This is the one kind of change the number exists
 #     for: routes that used to answer and now do not.
-API_VERSION = 6
+# 7 — the folder clock: `log-time`/`unlog-time`, `POST /folders/{id}/time` and
+#     `DELETE /time/{id}`, and `seconds` on a folder, an album and a shelf
+#     card, plus `time_volumes` and `sessions` on an album. This is the case
+#     the number exists for and it was missed once already: against a server
+#     without the route, stopping a timer reported `not logged — retry` and
+#     every retry 404'd identically, so the screen said the send had failed
+#     and could not say that the *server* was the thing that was old.
+#
+#     Numbered 7 at the merge: the clock was built on the branch as 6 while
+#     the removal was taking 6 on main, and for a while two different apps
+#     both answered `{"api": 6}`. That is the one failure this number cannot
+#     survive — the check compares equal and stays quiet, so a browser with
+#     the clock in it asked a server without the route and got the 404 the
+#     whole mechanism exists to pre-empt. A number means one change to the
+#     surface, and two branches cannot both spend it.
+API_VERSION = 7

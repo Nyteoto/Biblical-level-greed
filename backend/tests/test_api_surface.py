@@ -169,3 +169,41 @@ def test_a_disk_that_cannot_be_written_says_so(capture_store, monkeypatch):
     detail = r.json()["detail"]
     assert "No space left on device" in detail
     assert "Nothing was saved" in detail
+
+
+# -- the two halves of the version handshake --------------------------------
+
+
+def test_the_browser_and_the_server_agree_on_the_api_version():
+    """`EXPECTED_API` in the frontend must equal `API_VERSION` in the backend.
+
+    `version.py` describes this number as a discipline — "a number that has to
+    be remembered" — and the failure it catches is a long-running service
+    serving old Python behind a current page. It has now also caught the
+    failure one step upstream: **the number being forgotten.**
+
+    The folder clock shipped two routes, five payload fields and two event
+    kinds without a bump, so the shell had nothing to notice and the album
+    screen reported `not logged — retry` against a server that simply did not
+    have the route, retrying identically forever. The mechanism was right and
+    unarmed.
+
+    A test rather than a convention, because a convention is what did not
+    hold. It reads the constant out of the TypeScript rather than duplicating
+    it here — a third copy of the number would be a third thing to forget.
+    """
+    import re
+
+    from backend.app.config import ROOT
+    from backend.app.version import API_VERSION
+
+    source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
+    found = re.search(r"export const EXPECTED_API = (\d+);", source)
+    assert found, "EXPECTED_API is not declared in frontend/src/lib/api.ts"
+
+    expected = int(found.group(1))
+    assert expected == API_VERSION, (
+        f"the frontend expects API {expected} and the backend serves {API_VERSION}. "
+        "Bump both together: a route, a payload field or an event kind changed "
+        "and the shell needs to be able to say so."
+    )

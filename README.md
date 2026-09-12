@@ -2,11 +2,10 @@
 
 A syntax-driven capture app, on one dual-boot machine, with one data disk.
 
-A capture bar at `/` and a journal of what it caught. You type a line; the
-sigils in it file it, mark it, schedule it or turn it into a checkbox. Nothing
-is edited afterwards — the log is append-only, and every folder, tag, time and
-checkbox you see is derived from it on read. It is documented at length in
-[TROPHIC.md](TROPHIC.md).
+A syntax-driven capture bar at `/` and a journal of what it caught. You type a
+line; the sigils in it file it, mark it, schedule it or turn it into a
+checkbox. Nothing is edited afterwards — the log is append-only, and every
+folder, tag, time and checkbox you see is derived from it on read.
 
 This repo also held a tech tree for deliberate practice, as a sibling app in
 the same process. **It was removed on 2026-08-27** — screens, API, trees, XP,
@@ -39,7 +38,7 @@ The Windows installer writes `pgs.cmd` and a Start Menu shortcut, and re-running
 it after `git pull` is how you update — `frontend/build` is gitignored, so a
 pull that changed the UI serves the old one until the build step runs.
 
-Tests: `.venv/bin/python -m pytest backend/tests -q` — 243 tests.
+Tests: `.venv/bin/python -m pytest backend/tests -q` — 290 tests.
 On Windows, `.venv\Scripts\python.exe -m pytest backend\tests -q`.
 
 Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm run dev`.
@@ -48,7 +47,6 @@ Dev: `uvicorn backend.app.main:app --reload --port 8787` + `cd frontend && npm r
 Sample data, for looking at a screen without opening your own log:
 `python scripts/fixture.py` → `data.fixture/`, then `pgs --data-dir data.fixture`.
 
-- [TROPHIC.md](TROPHIC.md) — the capture app, the port, and its corpus
 - [MOBILE.md](MOBILE.md) — iPad/iPhone over Tailscale
 - [SYNC.md](SYNC.md) — backups, dual boot, moving machines
 
@@ -65,9 +63,10 @@ Navigation is three words in one pill, in the same corner of every screen.
 | `/settings` | Disk, Folders & tags, Log, Monitor — and the Manual. |
 | `/manual` | What the syntax does, and why the log is append-only. |
 
-The Log is a feed of days, not a date ruler: a sticky header, a contact sheet
-of that day's media, then its lines. Quiet stretches fold, and can be told not
-to (Settings → Log).
+The Log is the top of three rungs and shows no entries itself. Reading happens
+one rung down, in an album and its months, and it is a feed of days rather than
+a date ruler: a sticky header, a contact sheet of that day's media, then its
+lines. Quiet stretches fold, and can be told not to (Settings → Log).
 
 ## The syntax
 
@@ -129,6 +128,24 @@ against every name the folder has ever had.
 draws as `garden` everywhere and still files exactly where it did. It is a log
 event rather than a browser preference, because it is a decision about the
 writing. Only `<tags>` can be lifted.
+
+### Points, the heatmap and the order of the shelf
+
+A day in a folder is worth **one point per entry, plus one per twenty minutes
+on that folder's clock**. An entry counts the same whether it is a word or a
+paragraph.
+
+Those points are drawn twice. The folder's overview has a year of days under
+`Readings`, beside the `\pattern` counts — one cell per day, brighter with the
+score, topping out at ten and then simply lit. Press a cell and it says what
+that day was: the points, the entries, the time. And the same points, summed
+over **the last thirty days**, are the order the year shelf comes back in, so
+the first card is the thing you are actually working on rather than the thing
+you once worked on most. The window rolls and ignores the calendar; a shelf of
+a past year has no momentum and reads busiest-first as it always did.
+
+Neither the score nor the order is interpreted anywhere. There is no target,
+no streak, and no figure on a card saying how warm a project is.
 
 ## Reminders and replies
 

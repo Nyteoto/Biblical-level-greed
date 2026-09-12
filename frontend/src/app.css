@@ -1,12 +1,15 @@
 @import 'tailwindcss';
 
-/* Archivo and JetBrains Mono, self-hosted. The app is read on an iPad over
-   Tailscale with no route to the open internet, so a webfont CDN would simply
-   not resolve there; these are variable woff2 files served off the same origin
-   as everything else. Variable rather than five static weights because the
-   design uses 400 through 800 and a single axis file is smaller than two of
-   them. */
-@import '@fontsource-variable/archivo';
+/* JetBrains Mono, self-hosted. The app is read on an iPad over Tailscale with
+   no route to the open internet, so a webfont CDN would simply not resolve
+   there; this is a variable woff2 served off the same origin as everything
+   else. Variable rather than five static weights because the app uses 400
+   through 800 and a single axis file is smaller than two of them.
+
+   It is the only face. Archivo was imported here through the paper round and
+   the phosphor re-light took the last use of it, leaving a download nothing
+   drew — `--font-sans` and `--font-mono` are both this. The app is mono
+   throughout, which is what a terminal is. */
 @import '@fontsource-variable/jetbrains-mono';
 
 /*
@@ -105,6 +108,20 @@
 	--color-accent-600: #3cbe77;
 	/* The rung accent-coloured *text* uses. The dimmer ones are for fills. */
 	--color-accent-700: #4fff9f;
+
+	/* **The one exception to the single hue, and the only one there will be.**
+	   A refusal exists to contradict you, and a refusal folded onto the
+	   phosphor ramp looks like output — which is the whole reason `phosphorize`
+	   in `colors.ts` passes this value through untouched.
+
+	   It is the same `#ff6a5a` as `UI_COLORS.error`, and it is here because it
+	   was *only* there: the capture bar blinks a token in it through an inline
+	   style, so the colour existed in TypeScript and had no CSS home at all.
+	   A `text-error` written in a component therefore resolved to nothing and
+	   rendered in the phosphor — a refusal that looked exactly like output,
+	   which is the failure the rule above is written to prevent. Keep the two
+	   values equal; there is no third place to change. */
+	--color-error: #ff6a5a;
 
 	/* One step apart, and used as a ladder: a card at rest is `md`, lifted is
 	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two.

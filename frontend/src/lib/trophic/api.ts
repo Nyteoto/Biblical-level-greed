@@ -80,6 +80,19 @@ export interface Folder {
 	entry_count: number;
 	/** The tags that point here. A tag points at one folder at most. */
 	tags: string[];
+	/** Seconds measured against this folder, all-time. A sum over timer
+	 *  sessions in the log, computed on every read and stored nowhere — the
+	 *  same contract as `entry_count`. */
+	seconds: number;
+}
+
+/** One measured stretch of work. `id` is the session's own, which is what
+ *  `unlogTime` names and what makes a duplicated log line harmless. */
+export interface TimeSession {
+	id: string;
+	seconds: number;
+	day: string;
+	ts: string;
 }
 
 export interface UnassignedTag {
@@ -111,6 +124,16 @@ export interface Album extends Folder {
 	/** The group heading this card sits under this year, or "" for the loose
 	 *  grid above them. Cosmetic — it files nothing and gates nothing. */
 	group: string;
+	/** Seconds logged into this album *this year*. Scoped like `entry_count`
+	 *  beside it and unlike the folder record's own `seconds`, because a card
+	 *  is a card about a year. */
+	seconds: number;
+	/** Heatmap points over the last month — the order this shelf comes back
+	 *  in, carried so the order has a stated cause. **Not for drawing.** A
+	 *  number per project that rises when you work and falls when you stop is
+	 *  a score, and the clock was let into this app on the promise of not
+	 *  becoming one. It sorts; it does not appear. */
+	momentum: number;
 }
 
 /** A contiguous run of months inside one album-year, named from the user's own
@@ -165,6 +188,33 @@ export interface AlbumView {
 	/** Which shelf group this folder sits in *this year*, or "" for the loose
 	 *  grid. Per-year, so the same folder can be filed differently next year. */
 	group: string;
+	/** The album's clock, for this year. */
+	seconds: number;
+	/** Twelve seconds-per-month totals, January first — the time-shaped twin
+	 *  of `volumes`, drawn on the same twelve bars. */
+	time_volumes: number[];
+	/** The sessions themselves, newest first, so one logged by mistake can be
+	 *  found and taken back. Empty for the unfiled pile, which cannot be
+	 *  clocked: a session is logged from a folder's own screen. */
+	sessions: TimeSession[];
+	/** Every day of this year with anything on it, oldest first — the
+	 *  heatmap. Empty days are absent rather than zero: a year is 365 cells
+	 *  and the client can lay out a calendar without being sent one. */
+	heat: HeatDay[];
+}
+
+/** One day of one folder, and what it is worth: **one point per entry, one
+ *  per twenty minutes clocked.** Both counts come along beside the total so
+ *  pressing a cell can say where the points came from rather than only how
+ *  many there were.
+ *
+ *  `points` is uncapped. The ceiling that stops a very loud day out-glowing a
+ *  good one is a property of the ramp and lives in `Heatmap.svelte`. */
+export interface HeatDay {
+	day: string;
+	entries: number;
+	seconds: number;
+	points: number;
 }
 
 export interface Reminder {
@@ -233,6 +283,22 @@ export const toggleLine = (id: string, line: number) =>
 /** The year shelf. `year` of `'all'` — which is what the yearly-restart switch
  *  turned off sends — drops the filter without changing the shape. */
 export const getShelf = (year: string) => call<Shelf>(`/shelf?year=${year}`);
+
+/** Record a finished timer session against a folder.
+ *
+ *  Sent on stop and never before: the running timer lives in the browser, and
+ *  what reaches the log is the one measurement it ended with. A session that
+ *  is never stopped is never written, which is the same bargain every other
+ *  draft in this app makes. */
+export const logTime = (folderId: string, seconds: number) =>
+	call<{ session: TimeSession }>(`/folders/${folderId}/time`, {
+		method: 'POST',
+		body: JSON.stringify({ seconds })
+	});
+
+/** Take a session back. Appends the inverse; deletes nothing. */
+export const unlogTime = (sessionId: string) =>
+	call<{ ok: boolean }>(`/time/${sessionId}`, { method: 'DELETE' });
 
 /** One album, one year. A null folder is the unfiled pile. */
 export const getAlbum = (folder: string | null, year: string) =>

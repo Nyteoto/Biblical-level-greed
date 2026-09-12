@@ -46,7 +46,9 @@
 	import { clean, isBlank } from './richtext';
 	import { hold } from './hold';
 	import Glyph from './Glyph.svelte';
-	import type { Folder } from './api';
+	import { duration } from './timer';
+	import Heatmap from './Heatmap.svelte';
+	import type { Folder, HeatDay } from './api';
 
 	let {
 		folder,
@@ -57,8 +59,11 @@
 		group = '',
 		entries = 0,
 		media = 0,
+		seconds = 0,
 		todos = { made: 0, done: 0 },
-		sentiments = []
+		sentiments = [],
+		heat = [],
+		today = ''
 	}: {
 		folder: Folder;
 		expanded?: boolean;
@@ -75,12 +80,19 @@
 		group?: string;
 		entries?: number;
 		media?: number;
+		/** Seconds clocked into this album this year. Passed in with the rest of
+		 *  the album's facts, for the same reason they are. */
+		seconds?: number;
 		/** Promises made in here and promises kept. A fact about the folder in
 		 *  the same way the entry count is, which is why it sits in the row of
 		 *  figures and not under the readings — a reading is drawn and never
 		 *  interpreted, and this one is arithmetic with an answer. */
 		todos?: { made: number; done: number };
 		sentiments?: { name: string; count: number }[];
+		/** The album's days and what each was worth — the other reading. Passed
+		 *  in with the rest of the album's facts, for the reason they are. */
+		heat?: HeatDay[];
+		today?: string;
 	} = $props();
 
 	let editing = $state(false);
@@ -268,6 +280,20 @@
 								{media.toLocaleString()}
 							</dd>
 						</div>
+						{#if seconds > 0}
+							<!-- Only when there is time on it, like the todos below. A
+							     project with no clock on it is not a project with a zero;
+							     it is one you have not timed, and those are different. -->
+							<div class="flex flex-col gap-1">
+								<dt class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
+									Clocked
+								</dt>
+								<dd class="flex items-center gap-1.5 tabular-nums">
+									<Glyph kind="time" size={12} />
+									{duration(seconds)}
+								</dd>
+							</div>
+						{/if}
 						{#if todos.made > 0}
 							<!-- Kept over made, in that order, because it is the same pair
 							     the capture screen stands a badge on — a ratio that swapped
@@ -304,33 +330,55 @@
 						{/if}
 					</dl>
 
-					{#if sentiments.length > 0}
-						<!-- The `\pattern` counts. Stored and drawn, never interpreted
-						     — a reading, not a verdict, which is why there is no
-						     sentence under them saying what they mean. -->
-						<div class="mt-6 flex max-w-[440px] flex-col gap-2">
+					{#if sentiments.length > 0 || heat.length > 0}
+						<!-- The readings. Two of them now, side by side where the
+						     column is wide enough and stacked where it is not: the
+						     `\pattern` counts, and the year of days.
+
+						     Both are stored and drawn and neither is interpreted —
+						     there is no sentence under either saying what it means,
+						     and there is not going to be one. A reading is a fact
+						     about what happened, and the moment one of them acquires
+						     a verdict it stops being a reading and becomes a score.
+
+						     One heading over the pair, not one each. They are the
+						     same kind of thing and saying "Readings" twice is the
+						     duplication the rest of this screen was cleared of. -->
+						<div class="mt-6 flex flex-col gap-3">
 							<div class="text-[10px] font-bold tracking-[0.16em] text-neutral-600 uppercase">
 								Readings
 							</div>
-							{#each sentiments as s (s.name)}
-								<div class="flex items-center gap-3 text-[12px]">
-									<span
-										class="w-24 shrink-0 truncate text-right font-mono"
-										style="color:var(--color-accent-700)"
-									>
-										{`\\${s.name}`}
-									</span>
-									<div class="h-[7px] flex-1 overflow-hidden rounded-[4px] bg-neutral-200">
-										<div
-											class="h-full rounded-[4px]"
-											style="width:{(s.count / peak) * 100}%;background:var(--gradient-accent)"
-										></div>
+							<div class="flex flex-wrap items-start gap-x-8 gap-y-6">
+								{#if sentiments.length > 0}
+									<!-- Narrow enough that the two readings clear a normal
+									     reading column together. A year of days is 53 weeks
+									     wide and that width is not negotiable; this one is,
+									     and a bar chart of counts loses nothing by being
+									     shorter. Below that they wrap and stack. -->
+									<div class="flex w-[340px] max-w-full flex-col gap-2">
+										{#each sentiments as s (s.name)}
+											<div class="flex items-center gap-3 text-[12px]">
+												<span
+													class="w-24 shrink-0 truncate text-right font-mono"
+													style="color:var(--color-accent-700)"
+												>
+													{`\\${s.name}`}
+												</span>
+												<div class="h-[7px] flex-1 overflow-hidden rounded-[4px] bg-neutral-200">
+													<div
+														class="h-full rounded-[4px]"
+														style="width:{(s.count / peak) * 100}%;background:var(--gradient-accent)"
+													></div>
+												</div>
+												<span class="w-8 shrink-0 text-right tabular-nums text-neutral-700">
+													{s.count}
+												</span>
+											</div>
+										{/each}
 									</div>
-									<span class="w-8 shrink-0 text-right tabular-nums text-neutral-700">
-										{s.count}
-									</span>
-								</div>
-							{/each}
+								{/if}
+								<Heatmap {year} {heat} {today} />
+							</div>
 						</div>
 					{/if}
 				</div>

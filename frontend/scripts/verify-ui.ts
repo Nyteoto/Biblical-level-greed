@@ -36,6 +36,7 @@ import { view, handleKey, caretStyle, acceptSuggestion } from '../src/lib/trophi
 import { colorizeSegments, segmentsToHtml } from '../src/lib/trophic/colorize.ts';
 import { LongPress } from '../src/lib/trophic/longpress.ts';
 import { classifyDevice, keyboardOpen, readHandMode, COARSE_QUERY } from '../src/lib/trophic/device.ts';
+import { clockFace, duration, pomodoroAt } from '../src/lib/trophic/timer.ts';
 import {
 	enqueue,
 	flush,
@@ -291,7 +292,8 @@ ADAPTERS.retry_queue = (i: {
 	};
 
 	// The corpus's flush step is asynchronous; the adapter is not, so the
-	// runner awaits this one. See the note about this file in TROPHIC.md.
+	// runner awaits this one. Why this file reports CORPUS? rather than passing
+	// or failing is in the `retry_queue` branch of `runFile` below.
 	return (async () => {
 		const trace: unknown[] = [];
 		for (const step of i.steps) {
@@ -317,17 +319,21 @@ ADAPTERS.colorize = (i: { text: string }) => {
 
 // ── The one declared deviation: colour ────────────────────────────────────
 //
-// The source was painted against white and this app is painted on `#f3f2f2`
-// in Archivo, so every colour was re-lit. That is written down in TROPHIC.md
-// as a deliberate deviation — but "we changed the colours" is the kind of
-// excuse that hides a real mistake, so it is spelled out here instead: each
+// The source was painted against white; this app is a green-phosphor tube on
+// `#0a1116`, so every colour was re-lit. "We changed the colours" is the kind
+// of excuse that hides a real mistake, so it is spelled out here instead: each
 // colour this port emits, and the source colour(s) it stands in for. Anything
 // else is a failure. Geometry, ordering and op counts are compared exactly.
 //
-// This table has been rewritten once already, when the shell went from
-// `#14100c` back to paper. That it was the *only* thing that had to change is
-// the point of keeping it: the hues never moved, only their lightness, and a
-// one-line-per-colour table is what proves that rather than asserts it.
+// This table has been rewritten twice — when the shell went from `#14100c` to
+// paper, and again when paper became the tube. That it is the *only* thing
+// that has to change each time is the point of keeping it.
+//
+// **It is many-to-one now, and that is why it translates source→port.** The
+// re-light collapsed five syntax hues onto one phosphor, so several source
+// colours map to the same `#4fff9f` and the reverse lookup has no answer.
+// Translate the expectation forward and then demand an exact match; do not
+// try to read a port colour back to the hue it came from.
 
 const THEME: Record<string, string[]> = {
 	// lib/colors.ts — the syntax hues, now collapsed onto one phosphor.
@@ -1054,6 +1060,111 @@ async function localChecks(): Promise<string[]> {
 		}
 	}
 
+	// ── The clock's two formatters ────────────────────────────────────────
+	//
+	// No corpus covers these: the source has no timer. They are here for the
+	// same reason `pinned.ts` is — they are pure, they are this port's own, and
+	// a number read wrong on a screen is the kind of mistake that survives a
+	// hundred glances. The rounding cases are the ones worth pinning; the rest
+	// are here so a rewrite has something to fail against.
+	const faces: [number, string][] = [
+		[0, '0:00'],
+		[9, '0:09'],
+		[70, '1:10'],
+		[600, '10:00'],
+		// The hour is where the shape changes, and both sides of it matter.
+		[3599, '59:59'],
+		[3600, '1:00:00'],
+		[3661, '1:01:01'],
+		[36000, '10:00:00'],
+		// A negative can only arrive from a clock set backwards mid-session.
+		// It reads as zero rather than as a minus sign.
+		[-5, '0:00'],
+		// A server one deploy behind the client sends no field at all. That is
+		// a normal state in this app — see the note on `duration`.
+		[NaN, '0:00'],
+		[undefined as unknown as number, '0:00']
+	];
+	for (const [input, want] of faces) {
+		const got = clockFace(input);
+		if (got !== want) failures.push(`  clockFace(${input}) = ${got}, expected ${want}`);
+	}
+
+	const durations: [number, string][] = [
+		[0, '—'],
+		[45, '45s'],
+		[60, '1m'],
+		[90, '2m'],
+		[3600, '1h'],
+		[5400, '1h 30m'],
+		// 59m30s rounds up to a full sixty minutes, which has to carry into the
+		// hour rather than print `0h 60m`.
+		[3570, '1h'],
+		[7170, '2h'],
+		// And the same carry one rung down, where there is no hour to carry to.
+		[3540, '59m'],
+		// The bug this pair was added for: the button read `NaNh NaNm` against
+		// a backend that predated the field.
+		[NaN, '—'],
+		[undefined as unknown as number, '—']
+	];
+	for (const [input, want] of durations) {
+		const got = duration(input);
+		if (got !== want) failures.push(`  duration(${input}) = ${got}, expected ${want}`);
+	}
+
+	// ── The pomodoro's arithmetic ─────────────────────────────────────────
+	//
+	// This one decides what gets written into an append-only log, so it is the
+	// most load-bearing pure function this port owns. Rest must never reach
+	// `workedMs`, and the whole thing has to be right after an arbitrary sleep
+	// — which is exactly what a table of elapsed times is a test of.
+	const MIN = 60_000;
+	// A 50/10 cycle, which is the default.
+	const pom: [number, string, number, number][] = [
+		// [elapsed ms, phase, remaining ms, worked ms]
+		[0, 'work', 50 * MIN, 0],
+		[10 * MIN, 'work', 40 * MIN, 10 * MIN],
+		// The boundary belongs to the phase that is starting, not the one that
+		// ended: at exactly 50 minutes you are resting, with a full break left.
+		[50 * MIN, 'rest', 10 * MIN, 50 * MIN],
+		[55 * MIN, 'rest', 5 * MIN, 50 * MIN],
+		// Rest does not add to the work total, however long it runs.
+		[59 * MIN, 'rest', 1 * MIN, 50 * MIN],
+		// Second cycle.
+		[60 * MIN, 'work', 50 * MIN, 50 * MIN],
+		[70 * MIN, 'work', 40 * MIN, 60 * MIN],
+		[110 * MIN, 'rest', 10 * MIN, 100 * MIN],
+		// A phone asleep for five hours wakes up in the right place, which is
+		// the whole reason this is derived rather than driven by a callback.
+		[300 * MIN, 'work', 50 * MIN, 250 * MIN]
+	];
+	for (const [elapsed, phase, remaining, worked] of pom) {
+		const got = pomodoroAt(elapsed, 50 * MIN, 10 * MIN);
+		const label = `pomodoroAt(${elapsed / MIN}m)`;
+		if (got.phase !== phase) failures.push(`  ${label}.phase = ${got.phase}, expected ${phase}`);
+		if (got.remainingMs !== remaining) {
+			failures.push(`  ${label}.remainingMs = ${got.remainingMs / MIN}m, expected ${remaining / MIN}m`);
+		}
+		if (got.workedMs !== worked) {
+			failures.push(`  ${label}.workedMs = ${got.workedMs / MIN}m, expected ${worked / MIN}m`);
+		}
+	}
+	// Cycle counting, which draws the marks.
+	if (pomodoroAt(0, 50 * MIN, 10 * MIN).cycles !== 0) failures.push('  0m is not 0 cycles');
+	if (pomodoroAt(59 * MIN, 50 * MIN, 10 * MIN).cycles !== 0) failures.push('  59m is not 0 cycles');
+	if (pomodoroAt(60 * MIN, 50 * MIN, 10 * MIN).cycles !== 1) failures.push('  60m is not 1 cycle');
+	// A cycle with no rest in it is all work and never leaves the work phase.
+	const noRest = pomodoroAt(120 * MIN, 50 * MIN, 0);
+	if (noRest.phase !== 'work' || noRest.workedMs !== 120 * MIN) {
+		failures.push(`  a rest-less cycle banked ${noRest.workedMs / MIN}m as ${noRest.phase}`);
+	}
+	// Nonsense in, something readable out — never a divide by zero.
+	const zero = pomodoroAt(90 * MIN, 0, 0);
+	if (zero.phase !== 'work' || zero.workedMs !== 90 * MIN) {
+		failures.push('  a zero-length cycle did not degrade to a stopwatch');
+	}
+
 	return failures;
 }
 
@@ -1228,7 +1339,12 @@ async function main(argv: string[]): Promise<number> {
 	if (stems === null) {
 		console.log('golden corpus, TypeScript side — SKIP\n');
 		console.log(`  corpus directory not found: ${CORPUS}`);
-		console.log('  the trophic/ bundle is gitignored — see TROPHIC.md');
+		console.log('  the trophic/ bundle is gitignored and lives only on this disk.');
+		console.log('  it came from ~/pekka/LearningNext/scheduler, branch pivot,');
+		console.log('  commit 105181c; regenerate there with `pnpm golden` and re-copy');
+		console.log('  corpus/, generate.ts, generate-ui.ts, harness.ts and README.md.');
+		console.log('  leave golden/verify_golden.py alone — the parser adapter wired');
+		console.log('  into it is an edit to an untracked file and a re-copy reverts it.');
 		console.log('  the local checks below still run, and still decide the exit code.\n');
 		// A named file that cannot be read is a different answer from "no
 		// bundle here": the caller asked for one thing and got nothing.

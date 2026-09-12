@@ -188,6 +188,42 @@ UNLIFT_TAG = "unlift-tag"
 # there, and it is the same answer on every replay.
 NAME_CHAPTER = "name-chapter"
 
+# ── Time events. `id` is the *session's*. ─────────────────────────────────
+# One measured stretch of work on a folder. `seconds` is how long, `folder` is
+# which, and `day` is the day it was stopped on.
+#
+# **The subject is the session, not the folder, and that is the whole design.**
+# Every other event in this log folds last-wins onto a state: the second
+# `set-state` replaces the first, so a line that arrives twice from a restored
+# backup or an interrupted write says the same thing twice and lands the same
+# way. A duration does not work like that — it *accumulates*, and a fold that
+# sums would count a duplicated line twice and quietly inflate a total that
+# nobody can check by eye. Giving each session its own id makes the fold an
+# idempotent upsert again: applying the same line twice is the same total.
+#
+# This is the same argument `order-groups` makes one field down — carry the
+# whole fact rather than a delta, because a delta replayed twice is a different
+# answer and this log has to survive being replayed twice.
+#
+# The folder rides in `folder` rather than in `id` for the ordinary reason:
+# `id` is the subject, and anything an event has to name *second* gets its own
+# field, exactly as `assign` names a folder and `map-tag` names a tag.
+#
+# A session that crosses midnight is stamped with the day it was stopped on,
+# because that is what `append` stamps everything with and a timer is not
+# special enough to earn a second rule. It also cannot be split without
+# inventing a policy for where the boundary goes.
+LOG_TIME = "log-time"
+# A session logged by mistake, taken back. `id` is the session's, so this is
+# last-wins on that one session and duplicates are free — the same shape as
+# `check`/`uncheck`.
+#
+# It exists because the alternative is editing the log, and a wrong event in
+# this system is always corrected by appending its inverse. A negative
+# `log-time` would have been the other way to spell it and is worse: it makes
+# the total right while making the *history* say you worked a negative hour.
+UNLOG_TIME = "unlog-time"
+
 KINDS = {
     CAPTURE,
     CHECK,
@@ -211,6 +247,8 @@ KINDS = {
     LIFT_TAG,
     UNLIFT_TAG,
     NAME_CHAPTER,
+    LOG_TIME,
+    UNLOG_TIME,
 }
 
 
@@ -241,6 +279,7 @@ def append(
     year: str | None = None,
     month: int | None = None,
     order: list[str] | None = None,
+    seconds: int | None = None,
 ) -> dict:
     """Write one event. Never rewrites or deletes an existing line.
 
@@ -278,6 +317,12 @@ def append(
         event["year"] = year
     if month is not None:
         event["month"] = month
+    if seconds is not None:
+        # Written even when zero, for the same reason `order` is: a zero-length
+        # session is a real thing to have recorded — you started the timer and
+        # stopped it — and a missing field would make it unreadable rather than
+        # empty.
+        event["seconds"] = int(seconds)
     if reply_to:
         event["reply_to"] = reply_to
     if order is not None:
