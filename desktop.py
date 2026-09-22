@@ -224,7 +224,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=WINDOW_TITLE)
     parser.add_argument(
         "--data-dir",
-        help="where domains, log and todos live. Point both operating systems "
+        help="where the Records and the media live. Point both operating systems "
         "at one shared folder and there is nothing left to sync.",
     )
     parser.add_argument(

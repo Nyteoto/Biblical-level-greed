@@ -51,7 +51,7 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from .config import DATA_DIR, ensure_dirs
+from .config import MEDIA_DIR, ensure_dirs
 
 # What a derivative is downscaled to. Only the display copy is resized; the
 # original keeps whatever resolution it was shot at.
@@ -77,7 +77,7 @@ class MediaError(Exception):
 
 
 def media_dir() -> Path:
-    return DATA_DIR / "media"
+    return MEDIA_DIR
 
 
 def _month_dir(day: str) -> Path:

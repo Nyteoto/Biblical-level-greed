@@ -107,7 +107,7 @@ cat >"$APPS/pgs.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Personal Growth System
-Comment=Local tech tree for deliberate practice
+Comment=Portal — one Record a day
 Exec=$BIN/pgs
 Icon=$ROOT/frontend/static/favicon.svg
 Terminal=false

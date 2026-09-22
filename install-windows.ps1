@@ -156,7 +156,7 @@ $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut(
 $shortcut.TargetPath = Join-Path $root '.venv\Scripts\pythonw.exe'
 $shortcut.Arguments = "`"$root\desktop.py`""
 $shortcut.WorkingDirectory = $root
-$shortcut.Description = 'Local tech tree for deliberate practice'
+$shortcut.Description = 'Portal - one Record a day'
 $shortcut.Save()
 OK "$startMenu\Personal Growth System.lnk"
 

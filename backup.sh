@@ -3,7 +3,7 @@
 #
 # The repo holds the app; this machine holds everything you have done with it.
 # Since data/ left version control there is no remote copy of your event log,
-# your trees, your checklist, your notes or your photographs — so this script
+# your Records or your photographs — so this script
 # is the only thing standing between a dead disk and losing all of it.
 #
 #   ./backup.sh                    # to the configured destination
@@ -56,7 +56,7 @@ mkdir -p "$DEST"
 # No --delete, deliberately.
 #
 # Everything here is append-only or hand-written, so the local copy shrinking is
-# never something to propagate: a truncated log, a tree deleted by a misclick or
+# never something to propagate: a truncated log, a folder deleted by a misclick or
 # a notes folder lost to a bad command would all be faithfully mirrored, and the
 # backup would destroy the very thing you wanted it for. Without --delete the
 # destination only ever grows, which for a few hundred kilobytes a year is a
