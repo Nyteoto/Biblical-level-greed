@@ -93,12 +93,24 @@ changes:
 python -m backend.app.pdf --all
 ```
 
+**Printing both sides for a binder.** Pages are mirrored: a front has the
+binder margin and its holes on the left, a back has them on the right, so they
+line up through the sheet. To print a run of days as one job:
+
+```bash
+python -m backend.app.pdf --book 8193-8200     # → pdf/book-8193-8200.pdf
+```
+
+The book leaves a blank back after any Record that ends on a front, so every
+day starts on a new sheet and can be filed or removed on its own. Print it
+double-sided, **flip on long edge**, at actual size.
+
 Prints are A4 unless `PGS_PRINT_PAGE` says otherwise, set in Noto Sans Mono (vendored, OFL), with every photograph
 embedded from the original at the resolution it was taken. A clip prints as its
 poster frame and its filename.
 
-What the apps before the Portal left — `data/capture/`, `data/log/`,
-`data/domains/`, `index.sqlite` — stays on the disk untouched. Nothing reads it.
+What the apps before the Portal wrote — capture's log, the tech tree — was
+removed from the live disk on 2026-09-22 and survives only in the backup.
 
 | env | |
 |---|---|

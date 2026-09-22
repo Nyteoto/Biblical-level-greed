@@ -1,7 +1,8 @@
 """A Record, printed. `8193.json` in, `8193.pdf` out, and reproducible.
 
-    python -m backend.app.pdf 8193      # one
-    python -m backend.app.pdf --all     # every sealed Record, again
+    python -m backend.app.pdf 8193              # one
+    python -m backend.app.pdf --all             # every sealed Record, again
+    python -m backend.app.pdf --book 8193-8200  # a range, as one duplex file
 
 Why it is shaped this way
 -------------------------
@@ -50,11 +51,15 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    ActionFlowable,
+    BaseDocTemplate,
     Flowable,
+    Frame,
     Image,
     KeepTogether,
+    PageBreak,
+    PageTemplate,
     Paragraph,
-    SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
@@ -332,8 +337,15 @@ def _took(record: dict) -> str:
     return f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
 
 
-def build(record: dict, target: Path, follows: dict | None = None) -> Path:
-    """Print one Record on the record sheet, the same form the screen draws.
+FRAME_W = PAGE[0] - BINDER - MARGIN - 12
+"""The width everything on a sheet is laid out to. The frame pads itself by
+6pt a side; a table sized to the full margin box overflows it and centres,
+which pulled every box 2mm off the title. The same on fronts and backs — only
+which side the binder margin is on changes."""
+
+
+def _story(record: dict, follows: dict | None, styles) -> list[Flowable]:
+    """One Record on the record sheet, the same form the screen draws.
 
     Single column, where the screen has two: 160mm is too narrow for a register
     beside a column of plates, and a print is read top to bottom anyway. The
@@ -341,26 +353,10 @@ def build(record: dict, target: Path, follows: dict | None = None) -> Path:
     the plates, what is carried forward, then the mood, the signature and the
     stamp that closes the form.
     """
-    _register_fonts()
-    styles = _styles()
     n = record["instance"]
-    # The frame pads itself by 6pt a side; a table sized to the full margin
-    # box overflows it and centres, which pulled every box 2mm off the title.
-    frame_w = PAGE[0] - BINDER - MARGIN - 12
+    frame_w = FRAME_W
     date, weekday = _short_day(record["day"])
     sealed_at = ((record.get("sitting") or {}).get("sealed") or "")[11:16]
-
-    doc = SimpleDocTemplate(
-        str(target),
-        pagesize=PAGE,
-        leftMargin=BINDER,
-        rightMargin=MARGIN,
-        topMargin=MARGIN,
-        bottomMargin=MARGIN + 6 * mm,
-        title=f"Record {n}",
-        author=f"Instance {n}",
-        subject=record["day"],
-    )
 
     ruled = [
         ("GRID", (0, 0), (-1, -1), 0.6, RULE),
@@ -371,7 +367,10 @@ def build(record: dict, target: Path, follows: dict | None = None) -> Path:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5 * mm),
     ]
 
-    story: list[Flowable] = []
+    foot = "FIRST SHEET"
+    if follows:
+        foot = f"FOLLOWS SHEET {follows['instance']}  ·  {_short_day(follows['day'])[0]}"
+    story: list[Flowable] = [_Begin(n, foot)]
 
     story += [_TitleLine("RECORD", frame_w), Spacer(1, 3 * mm)]
 
@@ -499,35 +498,141 @@ def build(record: dict, target: Path, follows: dict | None = None) -> Path:
     stamp.hAlign = "RIGHT"
     story += [KeepTogether([close, Spacer(1, 2 * mm), stamp])]
 
-    foot = "FIRST SHEET"
-    if follows:
-        foot = f"FOLLOWS SHEET {follows['instance']}  ·  {_short_day(follows['day'])[0]}"
+    return story
 
-    def page(canvas, _doc) -> None:
-        canvas.saveState()
-        # Punched for the binder, and the margin rule beside the holes.
-        canvas.setStrokeColor(RULE)
-        canvas.setLineWidth(0.5)
-        for fraction in (0.25, 0.5, 0.75):
-            canvas.circle(BINDER * 0.35, PAGE[1] * fraction, 2.6 * mm)
-        canvas.setStrokeColor(FAINT)
-        canvas.line(BINDER * 0.68, 0, BINDER * 0.68, PAGE[1])
-        # The foot.
+
+# ── Fronts and backs ──────────────────────────────────────────────────────
+#
+# The sheets are printed on both sides and filed in a binder, so the page is
+# mirrored: a front (odd page) has the binder margin and its holes on the
+# left, a back (even page) has them on the right — the same edge of the paper
+# once it is turned over. Printed any other way, a back would be punched
+# through its outer margin and its text would run into the spine.
+
+
+class _Begin(ActionFlowable):
+    """Where a Record starts. Takes no room; tells the page decorations which
+    Record they are drawing and from which page it counts its own."""
+
+    def __init__(self, instance: int, foot: str):
+        super().__init__()
+        self.instance, self.foot = instance, foot
+
+    def apply(self, doc) -> None:
+        doc.record = {"instance": self.instance, "foot": self.foot, "first": doc.page}
+
+
+class _ToFront(ActionFlowable):
+    """Start the next Record on the front of a fresh sheet.
+
+    Placed after a page break, so the page it finds itself on is new. If that
+    page is a back, it is left blank — marked so nothing is drawn on it, not
+    even the foot — and the Record begins on the next front. Every sheet in the
+    binder then belongs to exactly one day, and a Record can be taken out
+    without taking half of another with it.
+    """
+
+    def apply(self, doc) -> None:
+        if doc.page % 2 == 0:
+            doc.blank.add(doc.page)
+            doc.handle_pageBreak()
+
+
+def _decorate(canvas, doc) -> None:
+    """The holes, the margin rule and the foot, on the binder's side."""
+    page = canvas.getPageNumber()
+    if page in doc.blank:
+        return
+    front = page % 2 == 1
+    canvas.saveState()
+    # Punched for the binder, and the margin rule beside the holes.
+    hole_x = BINDER * 0.35 if front else PAGE[0] - BINDER * 0.35
+    rule_x = BINDER * 0.68 if front else PAGE[0] - BINDER * 0.68
+    canvas.setStrokeColor(RULE)
+    canvas.setLineWidth(0.5)
+    for fraction in (0.25, 0.5, 0.75):
+        canvas.circle(hole_x, PAGE[1] * fraction, 2.6 * mm)
+    canvas.setStrokeColor(FAINT)
+    canvas.line(rule_x, 0, rule_x, PAGE[1])
+    # The foot, inside the text block whichever side the binder is on.
+    record = getattr(doc, "record", None)
+    if record:
+        left = (BINDER if front else MARGIN) + 6
+        right = left + FRAME_W
+        y = MARGIN * 0.6
         canvas.setFont("Mono", 6.5)
         canvas.setFillColor(QUIET)
-        y = MARGIN * 0.6
-        canvas.drawString(BINDER + 6, y, foot)
-        canvas.drawRightString(PAGE[0] - MARGIN - 6, y, f"RECORD {n} · {canvas.getPageNumber()}")
+        canvas.drawString(left, y, record["foot"])
+        own_page = page - record["first"] + 1
+        canvas.drawRightString(right, y, f"RECORD {record['instance']} · {own_page}")
         canvas.setStrokeColor(RULE)
-        canvas.line(BINDER + 70 * mm, y + 1, PAGE[0] - MARGIN - 32 * mm, y + 1)
-        canvas.restoreState()
+        canvas.line(left + 70 * mm, y + 1, right - 32 * mm, y + 1)
+    canvas.restoreState()
 
+
+class _Binder(BaseDocTemplate):
+    """A document whose pages alternate front and back, starting on a front."""
+
+    def __init__(self, filename: str, **kw):
+        super().__init__(filename, pagesize=PAGE, **kw)
+        self.blank: set[int] = set()
+        top, bottom = MARGIN, MARGIN + 6 * mm
+        height = PAGE[1] - top - bottom
+
+        def frame(x: float, name: str) -> Frame:
+            return Frame(x, bottom, FRAME_W + 12, height, id=name)
+
+        self.addPageTemplates([
+            PageTemplate("front", [frame(BINDER, "f")], onPageEnd=_decorate, autoNextPageTemplate="back"),
+            PageTemplate("back", [frame(MARGIN, "b")], onPageEnd=_decorate, autoNextPageTemplate="front"),
+        ])
+
+
+def _write(story: list[Flowable], target: Path, **meta) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".pdf.part")
-    doc.filename = str(partial)
-    doc.build(story, onFirstPage=page, onLaterPages=page)
+    _Binder(str(partial), **meta).build(story)
     partial.replace(target)
     return target
+
+
+def _follows(instance: int) -> dict | None:
+    before = records.latest(before=instance)
+    return {"instance": before["instance"], "day": before["day"]} if before else None
+
+
+def build(record: dict, target: Path, follows: dict | None = None) -> Path:
+    """Print one Record to its own file."""
+    _register_fonts()
+    n = record["instance"]
+    return _write(
+        _story(record, follows, _styles()),
+        target,
+        title=f"Record {n}",
+        author=f"Instance {n}",
+        subject=record["day"],
+    )
+
+
+def book(instances: list[int], target: Path) -> Path:
+    """Print several Records as one file for duplex, each on its own sheets.
+
+    One print job instead of a pile of files, and the padding that makes a
+    stack of single-page days duplex cleanly: without it, the second day
+    would be printed on the back of the first.
+    """
+    _register_fonts()
+    styles = _styles()
+    story: list[Flowable] = []
+    found = [r for r in (records.read(n) for n in instances) if r is not None]
+    if not found:
+        raise LookupError("none of those Records is sealed")
+    for i, record in enumerate(found):
+        if i:
+            story += [PageBreak(), _ToFront()]
+        story += _story(record, _follows(record["instance"]), styles)
+    first, last = found[0]["instance"], found[-1]["instance"]
+    return _write(story, target, title=f"Records {first}–{last}", author="The Portal")
 
 
 def _long_day(day: str) -> str:
@@ -542,19 +647,37 @@ def render(instance: int) -> Path:
     record = records.read(instance)
     if record is None:
         raise LookupError(f"no sealed Record {instance}")
-    before = records.latest(before=instance)
-    follows = {"instance": before["instance"], "day": before["day"]} if before else None
-    return build(record, path_of(instance), follows)
+    return build(record, path_of(instance), _follows(instance))
+
+
+def _span(text: str) -> list[int]:
+    """`8193-8200` → every sealed number in that range; `8193` → just it."""
+    lo, _, hi = text.partition("-")
+    first, last = int(lo), int(hi or lo)
+    return [n for n in records.numbers() if first <= n <= last]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("instances", nargs="*", type=int)
     parser.add_argument("--all", action="store_true", help="reprint every sealed Record")
+    parser.add_argument(
+        "--book",
+        metavar="FIRST-LAST",
+        help="one duplex-ready file of a range of Records, each starting on a front",
+    )
+    parser.add_argument("-o", "--out", type=Path, help="where --book writes (default: pdf/book-FIRST-LAST.pdf)")
     args = parser.parse_args(argv)
+    if args.book:
+        numbers = _span(args.book)
+        if not numbers:
+            parser.error(f"no sealed Records in {args.book}")
+        out = args.out or PDF_DIR / f"book-{numbers[0]}-{numbers[-1]}.pdf"
+        print(book(numbers, out))
+        return 0
     targets = records.numbers() if args.all else args.instances
     if not targets:
-        parser.error("name an instance, or pass --all")
+        parser.error("name an instance, pass --all, or --book FIRST-LAST")
     for n in targets:
         print(render(n))
     return 0

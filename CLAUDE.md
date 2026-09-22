@@ -28,9 +28,12 @@ not break*. Read it before changing anything.
   state, not source.
 - **Never put live data in the repo.** `data/*` is gitignored with no exceptions.
   A Record pushed to a remote is a day published.
-- **Never delete what the old apps left** — `data/capture/`, `data/log/`,
-  `data/domains/`, `data/index.sqlite`, `data/todos.jsonl`. Nothing reads them;
-  that is not a reason to remove them. The user decides that.
+- **What the old apps left is gone from the live disk, on the user's word**
+  (2026-09-22): `capture/`, `log/`, `domains/`, `index.sqlite`, `todos.jsonl`.
+  Their only copy is the backup at `/mnt/data/pgs-backup`, which never deletes.
+  Do not "tidy" the backup. `notes/`, `tools/` and `seed/` are still on the
+  shared disk; `notes/` is the user's and off limits, and nothing is removed
+  without them asking.
 - **Never test a destructive path against real data.** Termination deletes media;
   run it against a scratch `PGS_DATA_DIR`. Deleting against live data has
   already cost an unrecoverable photo.
@@ -116,6 +119,12 @@ the machine. Built to `frontend/build`, which is **gitignored** — rebuild
   component with inputs or ink in the boxes; `pdf.py` draws the same form on
   paper. Change one and you change the others. The tally row holds facts about
   *this* sheet only, never totals across sheets.
+- **The print is duplex and bound, so its pages are mirrored.** Odd pages
+  (fronts) carry the binder margin and holes on the left, even pages (backs) on
+  the right — two page templates in `pdf.py` that alternate. A `--book` pads
+  with a blank back so every Record starts on a front; two days must never
+  share a sheet. Anything drawn asymmetrically on the page has to know which
+  side it is on.
 - **The server's rules are the authority; `rules.ts` is a mirror.** The
   checklist shrinks as you type, but `day.missing` decides. Keep the two lists
   saying the same thing in the same words.

@@ -10,7 +10,7 @@ That is the whole of this document. Nothing under `data/` is version-controlled:
 | `portal/pdf/*.pdf` | their prints, rendered from them · **not tracked**, reprintable |
 | `portal/today.json` | the day in progress, deleted when it ends · **not tracked** |
 | `media/` | selfies, photographs and video, at full quality · **not tracked** |
-| `capture/`, `log/`, `domains/`, `index.sqlite`, `todos.jsonl` | what the apps before the Portal left. Read by nothing, deleted by nothing · **not tracked** |
+| `notes/`, `tools/`, `seed/` | left by the apps before the Portal and read by nothing · **not tracked**. Capture's log and the tech tree's were removed 2026-09-22; the backup holds the only copy. |
 
 So `git add -A && git commit && git push` pushes code and nothing else. A
 Record pushed to a remote would be a day published.

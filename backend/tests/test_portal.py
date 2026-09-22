@@ -385,6 +385,27 @@ def test_the_print_embeds_the_original_at_full_resolution(data_dir):
     assert b"/Width 3000" in data and b"/Height 4000" in data
 
 
+def _pages(path) -> int:
+    import re
+
+    return len(re.findall(rb"/Type /Page\b(?!s)", path.read_bytes()))
+
+
+def test_a_book_starts_every_record_on_a_front(data_dir):
+    """Printed duplex, two one-page days must not share a sheet: the second
+    would be on the back of the first and neither could be filed alone. So a
+    blank back is left after any Record that ends on a front."""
+    for n, day in ((8191, "2026-09-20"), (8192, "2026-09-21")):
+        records.write(
+            {"instance": n, "day": day, "selfie": _blob(f"s{n}.png"), "media": [],
+             "body": "x", "wish": "y", "signature": str(n), "mood": 5}
+        )
+    single = pdf.render(8191)
+    assert _pages(single) == 1
+    bound = pdf.book([8191, 8192], config.PDF_DIR / "book.pdf")
+    assert _pages(bound) == 3  # 8191 · blank back · 8192
+
+
 # ── Through the routes ────────────────────────────────────────────────────
 
 
