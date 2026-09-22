@@ -1,6 +1,6 @@
 {
-  "name": "Trophic",
-  "short_name": "Trophic",
+  "name": "Portal",
+  "short_name": "Portal",
   "description": "A capture-first journal: write, photograph, film, and file it by tag.",
   "start_url": "/",
   "scope": "/",

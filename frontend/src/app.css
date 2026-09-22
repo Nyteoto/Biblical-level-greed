@@ -43,8 +43,7 @@
  * The neutral ramp below deliberately *overrides* Tailwind's own `neutral`
  * palette rather than sitting beside it under another name, so `text-neutral-700`
  * in a component is the same 700 the handoff table names. Nothing in the app
- * uses Tailwind's stock neutrals — the tech tree, which is the only older code
- * left, is on `stone` and is deliberately not re-lit.
+ * uses Tailwind's stock neutrals.
  *
  * ## What each rung is *for*
  *
@@ -117,7 +116,7 @@
 	   spent on the current thing and on nothing else.
 	   The ladder is the same ladder and the token names have not moved, so
 	   every component that reads a token moved with this edit and did not have
-	   to be touched. `trophic.css` holds no colour at all for that reason. */
+	   to be touched. */
 	--color-ground: #0e1114;
 	--color-surface: #14181c;
 	--color-ink: #ffffff;
@@ -231,7 +230,7 @@ body {
    `rounded-full` is exempt on purpose. The only things wearing it are dots and
    status indicators, which are circles by nature rather than softened
    rectangles — the reference has them too. */
-.trophic [class*='rounded-']:not([class*='rounded-full']) {
+.portal [class*='rounded-']:not([class*='rounded-full']) {
 	border-radius: 0;
 }
 
@@ -316,17 +315,6 @@ textarea.smooth-layout:focus-visible,
 	outline: none;
 }
 
-/* The tech tree's textured backdrop. Its screens are hidden rather than
-   deleted, so the styles they need stay here — an unhidden screen that renders
-   without its own background is a worse state than a hidden one. */
-.blueprint {
-	background-image:
-		linear-gradient(rgba(214, 178, 120, 0.035) 1px, transparent 1px),
-		linear-gradient(90deg, rgba(214, 178, 120, 0.035) 1px, transparent 1px);
-	background-size: 34px 34px;
-}
-
-
 ::-webkit-scrollbar {
 	height: 10px;
 	width: 10px;
@@ -377,14 +365,14 @@ textarea.smooth-layout:focus-visible,
    Not on the things you actually type into: the capture bar, the jump field and
    every name input need selection to work normally, and they are not places a
    hold means anything. */
-.trophic {
+.portal {
 	-webkit-touch-callout: none;
 	-webkit-user-select: none;
 	user-select: none;
 }
-.trophic input,
-.trophic textarea,
-.trophic [contenteditable] {
+.portal input,
+.portal textarea,
+.portal [contenteditable] {
 	-webkit-user-select: text;
 	user-select: text;
 }
@@ -410,25 +398,6 @@ main {
 	padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* The lightbox has to claim its own insets, and this is why.
-   It portals itself onto `body` so a full-size photograph escapes the CRT
-   filter — and that puts it outside every rule above: it is `fixed inset-0`, so
-   the body's padding cannot reach it and the shell's header is not its
-   ancestor. The close button consequently sat under the status bar on an
-   installed phone, which is the worst possible control to lose, because it is
-   the one that gets you out. Both edges, plus the sides for landscape, where
-   the notch is a left or right inset instead. */
-.lightbox-top {
-	padding-top: calc(env(safe-area-inset-top) + 14px);
-	padding-left: calc(env(safe-area-inset-left) + 14px);
-	padding-right: calc(env(safe-area-inset-right) + 14px);
-}
-.lightbox-bottom {
-	padding-bottom: calc(env(safe-area-inset-bottom) + 22px);
-	padding-left: calc(env(safe-area-inset-left) + 24px);
-	padding-right: calc(env(safe-area-inset-right) + 24px);
-}
-
 /* How much room a full-height page actually has.
    The rules above add the insets back as padding but nothing subtracted them
    again, so a page asking for `100dvh` was that much taller than the screen.
@@ -449,5 +418,76 @@ main {
 	::-webkit-scrollbar {
 		height: 0;
 		width: 0;
+	}
+}
+
+/* -- the Portal's two voices --------------------------------------------- */
+
+/* The label: tiny, tracked, uppercase, at the metadata rung. What Record drew
+   over every section, kept as the one way a section is named. */
+.p-label {
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: var(--color-neutral-600);
+}
+
+/* The title: the heaviest thing on any screen, and there is one per screen. */
+.p-title {
+	font-size: clamp(28px, 6vw, 40px);
+	line-height: 1.05;
+	font-weight: 800;
+	letter-spacing: -0.03em;
+	color: var(--color-neutral-800);
+}
+
+/* A disabled fieldset still has to look like the thing it will become, so the
+   locked template dims rather than greys each control its own way. */
+fieldset:disabled textarea,
+fieldset:disabled input {
+	cursor: not-allowed;
+}
+
+/* -- press feedback ------------------------------------------------------- */
+
+/* Every press answers, from one listener in `+layout.svelte`: a brief veil of
+   the ground over the control. Opacity only, which is composited. */
+@keyframes tap-flash {
+	0% {
+		opacity: 1;
+	}
+	45% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+
+.tap-flash::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background: var(--color-ground);
+	opacity: 0.5;
+	animation: tap-flash 210ms ease-out forwards;
+}
+
+/* Only added when the control is `static`, because an absolutely positioned
+   one already anchors its own pseudo-element. */
+.tap-flash-anchor {
+	position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
 	}
 }

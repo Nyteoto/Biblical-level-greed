@@ -50,4 +50,6 @@ thing that is not wrong. That case is a page reload, which the message says.
 # 9 — `GET /threads`: the reply chain walked, so a `{}` whose reply sets the
 #     next one is one object with turns. Nothing new is stored — the chain is
 #     `reply_to` and the dates are the reminders that were already there.
-API_VERSION = 9
+# 10 — the Portal. Capture and the tech tree are gone and every route they
+#      owned with them; `/api/portal/*` is the app now.
+API_VERSION = 10

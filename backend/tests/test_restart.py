@@ -68,6 +68,15 @@ def test_the_child_outlives_the_server(monkeypatch):
         return None
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    # The Windows flags exist only in a Windows build of `subprocess`, so on
+    # Linux the branch under test cannot even be evaluated without them. These
+    # are the documented Win32 values.
+    for name, value in (
+        ("CREATE_NO_WINDOW", 0x08000000),
+        ("CREATE_BREAKAWAY_FROM_JOB", 0x01000000),
+        ("DETACHED_PROCESS", 0x00000008),
+    ):
+        monkeypatch.setattr(subprocess, name, value, raising=False)
 
     monkeypatch.setattr(main, "_WINDOWS", True)
     main.restart_server()

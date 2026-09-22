@@ -92,25 +92,17 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 OK 'dependencies installed'
 
 Say '3/6  Data'
-# The repo holds the app, not your practice, so `data\` is created here rather
-# than arriving with the clone. The six researched trees are copied out of
-# data\seed\ — once, and only into an empty directory.
+# The repo holds the app, not your Records, so `data\` is created here rather
+# than arriving with the clone. Nothing is copied into it: the Portal starts
+# with no Records, and the first Instance is the first.
 #
-# Deliberately not a sync, and deliberately not done at startup. A tree you
-# deleted in the UI has to stay deleted, and one you have edited must never be
-# reverted by re-running this script.
-#
-# Note this seeds the *local* data\, which on this machine is not the directory
-# the app will use — PGS_DATA_DIR points at the shared disk, which the Linux
-# side seeded long ago. Left in anyway, because a checkout with no data\ cannot
-# be run without the flag, and `pgs` with no arguments should still start.
-New-Item -ItemType Directory -Force -Path data\domains, data\log | Out-Null
-if (-not (Get-ChildItem -LiteralPath data\domains -ErrorAction SilentlyContinue)) {
-    Copy-Item data\seed\*.toml data\domains\
-    OK "seeded data\domains\ with $((Get-ChildItem data\seed\*.toml).Count) trees"
-} else {
-    OK 'data\domains\ already has trees — left untouched'
-}
+# Note this makes the *local* data\, which on this machine is not the directory
+# the app will use - PGS_DATA_DIR points at the shared disk. Left in anyway,
+# because a checkout with no data\ cannot be run without the flag, and `pgs`
+# with no arguments should still start. `portal` is the directory the startup
+# check looks for, so an empty data\ is not mistaken for an unmounted disk.
+New-Item -ItemType Directory -Force -Path data\portal | Out-Null
+OK 'data\portal\ ready'
 
 Say '4/6  Frontend'
 # frontend\build is gitignored, so a fresh clone or a pull that changed the UI

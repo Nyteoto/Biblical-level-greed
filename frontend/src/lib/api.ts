@@ -1,210 +1,8 @@
-/** One evaluated gate on starting a node. */
-export interface NodeCondition {
-	key: string;
-	met: boolean;
-	label: string;
-	detail: string;
-	/** XP it costs to clear. 0 when the condition is not bought, but met. */
-	cost: number;
-}
-
-export type NodeStatus =
-	| 'locked' // a hard prerequisite is unmet — you cannot usefully start
-	| 'open' // only soft prerequisites are unmet — start anyway if you like
-	| 'available'
-	| 'active'
-	| 'done'
-	| 'maintenance' // a completed drill that has gone stale
-	| 'sealed' // prerequisites met, the XP price is not paid
-	| 'standing'; // a reminder: nothing to start, nothing to finish
-
-/** Decides how a node accrues, whether it completes, and how it renders. */
-export type NodeKind = 'drill' | 'study' | 'project' | 'exam' | 'social' | 'reminder';
-
-/** Decides how many nodes are active at once. */
-export type DomainShape = 'ladder' | 'strands' | 'cycles';
-
-export interface Reading {
-	day: string;
-	value: number;
-}
-
-/** Estimate vs what it actually took. `settled` means the gate was called,
- * so `actual` is final rather than still running. */
-export interface Calibration {
-	estimate: number;
-	actual: number;
-	delta: number;
-	ratio: number | null;
-	settled: boolean;
-	over: boolean;
-}
-
-/** A domain's estimating bias across settled nodes. Ratio of totals, so big
- * nodes weigh more than small ones. */
-export interface DomainCalibration {
-	settled_nodes: number;
-	estimate: number;
-	actual: number;
-	ratio: number | null;
-}
-
-export interface TreeNode {
-	id: string;
-	title: string;
-	tier: number;
-	order: number;
-	kind: NodeKind;
-	strand: string;
-	requires: string[];
-	prefers: string[];
-	/** The guess: how many days you think this takes. Not a target. */
-	estimate: number;
-	sessions_done: number;
-	/** How the guess is turning out. Empty for projects. */
-	calibration: Calibration;
-	/** False for projects: they accrue phases, not days. */
-	counts_sessions: boolean;
-	/** Phases for a project, session-days for everything else. */
-	progress_done: number;
-	progress_target: number;
-	phases: string[];
-	phases_done: string[];
-	scheduled: string;
-	days_until: number | null;
-	decay_days: number;
-	metric: string;
-	metric_target: number;
-	readings: Reading[];
-	min_each: string;
-	gate: string;
-	/** How to start: books, courses, search terms. `gate` says where it ends. */
-	entry: string[];
-	note: string;
-	status: NodeStatus;
-	/** What starting this node costs. 0 for tier I, which is free everywhere. */
-	unlock_price: number;
-	unlocked: boolean;
-	unlock_paid: number;
-	/** Every gate on starting this node, already evaluated. Rendered as-is, so
-	 * a new kind of condition appears in the UI without this file changing. */
-	conditions: NodeCondition[];
-	blocked_by: string[];
-	waiting_on: string[];
-	checked_today: boolean;
-	ready_to_complete: boolean;
-	last_session_day: string | null;
-}
-
-/** Acquiring, holding, or parked. The scheduling primitive. */
-export type SeasonState = 'high' | 'low' | 'off';
-
-export interface SeasonView {
-	state: SeasonState;
-	/** Width: which strands acquire in a high season. Empty means all. */
-	strands: string[];
-	until: string;
-	ends_on: string;
-	days_left: number | null;
-	shipped: boolean;
-	expired: boolean;
-	/** Ended, by either route. Reported only — never applied for you. */
-	over: boolean;
-	reason: string;
-	/** False when the domain has decaying nodes, which may not be parked. */
-	can_park: boolean;
-	decaying_count: number;
-}
-
-export interface DomainView {
-	season: SeasonView;
-	id: string;
-	title: string;
-	priority: number;
-	color: string;
-	cadence: string;
-	cadence_label: string;
-	cadence_n: number;
-	source: string;
-	/** Compiled into the app: not editable, not deletable, nothing priced. */
-	foundation: boolean;
-	shape: DomainShape;
-	strands: string[];
-	nodes: TreeNode[];
-	tiers: number[];
-	active_node_ids: string[];
-	active_nodes: TreeNode[];
-	active_node_id: string | null;
-	active_node: TreeNode | null;
-	due_today: boolean;
-	checked_today: boolean;
-	last_session_day: string | null;
-	total_nodes: number;
-	done_nodes: number;
-	calibration: DomainCalibration;
-	complete: boolean;
-	version: number;
-}
-
-/** The arithmetic behind today's XP, spelled out so the number stays
- * predictable rather than becoming a black box. */
-export interface XpBreakdown {
-	sessions: number;
-	/** Of those, how many were maintenance rather than acquisition. */
-	upkeep_sessions: number;
-	/** Checklist items ticked. Historical: nothing writes new ones, but the
-	 *  XP they earned is a fold over the log and stays counted. */
-	todos: number;
-	session_xp: number;
-	todo_xp: number;
-	streak_mult: number;
-	focus_mult: number;
-	acquiring_domains: string[];
-	/** True while you are acquiring in `focus_domains` or fewer. */
-	focused: boolean;
-}
-
-/** Derived fresh from the log every request; stored nowhere, and it never
- * influences what the board shows. */
-export interface Unlock {
-	day: string;
-	domain: string;
-	node: string;
-	paid: number;
-}
-
-export interface Xp {
-	/** Lifetime. Drives the level and never goes down. */
-	total: number;
-	/** Everything spent on unlocks, at the price paid on the day. */
-	spent: number;
-	/** total - spent. The currency. */
-	bank: number;
-	unlocks: Unlock[];
-	upkeep_total: number;
-	level: number;
-	into_level: number;
-	level_span: number;
-	/** White: what yesterday left you with, inside the current level. */
-	carried_pct: number;
-	/** Yellow: what today has added on top. */
-	today_pct: number;
-	earned_today: number;
-	streak: number;
-	today_breakdown: XpBreakdown;
-	tunables: Record<string, number>;
-}
-
-export interface Dashboard {
-	today: string;
-	next_rollover: string;
-	domains: DomainView[];
-	errors: string[];
-	due_count: number;
-	done_count: number;
-	xp: Xp;
-	version: number;
-}
+// The whole of what the page says to the server.
+//
+// One file, because the Portal has one subject — today — and every route is a
+// question about it. The shapes mirror `backend/app/main.py`; `EXPECTED_API`
+// is the number both sides have to agree on (see `version.py`).
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`/api${path}`, {
@@ -212,13 +10,224 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 		...init
 	});
 	if (!res.ok) {
-		const detail = await res.text();
-		throw new Error(`${res.status} ${path}: ${detail}`);
+		let detail = await res.text();
+		try {
+			detail = JSON.parse(detail).detail ?? detail;
+		} catch {
+			/* not JSON; the text is the message */
+		}
+		throw new ApiError(res.status, detail);
 	}
 	return res.json() as Promise<T>;
 }
 
-export const getDashboard = () => call<Dashboard>('/dashboard');
+/** A refusal, with the status the server chose. The Portal's refusals are
+ *  part of the fiction — "the day has ended" is a 410 — so the page reads the
+ *  status rather than parsing the words. */
+export class ApiError extends Error {
+	constructor(
+		readonly status: number,
+		message: string
+	) {
+		super(message);
+	}
+}
+
+const post = <T>(path: string, body?: unknown) =>
+	call<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+
+// ── The Portal ────────────────────────────────────────────────────────────
+
+export type Phase = 'unborn' | 'awake' | 'sitting' | 'sealed' | 'terminated';
+
+export interface DayMedia {
+	ref: string;
+	kind: 'image' | 'video';
+}
+
+export interface Portal {
+	now: string;
+	day: string;
+	instance: number;
+	phase: Phase;
+	/** Why a terminated day ended: `left`, `silent`, `deadline`, `corrupt`, or
+	 *  null when nobody woke at all. */
+	reason: string | null;
+	window: { open: string; close: string; is_open: boolean };
+	/** Seconds a sitting may go unheard before it is over. */
+	grace: number;
+	max_media: number;
+	selfie: string | null;
+	media: DayMedia[];
+	/** The last sealed Instance before today, if any. */
+	previous: number | null;
+	/** How many Instances were terminated since `previous`. */
+	failed: number;
+	remark: string;
+}
+
+export interface RecordMedia extends DayMedia {
+	caption: string;
+}
+
+export interface SealedRecord {
+	template: number;
+	instance: number;
+	day: string;
+	selfie: string;
+	media: RecordMedia[];
+	body: string;
+	wish: string;
+	signature: string;
+	mood: number;
+	sitting: { began: string; sealed: string };
+	/** Whether a print exists at `/api/portal/pdf/{instance}`. */
+	pdf: boolean;
+}
+
+export interface Draft {
+	body: string;
+	wish: string;
+	signature: string;
+	mood: number | null;
+	captions: Record<string, string>;
+}
+
+export const getPortal = () => call<Portal>('/portal');
+export const takeSelfie = (ref: string) => post<Portal>('/portal/selfie', { ref });
+export const getLatest = () => call<{ record: SealedRecord | null }>('/portal/latest');
+export const getOwnRecord = (n: number) => call<{ record: SealedRecord }>(`/portal/record/${n}`);
+export const beginSitting = () => post<Portal & { token: string }>('/portal/sitting');
+export const beat = (token: string) => post<{ ok: boolean; close: string }>('/portal/beat', { token });
+export const attachMedia = (token: string, ref: string) =>
+	post<Portal>('/portal/media', { token, ref });
+export const detachMedia = (token: string, ref: string) =>
+	post<Portal>('/portal/media/detach', { token, ref });
+export const commit = (token: string, draft: Draft) =>
+	post<Portal & { record: SealedRecord; printed: boolean }>('/portal/commit', { token, ...draft });
+
+/** Sent as the page goes. `sendBeacon` because it is the one request a
+ *  browser promises to deliver after `pagehide`; it posts text, so the token
+ *  goes as the whole body. */
+export function leave(token: string): void {
+	navigator.sendBeacon('/api/portal/leave', new Blob([token], { type: 'text/plain' }));
+}
+
+export const pdfUrl = (n: number) => `/api/portal/pdf/${n}`;
+export const mediaUrl = (ref: string) => `/media/${ref}`;
+export const viewUrl = (ref: string) => `/media/${ref.replace(/\.[^./]+$/, '.view.jpg')}`;
+
+// ── Media ─────────────────────────────────────────────────────────────────
+
+export interface MediaUpload {
+	ok: boolean;
+	/** The original, byte for byte. */
+	url: string;
+	/** Its path under data/media — what the day and the Record hold. */
+	path: string;
+	/** The display copy, or the original again when there is no copy. */
+	view_url: string;
+	kind: 'image' | 'video' | '';
+	bytes: number;
+}
+
+/**
+ * Send one file. The body is the `File` itself, with no content-type of ours:
+ * the browser streams it and the server streams it to disk, so this does not
+ * grow with the size of what is being uploaded. `name` carries the filename
+ * because the extension decides how the file is served later.
+ */
+export async function uploadMedia(
+	file: File,
+	onProgress?: (fraction: number) => void
+): Promise<MediaUpload> {
+	// XHR rather than fetch for the one thing fetch still cannot do: report
+	// upload progress. A two-minute clip on a phone is long enough to need it.
+	return new Promise((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open('POST', `/api/media?name=${encodeURIComponent(file.name)}`);
+		xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+		xhr.onload = () => {
+			if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+			else {
+				let detail = xhr.responseText;
+				try {
+					detail = JSON.parse(detail).detail ?? detail;
+				} catch {
+					/* keep the text */
+				}
+				reject(new ApiError(xhr.status, detail));
+			}
+		};
+		xhr.onerror = () => reject(new ApiError(0, 'the upload did not reach the server'));
+		xhr.send(file);
+	});
+}
+
+/** Draw one frame of a video to a JPEG. Null whenever the browser will not.
+ *
+ *  1920 on the long edge, not a thumbnail's 640: this frame is what the
+ *  printed Record carries in the clip's place, and it is printed at half the
+ *  width of an A4 page. */
+export async function posterFor(file: File, edge = 1920): Promise<Blob | null> {
+	const url = URL.createObjectURL(file);
+	const video = document.createElement('video');
+	video.muted = true;
+	// Both are required or iOS refuses to decode without a user gesture.
+	video.playsInline = true;
+	video.preload = 'metadata';
+	video.src = url;
+
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const fail = () => reject(new Error('cannot decode'));
+			video.onloadedmetadata = () => resolve();
+			video.onerror = fail;
+			setTimeout(fail, 5000);
+		});
+
+		// A frame from the very start is often black. One second in, or the
+		// midpoint of anything shorter.
+		await new Promise<void>((resolve, reject) => {
+			const fail = () => reject(new Error('cannot seek'));
+			video.onseeked = () => resolve();
+			video.onerror = fail;
+			setTimeout(fail, 5000);
+			video.currentTime = Math.min(1, (video.duration || 2) / 2);
+		});
+
+		const scale = Math.min(1, edge / Math.max(video.videoWidth, video.videoHeight));
+		const canvas = document.createElement('canvas');
+		canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+		canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return null;
+		ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+		return await new Promise<Blob | null>((resolve) =>
+			canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92)
+		);
+	} catch {
+		return null;
+	} finally {
+		video.src = '';
+		URL.revokeObjectURL(url);
+	}
+}
+
+/** Post a captured frame into the clip's display-copy slot. Best effort. */
+export async function sendPoster(ref: string, poster: Blob): Promise<void> {
+	try {
+		await fetch(`/api/media?poster_for=${encodeURIComponent(ref)}`, {
+			method: 'POST',
+			body: poster
+		});
+	} catch {
+		/* a clip without a poster is still a clip */
+	}
+}
+
+// ── The machine ───────────────────────────────────────────────────────────
 
 /** One slice of what the app is using on disk. */
 export interface StoragePart {
@@ -260,10 +269,6 @@ export const getBackup = () => call<BackupStatus>('/backup');
  *  reimplement any part of it. */
 export const runBackup = () => call<BackupStatus>('/backup', { method: 'POST' });
 
-/** Re-read the tech tree's `.toml` files from disk. */
-export const reloadFromDisk = () =>
-	call<{ domains: number }>('/admin/reload', { method: 'POST' });
-
 /** Bytes as something a human reads at a glance. */
 export function bytes(n: number): string {
 	if (n < 1024) return `${n} B`;
@@ -277,394 +282,8 @@ export function bytes(n: number): string {
 	return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
 
-export const getDomain = (id: string) => call<DomainView>(`/domains/${id}`);
-
-export const toggleSession = (domain: string, node: string, on?: boolean, value?: number) =>
-	call<{ changed: boolean; node: TreeNode }>(`/domains/${domain}/nodes/${node}/session`, {
-		method: 'POST',
-		body: JSON.stringify({ on: on ?? null, value: value ?? null })
-	});
-
-/** Tick one phase of a project. Projects accrue phases, not days. */
-export const togglePhase = (domain: string, node: string, phase: string, on?: boolean) =>
-	call<{ changed: boolean; node: TreeNode }>(`/domains/${domain}/nodes/${node}/phase`, {
-		method: 'POST',
-		body: JSON.stringify({ phase, on: on ?? null })
-	});
-
-export const toggleComplete = (domain: string, node: string, on?: boolean) =>
-	call<{ changed: boolean; domain?: DomainView; node?: TreeNode }>(
-		`/domains/${domain}/nodes/${node}/complete`,
-		{ method: 'POST', body: JSON.stringify({ on: on ?? null }) }
-	);
-
-// -- tools: the instruments a domain is practised with ----------------------
-// Retirement is a date, never a delete: what a domain used to be practised on
-// is the interesting half of the shelf.
-
-export interface Tool {
-	id: string;
-	name: string;
-	/** What it is, in your own words. Sits beside the photo. */
-	description: string;
-	/** Path under /media, from the upload endpoint. */
-	image: string;
-	price_kind: 'diy' | 'paid';
-	price: string;
-	acquired: string;
-	retired: string;
-	type: string;
-	model: string;
-}
-
-export type ToolFields = Omit<Tool, 'id'>;
-
-export const listTools = (domain: string) => call<{ tools: Tool[] }>(`/domains/${domain}/tools`);
-
-export const addTool = (domain: string, fields: Partial<ToolFields>) =>
-	call<{ tools: Tool[] }>(`/domains/${domain}/tools`, {
-		method: 'POST',
-		body: JSON.stringify(fields)
-	});
-
-export const patchTool = (domain: string, id: string, fields: Partial<ToolFields>) =>
-	call<{ tools: Tool[] }>(`/domains/${domain}/tools/${id}`, {
-		method: 'PATCH',
-		body: JSON.stringify(fields)
-	});
-
-export const deleteTool = (domain: string, id: string) =>
-	call<{ tools: Tool[] }>(`/domains/${domain}/tools/${id}`, { method: 'DELETE' });
-
-export interface MediaUpload {
-	ok: boolean;
-	/** The original, byte for byte. What you open. */
-	url: string;
-	/** Its path under data/media — this is what gets stored on an entry. */
-	path: string;
-	/** The display copy, or the original again when there is no copy. */
-	view_url: string;
-	kind: 'image' | 'video' | '';
-	bytes: number;
-}
-
-/**
- * Send one file. The body is the `File` itself, with no content-type of ours:
- * the browser streams it and the server streams it to disk, so this does not
- * grow with the size of what is being uploaded. `name` carries the filename
- * because the extension decides how the file is served later.
- */
-export async function uploadMedia(
-	file: File | Blob,
-	filename?: string,
-	/** Where this is about to be filed, for the *filename* only — see
-	 *  `media.py`. A snapshot of the upload, never a claim about membership. */
-	folder?: string
-): Promise<MediaUpload> {
-	const name = filename ?? (file instanceof File ? file.name : '');
-	const query =
-		`name=${encodeURIComponent(name)}` +
-		(folder ? `&folder=${encodeURIComponent(folder)}` : '');
-	const res = await fetch(`/api/media?${query}`, {
-		method: 'POST',
-		body: file
-	});
-	if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
-	return res.json() as Promise<MediaUpload>;
-}
-
-/** Buy a node out of `sealed`. Permanent — there is no relock. */
-export const unlockNode = (domain: string, node: string) =>
-	call<{ node: TreeNode; xp: Xp }>(`/domains/${domain}/nodes/${node}/unlock`, {
-		method: 'POST'
-	});
-
-// -- structural edits: these rewrite the domain's .toml file -----------------
-
-export interface DomainFields {
-	title?: string;
-	priority?: number;
-	cadence?: string;
-	cadence_n?: number;
-	color?: string;
-	shape?: DomainShape;
-	strands?: string[];
-}
-
-export interface NodeFields {
-	title?: string;
-	tier?: number;
-	requires?: string[];
-	prefers?: string[];
-	estimate?: number;
-	min_each?: string;
-	gate?: string;
-	entry?: string[];
-	note?: string;
-	kind?: NodeKind;
-	strand?: string;
-	phases?: string[];
-	scheduled?: string;
-	decay_days?: number;
-	metric?: string;
-	metric_target?: number;
-}
-
-export const createDomain = (fields: DomainFields & { title: string }) =>
-	call<DomainView>('/domains', { method: 'POST', body: JSON.stringify(fields) });
-
-export const patchDomain = (id: string, fields: DomainFields) =>
-	call<DomainView>(`/domains/${id}`, { method: 'PATCH', body: JSON.stringify(fields) });
-
-export interface SeasonFields {
-	state?: SeasonState;
-	strands?: string[];
-	until?: string;
-	ends_on?: string;
-}
-
-export const setSeason = (id: string, fields: SeasonFields) =>
-	call<DomainView>(`/domains/${id}/season`, {
-		method: 'POST',
-		body: JSON.stringify(fields)
-	});
-
-export const deleteDomain = (id: string) =>
-	call<{ deleted: string }>(`/domains/${id}`, { method: 'DELETE' });
-
-export const createNode = (domain: string, fields: NodeFields & { title: string }) =>
-	call<{ created: string; domain: DomainView }>(`/domains/${domain}/nodes`, {
-		method: 'POST',
-		body: JSON.stringify(fields)
-	});
-
-export const patchNode = (domain: string, node: string, fields: NodeFields) =>
-	call<DomainView>(`/domains/${domain}/nodes/${node}`, {
-		method: 'PATCH',
-		body: JSON.stringify(fields)
-	});
-
-export const deleteNode = (domain: string, node: string) =>
-	call<DomainView>(`/domains/${domain}/nodes/${node}`, { method: 'DELETE' });
-
-export const connectNodes = (domain: string, source: string, target: string, soft = false) =>
-	call<DomainView>(`/domains/${domain}/edges`, {
-		method: 'POST',
-		body: JSON.stringify({ source, target, soft })
-	});
-
-export const disconnectNodes = (domain: string, source: string, target: string) =>
-	call<DomainView>(
-		`/domains/${domain}/edges?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}`,
-		{ method: 'DELETE' }
-	);
-
-export const reorderNode = (domain: string, node: string, direction: -1 | 1) =>
-	call<DomainView>(`/domains/${domain}/nodes/${node}/reorder`, {
-		method: 'POST',
-		body: JSON.stringify({ direction })
-	});
-
-const ROMAN: [number, string][] = [
-	[40, 'XL'],
-	[10, 'X'],
-	[9, 'IX'],
-	[5, 'V'],
-	[4, 'IV'],
-	[1, 'I']
-];
-
-/** Tier headers are Roman numerals, as in the reference. */
-export function roman(value: number): string {
-	// Tier 0 is the substrate. There is no roman numeral for it, and calling it
-	// "—" would read as missing rather than as foundational.
-	if (value === 0) return '0';
-	let left = value;
-	let out = '';
-	for (const [size, glyph] of ROMAN) {
-		while (left >= size) {
-			out += glyph;
-			left -= size;
-		}
-	}
-	return out || '—';
-}
-
-/** Per-domain accent, resolved to literal classes so Tailwind can see them.
- *
- * `buy` is the price pill's affordable state. It is spelled out rather than
- * composed from the fields above, because Tailwind scans this file as text: a
- * class built at runtime as `hover:${a.bg}` resolves correctly in the browser
- * and is never generated into the stylesheet.
- */
-export const accents: Record<
-	string,
-	{ text: string; border: string; bg: string; glow: string; buy: string }
-> = {
-	amber: {
-		text: 'text-amber-300',
-		border: 'border-amber-400/70',
-		bg: 'bg-amber-400',
-		buy: 'border-amber-400/70 text-amber-300 hover:bg-amber-400 hover:text-[#14100c] hover:border-amber-300',
-		glow: 'shadow-[0_0_24px_-4px_rgba(251,191,36,0.55)]'
-	},
-	sky: {
-		text: 'text-sky-300',
-		border: 'border-sky-400/70',
-		bg: 'bg-sky-400',
-		buy: 'border-sky-400/70 text-sky-300 hover:bg-sky-400 hover:text-[#14100c] hover:border-sky-300',
-		glow: 'shadow-[0_0_24px_-4px_rgba(56,189,248,0.55)]'
-	},
-	emerald: {
-		text: 'text-emerald-300',
-		border: 'border-emerald-400/70',
-		bg: 'bg-emerald-400',
-		buy: 'border-emerald-400/70 text-emerald-300 hover:bg-emerald-400 hover:text-[#14100c] hover:border-emerald-300',
-		glow: 'shadow-[0_0_24px_-4px_rgba(52,211,153,0.55)]'
-	},
-	rose: {
-		text: 'text-rose-300',
-		border: 'border-rose-400/70',
-		bg: 'bg-rose-400',
-		buy: 'border-rose-400/70 text-rose-300 hover:bg-rose-400 hover:text-[#14100c] hover:border-rose-300',
-		glow: 'shadow-[0_0_24px_-4px_rgba(251,113,133,0.55)]'
-	},
-	violet: {
-		text: 'text-violet-300',
-		border: 'border-violet-400/70',
-		bg: 'bg-violet-400',
-		buy: 'border-violet-400/70 text-violet-300 hover:bg-violet-400 hover:text-[#14100c] hover:border-violet-300',
-		glow: 'shadow-[0_0_24px_-4px_rgba(167,139,250,0.55)]'
-	},
-	slate: {
-		text: 'text-slate-300',
-		border: 'border-slate-400/70',
-		bg: 'bg-slate-400',
-		buy: 'border-slate-400/70 text-slate-300 hover:bg-slate-400 hover:text-[#14100c] hover:border-slate-300',
-		glow: 'shadow-[0_0_24px_-4px_rgba(148,163,184,0.55)]'
-	}
-};
-
-export const accent = (color: string) => accents[color] ?? accents.slate;
-
-/** How a domain's name is set. The foundation is the only serif in the app.
- *
- * Every other tree is a skill you chose. That one is the body doing the
- * choosing, and it should not look like a sibling of "Drumming" — the typeface
- * is the cheapest way to say so without a label explaining it. */
-export const domainFace = (foundation: boolean) =>
-	foundation ? 'font-serif tracking-[0.14em] italic' : '';
-
-/** What each node kind is called, and what its progress unit is.
- *
- * These strings are the visible half of the taxonomy: a project says "phases"
- * because it accrues phases, and an exam says "prep" because its sessions are
- * preparation for something scored by somebody else.
- */
-export const kinds: Record<NodeKind, { label: string; unit: string; hint: string }> = {
-	drill: { label: 'drill', unit: 'sessions', hint: 'Repetition. Decays without upkeep.' },
-	study: { label: 'study', unit: 'units', hint: 'Comprehension. Holds once held.' },
-	project: { label: 'project', unit: 'phases', hint: 'One indivisible burst of work.' },
-	exam: { label: 'exam', unit: 'prep', hint: 'Scored by someone else, on their date.' },
-	social: { label: 'social', unit: 'occasions', hint: 'Needs other people. Never forced to complete.' },
-	reminder: {
-		label: 'reminder',
-		unit: '',
-		hint: 'A standing sentence. Nothing to start, nothing to finish — read it, and retire it when it is true and boring.'
-	}
-};
-
-/** Status colours. `open` must never read as `locked` — that distinction is the
- * whole point of soft edges. */
-export const statusTone: Record<NodeStatus, string> = {
-	locked: 'text-stone-700',
-	open: 'text-stone-400',
-	available: 'text-stone-300',
-	sealed: 'text-stone-500',
-	active: 'text-stone-100',
-	done: 'text-emerald-500',
-	maintenance: 'text-amber-500',
-	standing: 'text-stone-400'
-};
-
-/** What each season is called, and what it claims about your time. */
-export const seasons: Record<SeasonState, { label: string; hint: string; tone: string }> = {
-	high: {
-		label: 'in season',
-		hint: 'Acquiring. The full board, or the strands this season names.',
-		tone: 'text-emerald-300 border-emerald-500/50'
-	},
-	low: {
-		label: 'holding',
-		hint: 'Not acquiring. Only what is about to go stale appears at all.',
-		tone: 'text-amber-300/80 border-amber-500/40'
-	},
-	off: {
-		label: 'parked',
-		hint: 'Nothing decays here, so nothing is owed and nothing shows.',
-		tone: 'text-stone-500 border-stone-700'
-	}
-};
-
-/** Minutes out of a `min_each` string, or null when it names no number
- * ("one working day", "ongoing"). Never guesses — an unparseable contract is
- * reported as unquantified rather than silently counted as zero. */
-export function minutesOf(minEach: string): number | null {
-	const m = /^(\d+)\s*min/.exec(minEach ?? '');
-	return m ? Number(m[1]) : null;
-}
-
-export function formatMinutes(total: number): string {
-	const h = Math.floor(total / 60);
-	const m = Math.round(total % 60);
-	return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
-}
-
-/** What today costs, added up from the `min_each` you typed.
- *
- * Not a score and not advice — arithmetic on declared data, which is the only
- * kind of number this app is willing to show. It exists because the daily cost
- * of the board was the one input that was never visible, and six domains
- * acquiring at once came to ten hours a day without ever saying so. */
-export function declaredLoad(domains: DomainView[]): {
-	minutes: number;
-	unquantified: number;
-	nodes: number;
-} {
-	let minutes = 0;
-	let unquantified = 0;
-	let nodes = 0;
-	for (const d of domains) {
-		if (!d.due_today) continue;
-		for (const n of d.active_nodes) {
-			nodes += 1;
-			const m = minutesOf(n.min_each);
-			if (m === null) unquantified += 1;
-			else minutes += m;
-		}
-	}
-	return { minutes, unquantified, nodes };
-}
-
-export const shapeBlurb: Record<DomainShape, string> = {
-	ladder: 'one rung at a time',
-	strands: 'parallel strands',
-	cycles: 'projects, with craft feeding them'
-};
-
-
-/**
- * The API this build was written against. Bumped in lockstep with
- * `backend/app/version.py` whenever a route, a payload or an event kind changes
- * in a way this code depends on.
- *
- * The browser reloads its own files off disk, so the frontend is always
- * current. The Python process is not: a long-running service keeps serving the
- * old code until something restarts it, and the app in front of it then looks
- * broken for reasons that are nowhere in the source. This is the number that
- * makes that visible instead of mysterious.
- */
-export const EXPECTED_API = 9;
+/** Bumped with `API_VERSION` in `backend/app/version.py`. */
+export const EXPECTED_API = 10;
 
 export const getApiVersion = () => call<{ api: number; since: string }>('/version');
 

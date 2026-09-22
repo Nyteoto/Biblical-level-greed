@@ -253,12 +253,12 @@ def main() -> int:
 
     if args.data_dir:
         data_dir = Path(args.data_dir).expanduser().resolve()
-        data_dir.mkdir(parents=True, exist_ok=True)
+        # Asking for a data directory by name is the one time one may be made:
+        # `config.check_data_dir` refuses an empty one at startup, because that
+        # is what an unmounted disk looks like, and this is the difference
+        # between asking and assuming.
+        (data_dir / "portal").mkdir(parents=True, exist_ok=True)
         os.environ["PGS_DATA_DIR"] = str(data_dir)
-        # The index is a rebuildable cache and belongs beside the data it
-        # projects, or two machines sharing a folder would each keep a stale
-        # copy in their own checkout.
-        os.environ.setdefault("PGS_INDEX_PATH", str(data_dir / "index.sqlite"))
 
     if not (ROOT / "frontend" / "build" / "index.html").exists():
         print(

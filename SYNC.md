@@ -2,27 +2,22 @@
 
 **The repo holds the app. This machine holds everything you have done with it.**
 
-That is the whole of this document. Nothing under `data/` is version-controlled
-except one read-only directory of reference trees:
+That is the whole of this document. Nothing under `data/` is version-controlled:
 
 | | |
 |---|---|
-| `seed/*.toml` | the six researched curricula, as shipped · **tracked** |
-| `domains/*.toml` | your trees, as you have edited them · **not tracked** |
-| `log/YYYY-MM.jsonl` | every check-off, append-only · **not tracked** |
-| `todos.jsonl` | the old checklist, append-only, no longer written · **not tracked** |
-| `media/` | your photographs and video, kept at full quality · **not tracked** |
-| `index.sqlite` | a rebuildable cache · **not tracked**, delete it any time |
-| `capture/log/YYYY-MM.jsonl` | every line Trophic captured, append-only · **not tracked** |
-| `capture/index.sqlite` | ditto, rebuildable · **not tracked** |
+| `portal/records/*.json` | every sealed Record — write-once · **not tracked** |
+| `portal/pdf/*.pdf` | their prints, rendered from them · **not tracked**, reprintable |
+| `portal/today.json` | the day in progress, deleted when it ends · **not tracked** |
+| `media/` | selfies, photographs and video, at full quality · **not tracked** |
+| `capture/`, `log/`, `domains/`, `index.sqlite`, `todos.jsonl` | what the apps before the Portal left. Read by nothing, deleted by nothing · **not tracked** |
 
-So `git add -A && git commit && git push` now pushes code and nothing else. You
-never need to commit in order to practise, and a season switch is not a diff.
+So `git add -A && git commit && git push` pushes code and nothing else. A
+Record pushed to a remote would be a day published.
 
 ## The repo is not a backup
 
-It never was a complete one — media was always out — but it used to
-carry your trees and your history, and now it does not. **Everything in the
+It never was one. **Everything in the
 table above marked "not tracked" exists in exactly one copy on this disk.**
 
 So there is a backup, and it runs on a timer:
@@ -95,8 +90,8 @@ Get-Volume | Where-Object FileSystemLabel -eq 'Extreme SSD'
 If the letter ever moves, it appears in this file, `README.md`,
 `install-windows-tasks.ps1`'s `-DataDir` default and the installer's closing
 lines. A wrong letter is not silent: `config.check_data_dir` refuses to start
-when `PGS_DATA_DIR` names a directory holding no log, no trees and no capture
-dir, so the failure is a refusal rather than a second empty history. Do not
+when `PGS_DATA_DIR` names a directory holding none of `portal/`, `media/` or
+what came before them, so the failure is a refusal rather than a second empty history. Do not
 create the directory to make that refusal go away.
 
 **The two backups do not meet, and do not need to.** `/mnt/data` is ext4, which
@@ -126,8 +121,8 @@ The two Scheduled Tasks carry no environment of their own, so on that side
 [Environment]::SetEnvironmentVariable('PGS_DATA_DIR', 'F:\pgs-data', 'User')
 ```
 
-Without it the server task serves the checkout's own `data\` — the six seeded
-trees and none of your history — and the backup task refuses outright, because
+Without it the server task serves the checkout's own `data\` — an empty Portal
+and none of your Records — and the backup task refuses outright, because
 `data\` and `C:\pgs-backup` are then both on `C:` and the same-volume check
 fires. The refusal is the safe direction and is how the missing variable
 announces itself; a `LastTaskResult` of 1 on `PGS Backup` is worth reading as
@@ -139,7 +134,8 @@ absent its mount point is an ordinary empty directory, and without the check
 the app would build a fresh tree inside it and start writing a second, parallel
 history — the same trap `backup.sh` refuses for the copy, and worse for the
 original. `config.check_data_dir` requires a configured data directory to exist
-and to already hold a log, some trees or a capture directory. Nothing is
+and to already hold `portal/`, `media/`, or what the apps before the Portal
+left. Nothing is
 created. `test_data_dir.py` pins it.
 
 The backup disk was originally `sda2` (ext4, label `data`) at `/mnt/data` — a
@@ -153,20 +149,17 @@ Worth knowing what each loss actually costs:
 
 | lost | consequence |
 |---|---|
-| `log/` | every session, completion and paid unlock. XP, level and streak are a fold over this file and are stored nowhere else. **Unrecoverable.** |
-| `domains/` | your trees. Re-seedable from `data/seed/`, but any edit you made since is gone. |
-| `media/` | your photographs and video. **Unrecoverable**, and now the largest thing on the disk by far. |
-| `todos.jsonl` | the old checklist's history. Still folded into XP, so losing it lowers your lifetime total. |
-| `capture/log/` | every thought you ever captured in Trophic. The tags, times and patterns are derived from those lines, so they go too. **Unrecoverable.** |
-| `index.sqlite`, `capture/index.sqlite` | nothing. They rebuild on next start. |
+| `portal/records/` | every day that was kept. The next Instance reads the newest of these, and the remarks count the gaps between them. **Unrecoverable.** |
+| `media/` | every face and every clip a Record points at. **Unrecoverable**, and the largest thing on the disk by far. |
+| `portal/pdf/` | nothing. `python -m backend.app.pdf --all` prints them again from the Records. |
+| `portal/today.json` | today's selfie and sitting — which is what a terminated day costs anyway. |
 
 ## Dual boot: the data crosses by disk, the code crosses by git
 
 These are two different mechanisms and confusing them is the way to lose work.
 
 **The data needs no sync at all.** Both operating systems open the same folder
-on the same exFAT disk, so there is one log, one set of trees, one media
-library. Nothing is copied between them and nothing can diverge. This is why
+on the same exFAT disk, so there is one set of Records and one media library. Nothing is copied between them and nothing can diverge. This is why
 the data moved off the system disk in the first place.
 
 **The code is not shared, and does not sync itself.** The Linux checkout is on
@@ -201,32 +194,12 @@ That is a decision rather than an oversight — see MOBILE.md.
 git clone <repo> && cd <repo> && ./install-linux.sh
 ```
 
-The install script creates `data/` and copies `data/seed/*.toml` into
-`data/domains/` — **once, only into an empty directory.** It is not a sync: a
-tree you deleted in the UI stays deleted, and a tree you edited is never
-reverted by re-running the script.
-
-Then bring your own data across from the backup:
+The install script creates an empty `data/portal/`. Then bring your own data
+across from the backup, before first launch:
 
 ```bash
 rsync -a /mnt/data/pgs-backup/ data/
 ```
-
-Do that *before* first launch if you want your history intact, and let it
-overwrite the freshly seeded trees.
-
-## `data/seed/` is reference, not storage
-
-The six trees in there are the researched curricula with their estimates, gates
-and entry material — 107 nodes that took a real research pass to produce. They
-are checked by `backend/tests/test_shipped_data.py`, which exists because a
-stale server process once round-tripped `chinese.toml` through pre-rename code
-and silently flattened all twelve estimates to 1.
-
-**Do not park a live tree in there.** It is version-controlled, so anything you
-copy in goes to the remote — which is exactly what taking `data/` out of git was
-meant to stop. A test asserts the directory holds those six files and nothing
-else, so a stray copy fails the suite rather than reaching a push.
 
 ## Using a data directory elsewhere
 
@@ -236,33 +209,19 @@ To keep the data off the repo drive — a different disk, an encrypted volume:
 pgs --data-dir /mnt/somewhere/pgs-data
 ```
 
-The index follows it, so nothing stale is left behind in the checkout.
-
-## Duplicated or out-of-order log lines
-
-The append-only streams used to be tracked with `merge=union` in
-`.gitattributes`, so two machines appending different lines merged without a
-conflict. That is gone with the tracking.
-
-The read-side tolerance it relied on is still there, and still worth having —
-duplicate and out-of-order lines can arrive from a restored backup or an
-interrupted write, not only from a merge:
-
-| problem | handled by |
-|---|---|
-| lines **out of order** | events sort by `ts`, stably |
-| lines **duplicated** | sessions, completions and phases are last-wins; todos are keyed by item id |
-
-`backend/tests/test_sync.py` pins it, including the case that makes naive dedupe
-wrong: `session, undo, session` inside one second is a real double-click whose
-correct outcome is *checked*, so identical lines cannot simply be collapsed.
+The directory must already exist and hold something of ours — `portal/` or
+`media/` — or the app refuses to start, because an empty directory at a mount
+point is what an unmounted disk looks like. `--data-dir` makes `portal/` for
+you; that is the difference between asking and assuming.
 
 ## If anything ever looks wrong
 
-The index is disposable. Delete it and the log replays:
+A Record is a JSON file; open it. The print is derived from it and can be made
+again at any time:
 
 ```bash
-rm data/index.sqlite
+python -m backend.app.pdf --all
 ```
 
-The log is the truth; everything else is a projection of it.
+Never edit or delete a Record by hand. It is the one thing in the system that
+promises not to change.

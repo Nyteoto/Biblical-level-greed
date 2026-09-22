@@ -65,7 +65,7 @@ def test_nothing_is_created_by_the_refusal(monkeypatch, tmp_path):
     assert not target.exists()
 
 
-@pytest.mark.parametrize("marker", ["log", "domains", "capture"])
+@pytest.mark.parametrize("marker", ["portal", "media", "log", "domains", "capture"])
 def test_a_real_data_directory_starts(monkeypatch, tmp_path, marker):
     real = tmp_path / "pgs-data"
     (real / marker).mkdir(parents=True)

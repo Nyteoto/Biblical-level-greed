@@ -83,15 +83,16 @@ configured per device — setting it up on one side does nothing for the other:
 
 | OS | node | address | icon |
 |---|---|---|---|
-| Linux | `p.tail1a906a.ts.net` | `100.67.160.15` | `Trophic` |
-| Windows | `pekka.tail1a906a.ts.net` | `100.66.133.50` | `Trophic W` |
+| Linux | `p.tail1a906a.ts.net` | `100.67.160.15` | `Portal` |
+| Windows | `pekka.tail1a906a.ts.net` | `100.66.133.50` | `Portal W` |
 
 Both proxy `https://` to `127.0.0.1:8787`, where the logon unit and the
 scheduled task already serve.
 
 Two icons costs one glance to know which OS is up, and nothing else. Name them
 so that glance works — the label under an iOS icon is editable when you add it,
-so `Trophic` and `Trophic W` beats two identical ones.
+so `Portal` and `Portal W` beats two identical ones. (An icon added while the
+app was still Trophic keeps that label until it is removed and added again.)
 
 **They cannot both be live**, which is the property that makes this safe. One
 machine boots one OS, so only one server is ever up and only one icon ever

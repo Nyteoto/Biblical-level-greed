@@ -3,19 +3,18 @@
 Media dwarfs everything else and is the only part not in git, so the split that
 matters is "things a backup already covers" against "the one copy of my photos".
 
-Capture's log and index are named separately from the tech tree's because they
-are the ones the Settings screen is actually about now: capture is the app, and
-"delete this and it rebuilds" is a different promise from "delete this and your
-history is gone". The tech tree's three parts are folded into one line for the
-same reason — it is support, and its size is a footnote rather than a subject.
+Records and their prints are named apart because they make opposite promises:
+a Record is the only copy of a day and cannot be made again, while every PDF
+can be reprinted from its Record by `python -m backend.app.pdf --all`. What the
+apps before the Portal left behind — capture's log, the tech tree — is still on
+the disk and still counted, as one line, because nothing reads it any more and
+nothing is allowed to delete it.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..capture.config import INDEX_PATH as CAPTURE_INDEX_PATH
-from ..capture.config import LOG_DIR as CAPTURE_LOG_DIR
-from .config import DATA_DIR, DOMAINS_DIR, INDEX_PATH, LOG_DIR
+from .config import DATA_DIR, MEDIA_DIR, PDF_DIR, RECORDS_DIR
 
 
 def _walk(root: Path) -> tuple[int, int]:
@@ -50,30 +49,38 @@ def report() -> dict:
         (
             "media",
             "media",
-            "photos and clips at full quality, plus a display copy each. "
-            "This is the only copy unless something else backs it up.",
-            _walk(DATA_DIR / "media"),
+            "selfies, photos and clips at full quality, plus a display copy "
+            "each. This is the only copy unless something else backs it up.",
+            _walk(MEDIA_DIR),
             False,
         ),
         (
-            "capture-log",
-            "capture log",
-            "append-only truth. Everything else here is derived from it.",
-            _walk(CAPTURE_LOG_DIR),
+            "records",
+            "records",
+            "one sealed Record per Instance that committed. The only copy of "
+            "each day, and never rewritten.",
+            _walk(RECORDS_DIR),
             False,
         ),
         (
-            "capture-index",
-            "index",
-            "delete it any time; the log rebuilds it on the next read",
-            _one(CAPTURE_INDEX_PATH),
+            "prints",
+            "prints",
+            "a PDF per Record, rendered from it. Reprintable at any time.",
+            _walk(PDF_DIR),
             True,
         ),
         (
-            "tree",
-            "tech tree",
-            "its own log, its trees and its index — the support half of the app",
-            _sum(_walk(LOG_DIR), _walk(DOMAINS_DIR), _one(INDEX_PATH)),
+            "before",
+            "before the Portal",
+            "capture's log and the tech tree, kept on the disk and read by "
+            "nothing",
+            _sum(
+                _walk(DATA_DIR / "capture"),
+                _walk(DATA_DIR / "log"),
+                _walk(DATA_DIR / "domains"),
+                _one(DATA_DIR / "index.sqlite"),
+                _one(DATA_DIR / "todos.jsonl"),
+            ),
             False,
         ),
     ):
@@ -90,8 +97,8 @@ def report() -> dict:
 
     counted = sum(p["bytes"] for p in parts)
     total, total_files = _walk(DATA_DIR)
-    # Anything in data/ that none of the buckets above claimed — todos, stray
-    # files. Reported rather than hidden, so the parts always sum to the total.
+    # Anything in data/ that none of the buckets above claimed — the day in
+    # progress, stray files. Reported rather than hidden, so the parts always sum to the total.
     other = total - counted
     if other > 0:
         parts.append(

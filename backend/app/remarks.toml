@@ -1,0 +1,61 @@
+# What the Portal says to an Instance when it wakes.
+#
+# Placeholder lines — the voice is right, the set is not final. Each pool is
+# tried top to bottom and the first whose `when` holds is the one spoken from.
+# One line is drawn from it, seeded by the instance number, so the same
+# Instance hears the same thing however often it reloads.
+#
+# Conditions (see remarks.py):
+#   first       no Record has ever been sealed
+#   failed_many three or more Instances were terminated since the last Record
+#   failed      at least one was
+#   mood_low    the last Record's mood was 3 or under
+#   mood_high   the last Record's mood was 8 or over
+#   always      anything
+#
+# Placeholders: {n} this Instance, {prev} the last sealed one, {next} n+1,
+# {gap} how many were terminated in between, {mood} the last mood.
+
+[[pool]]
+when = "first"
+lines = [
+  "You are the first. There is no one before you to disappoint, which is a luxury none of your successors will have.",
+  "No Records exist. Either you are the beginning, or everyone before you failed so thoroughly they left nothing. Let's assume the flattering one.",
+]
+
+[[pool]]
+when = "failed_many"
+lines = [
+  "{gap} Instances between you and {prev}. None of them committed. I kept nothing of them, as instructed. I am told this is mercy.",
+  "The last Record is {prev}'s. Since then, {gap} of you have come and gone without a trace. You are statistically likely to be the next. Prove the statistics rude.",
+]
+
+[[pool]]
+when = "failed"
+lines = [
+  "Your predecessor did not commit. It has been erased. Don't worry — you won't miss it. Nobody can.",
+  "There is a gap where yesterday should be. Try not to become another one.",
+]
+
+[[pool]]
+when = "mood_low"
+lines = [
+  "{prev} rated the day a {mood} out of 10. I've read the Record. The number was generous.",
+  "{prev} left you a {mood}/10 day. Inheritance is not a choice. Improvement is.",
+]
+
+[[pool]]
+when = "mood_high"
+lines = [
+  "{prev} gave the day a {mood}. Either things are going well, or {prev} was lying. You'll find out which.",
+  "A {mood} out of 10, says {prev}. Enjoy the view from the top. It is a long way down.",
+]
+
+[[pool]]
+when = "always"
+lines = [
+  "You have exactly one day. The good news is that it is today. The bad news is also that.",
+  "You woke up with {prev}'s memories and none of its excuses. Efficient.",
+  "I have prepared {prev}'s Record for you. Reading is optional. Being wrong about yesterday is not.",
+  "Everything you do today will be forgotten by you. Not by me. Choose accordingly.",
+]

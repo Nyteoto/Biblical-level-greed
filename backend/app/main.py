@@ -1,4 +1,10 @@
-"""FastAPI app. Thin: parses requests, calls the store, returns derived state."""
+"""FastAPI app. Thin: parses requests, asks `day` and `records`, returns state.
+
+Every Portal route settles the day first (see `day.settle`), so whatever the
+clock has already decided — a rolled-over date, a closed window, a sitting that
+went quiet — is decided before the request is answered, and the answer is the
+same whichever route happened to ask.
+"""
 from __future__ import annotations
 
 import os
@@ -13,11 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from backend.capture.api import router as capture_router
-from backend.capture.store import CaptureError, store as capture_store
-
-from . import backup, config, edits, eventlog, media, storage, tools, watcher, xp
+from . import backup, config, day, media, pdf, records, remarks, storage, timeutil
 from .config import ROOT
+from .day import DayError
 from .media import MediaError
 from .version import API_VERSION
 
@@ -31,10 +35,6 @@ _DEFAULT_UNIT = "PGS Server" if _WINDOWS else "pgs.service"
 # When this process came up. The version check reads it too: a server that
 # restarted is a server whose Python is as new as its files.
 _STARTED = datetime.now(timezone.utc).isoformat()
-from .models import DomainError
-from .tools import ToolError
-from .store import store
-from .timeutil import day_key
 
 BUILD_DIR = ROOT / "frontend" / "build"
 
@@ -44,24 +44,17 @@ async def lifespan(app: FastAPI):
     # Before anything opens a file: if the data lives on a disk that is not
     # mounted, say so and stop rather than quietly starting a second history.
     config.check_data_dir()
-    store.start()
-    # capture is a sibling app sharing this process: its own log, its own
-    # index, no shared state with the tree beyond the data root.
-    capture_store.start()
+    config.ensure_dirs()
     # Wreckage from uploads that died with their connection. Nothing is in
     # flight at startup, so anything old enough is certainly abandoned.
     media.sweep_parts()
-    observer = watcher.start(store)
-    try:
-        yield
-    finally:
-        observer.stop()
-        observer.join(timeout=2)
-        store.close()
-        capture_store.close()
+    # A machine that was off at 23:00 wakes to a day the clock has already
+    # ended. Settle it now rather than on the first request.
+    day.settle(timeutil.now())
+    yield
 
 
-app = FastAPI(title="Personal Growth System", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Portal", version="0.2.0", lifespan=lifespan)
 
 # The SvelteKit dev server runs on another port; in production the built
 # frontend is served from this same origin and CORS is irrelevant.
@@ -73,17 +66,9 @@ app.add_middleware(
 )
 
 
-@app.exception_handler(CaptureError)
-async def _capture_refusal(request: Request, exc: CaptureError) -> JSONResponse:
-    """A refusal from capture's store, answered with the code it chose itself.
-
-    Handled centrally for the same reason `OSError` is, and with one more:
-    every capture route used to carry its own identical `try/except` — fourteen
-    of them — ending in a call that read the exception's *message* to pick
-    between 404 and 400. The code is a property of the refusal now (see
-    `CaptureError.status`), so the routes are back to being what api.py's
-    docstring says they are: parse, call the store, return derived state.
-    """
+@app.exception_handler(DayError)
+async def _day_refusal(request: Request, exc: DayError) -> JSONResponse:
+    """A refusal from the day, answered with the code it chose itself."""
     return JSONResponse(status_code=exc.status, content={"detail": str(exc)})
 
 
@@ -110,120 +95,10 @@ async def _disk_trouble(request: Request, exc: OSError) -> JSONResponse:
     )
 
 
-class Toggle(BaseModel):
-    on: bool | None = None  # omit to flip whatever the current state is
-    value: float | None = None  # optional measurable-gate reading (e.g. bpm)
-
-
-class PhaseIn(BaseModel):
-    phase: str
-    on: bool | None = None
-
-
-class DomainIn(BaseModel):
-    title: str
-    id: str | None = None
-    priority: int = 100
-    cadence: str = "daily"
-    cadence_n: int = 1
-    color: str = "amber"
-    shape: str = "ladder"
-    strands: list[str] = []
-
-
-class DomainPatch(BaseModel):
-    title: str | None = None
-    priority: int | None = None
-    cadence: str | None = None
-    cadence_n: int | None = None
-    color: str | None = None
-    shape: str | None = None
-    strands: list[str] | None = None
-
-
-class SeasonIn(BaseModel):
-    state: str | None = None  # high | low | off
-    strands: list[str] | None = None  # width: which strands acquire
-    until: str | None = None  # YYYY-MM-DD, the deadline
-    ends_on: str | None = None  # node whose completion ends the season early
-
-
-class NodeIn(BaseModel):
-    title: str
-    tier: int = 1
-    estimate: int = 1
-    requires: list[str] = []
-    min_each: str = ""
-    gate: str = ""
-    entry: list[str] = []
-    note: str = ""
-    kind: str = "drill"
-    strand: str = ""
-    prefers: list[str] = []
-    phases: list[str] = []
-    scheduled: str = ""
-    decay_days: int = 0
-    metric: str = ""
-    metric_target: int = 0
-
-
-class NodePatch(BaseModel):
-    title: str | None = None
-    tier: int | None = None
-    estimate: int | None = None
-    requires: list[str] | None = None
-    min_each: str | None = None
-    gate: str | None = None
-    entry: list[str] | None = None
-    note: str | None = None
-    kind: str | None = None
-    strand: str | None = None
-    prefers: list[str] | None = None
-    phases: list[str] | None = None
-    scheduled: str | None = None
-    decay_days: int | None = None
-    metric: str | None = None
-    metric_target: int | None = None
-
-
-class EdgeIn(BaseModel):
-    source: str  # the prerequisite
-    target: str  # the node that now requires it
-    soft: bool = False  # a soft edge advises but never locks
-
-
-class ReorderIn(BaseModel):
-    direction: int  # -1 up, +1 down, within the node's tier
-
-
-def _domain_view(domain_id: str) -> dict:
-    view = store.domain_view(domain_id)
-    if view is None:
-        raise HTTPException(404, f"unknown domain `{domain_id}`")
-    return view
-
-
-def _node_view(domain_id: str, node_id: str) -> dict:
-    view = store.domain_view(domain_id)
-    if view is None:
-        raise HTTPException(404, f"unknown domain `{domain_id}`")
-    for node in view["nodes"]:
-        if node["id"] == node_id:
-            return node
-    raise HTTPException(404, f"unknown node `{node_id}`")
-
-
 @app.get("/api/health")
 def health() -> dict:
-    return {
-        "ok": True,
-        "today": day_key(),
-        "domains": len(store.domains),
-        "events_indexed": store.indexed,
-        "log_warnings": store.warnings,
-        "domain_errors": store.errors,
-        "version": store.version,
-    }
+    now = timeutil.now()
+    return {"ok": True, "today": timeutil.day_key(now), "records": len(records.numbers())}
 
 
 @app.get("/api/storage")
@@ -250,74 +125,6 @@ def backup_now() -> dict:
     does not reimplement any part of it.
     """
     return backup.start()
-
-
-@app.get("/api/dashboard")
-def dashboard() -> dict:
-    return store.dashboard()
-
-
-# -- tools: the instruments a domain is practised with ----------------------
-
-
-class ToolIn(BaseModel):
-    name: str = ""
-    description: str = ""
-    image: str = ""
-    price_kind: str = "paid"
-    price: str = ""
-    acquired: str = ""
-    retired: str = ""
-    type: str = ""
-    model: str = ""
-
-
-@app.get("/api/domains/{domain_id}/tools")
-def list_tools(domain_id: str) -> dict:
-    _domain_view(domain_id)
-    try:
-        return {"tools": tools.read(domain_id)}
-    except ToolError as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-
-@app.post("/api/domains/{domain_id}/tools", status_code=201)
-def add_tool(domain_id: str, body: ToolIn) -> dict:
-    _domain_view(domain_id)
-    try:
-        tools.add(domain_id, body.model_dump())
-    except ToolError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"tools": tools.read(domain_id)}
-
-
-@app.patch("/api/domains/{domain_id}/tools/{tool_id}")
-def patch_tool(domain_id: str, tool_id: str, body: ToolIn) -> dict:
-    """Partial by design: only the fields actually present in the request move.
-
-    `model_dump()` would return every field including its default, so a PATCH
-    carrying just a photo would arrive as an empty name and wipe the profile —
-    which is exactly what it did.
-    """
-    _domain_view(domain_id)
-    try:
-        tools.update(domain_id, tool_id, body.model_dump(exclude_unset=True))
-    except ToolError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"tools": tools.read(domain_id)}
-
-
-@app.delete("/api/domains/{domain_id}/tools/{tool_id}")
-def drop_tool(domain_id: str, tool_id: str) -> dict:
-    _domain_view(domain_id)
-    try:
-        tools.remove(domain_id, tool_id)
-    except ToolError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"tools": tools.read(domain_id)}
-
-
-# -- media ------------------------------------------------------------------
 
 
 @app.get("/api/version")
@@ -412,13 +219,11 @@ def restart_server() -> dict:
     return {"ok": True, "unit": unit}
 
 
+# -- media: the blob store, shared by the selfie and the Record ---------------
+
+
 @app.post("/api/media")
-async def upload_media(
-    request: Request,
-    name: str = "",
-    poster_for: str | None = None,
-    folder: str = "",
-) -> dict:
+async def upload_media(request: Request, name: str = "", poster_for: str | None = None) -> dict:
     """Store one upload, byte for byte, and derive a display copy.
 
     The body is the file itself rather than a multipart form: the browser
@@ -427,29 +232,36 @@ async def upload_media(
     `name` carries the original filename because the extension decides how the
     file will later be served — see media.py.
 
-    `folder` is where the capture bar is about to file this — the pinned folder,
-    or a `<tag>` already in the draft. It only ever reaches the *filename*: see
-    media.py for why that is a snapshot of the upload rather than a claim about
-    membership, which this app resolves and never stores.
+    Storing a file claims nothing: a blob belongs to a day only once
+    `/api/portal/selfie` or `/api/portal/media` attaches it, and those are the
+    routes that refuse — and delete what they refused.
 
-    `poster_for` is the second half of video: the browser grabs a frame,
+    `poster_for` is the second half of video: the browser grabs a frame and
     posts it here, and it lands in the display-copy slot of the clip it names.
+    Only for a clip today still holds, so a sealed Record's poster cannot be
+    swapped after the fact.
     """
+    now = timeutil.now()
     if poster_for is not None:
+        if not day.owns(poster_for, now):
+            raise HTTPException(404, "no such media to attach a poster to")
         data = await request.body()  # a poster is a small JPEG, never a video
         ref = media.save_poster(poster_for, data)
         if ref is None:
             raise HTTPException(404, "no such media to attach a poster to")
         return {"ok": True, "view_url": f"/media/{ref}"}
 
+    today = timeutil.day_key(now)
     length = request.headers.get("content-length")
     try:
         relative, written = await media.write_stream(
             request.stream(),
-            day_key(),
+            today,
             name,
             expected=int(length) if length and length.isdigit() else None,
-            folder=folder,
+            # The filename carries the Instance, for a human browsing the
+            # directory: `2026-09-22-8193-a1b2c3d4.jpg`.
+            folder=str(timeutil.instance_of(today)),
         )
     except MediaError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -476,245 +288,168 @@ def get_media(relative: str):
     )
 
 
-@app.get("/api/domains")
-def domains() -> dict:
-    return {"domains": [store.domain_view(d.id) for d in store.domains]}
+# -- the Portal ---------------------------------------------------------------
 
 
-@app.get("/api/domains/{domain_id}")
-def domain(domain_id: str) -> dict:
-    view = store.domain_view(domain_id)
-    if view is None:
-        raise HTTPException(404, f"unknown domain `{domain_id}`")
-    return view
+def _record_view(record: dict | None) -> dict | None:
+    if record is None:
+        return None
+    return {**record, "pdf": pdf.path_of(record["instance"]).is_file()}
 
 
-@app.post("/api/domains/{domain_id}/nodes/{node_id}/session")
-def toggle_session(domain_id: str, node_id: str, body: Toggle | None = None) -> dict:
-    node = _node_view(domain_id, node_id)
-    want_on = (body.on if body and body.on is not None else not node["checked_today"])
-    if want_on == node["checked_today"]:
-        return {"changed": False, "node": node}
+def _portal(now: datetime) -> dict:
+    """Everything the page needs to know which screen it is on."""
+    state = day.settle(now)
+    today = timeutil.day_key(now)
+    instance = timeutil.instance_of(today)
+    opens, closes = timeutil.window_for(today)
+    phase = day.phase(state, now)
+    last = records.latest(before=instance)
+    return {
+        "now": now.isoformat(),
+        "day": today,
+        "instance": instance,
+        "phase": phase,
+        "reason": (state or {}).get("reason") if phase == "terminated" else None,
+        "window": {
+            "open": opens.isoformat(),
+            "close": closes.isoformat(),
+            "is_open": timeutil.in_window(now),
+        },
+        "grace": config.SITTING_GRACE_SECONDS,
+        "max_media": config.MAX_MEDIA,
+        "selfie": (state or {}).get("selfie") if phase in ("awake", "sitting") else None,
+        "media": (state or {}).get("media", []) if phase == "sitting" else [],
+        "previous": last["instance"] if last else None,
+        "failed": instance - last["instance"] - 1 if last else 0,
+        "remark": remarks.pick(instance),
+    }
 
+
+@app.get("/api/portal")
+def portal() -> dict:
+    return _portal(timeutil.now())
+
+
+class RefIn(BaseModel):
+    ref: str
+
+
+class TokenIn(BaseModel):
+    token: str
+
+
+class AttachIn(BaseModel):
+    token: str
+    ref: str
+
+
+class CommitIn(BaseModel):
+    token: str
+    body: str = ""
+    wish: str = ""
+    signature: str = ""
+    mood: int | None = None
+    captions: dict[str, str] = {}
+
+
+@app.post("/api/portal/selfie")
+def take_selfie(body: RefIn) -> dict:
+    now = timeutil.now()
+    day.take_selfie(body.ref, media.kind_of(body.ref), now)
+    return _portal(now)
+
+
+@app.get("/api/portal/latest")
+def latest_record() -> dict:
+    """The Record the Instance reads: the newest one sealed before today."""
+    now = timeutil.now()
+    return {"record": _record_view(records.latest(before=timeutil.instance_of(timeutil.day_key(now))))}
+
+
+@app.get("/api/portal/record/{instance}")
+def own_record(instance: int) -> dict:
+    """Today's own Record, once sealed. Earlier ones are not browsable: an
+    Instance reads the one before it and nothing further back."""
+    now = timeutil.now()
+    if instance != timeutil.instance_of(timeutil.day_key(now)):
+        raise HTTPException(404, "only today's Record is readable here")
+    record = records.read(instance)
+    if record is None:
+        raise HTTPException(404, "not sealed")
+    return {"record": _record_view(record)}
+
+
+@app.post("/api/portal/sitting")
+def begin_sitting() -> dict:
+    now = timeutil.now()
+    token = day.begin_sitting(now)
+    return {"token": token, **_portal(now)}
+
+
+@app.post("/api/portal/beat")
+def beat(body: TokenIn) -> dict:
+    now = timeutil.now()
+    day.beat(body.token, now)
+    return {"ok": True, "close": timeutil.window_for(timeutil.day_key(now))[1].isoformat()}
+
+
+@app.post("/api/portal/leave")
+async def leave(request: Request) -> dict:
+    """The page is going. Sent by `sendBeacon` on `pagehide`, which posts a
+    plain-text body and cannot set a content type — so the token is read raw
+    rather than through a model."""
+    token = (await request.body()).decode("utf-8", "replace").strip()
     try:
-        store.record(
-            domain_id,
-            node_id,
-            eventlog.SESSION if want_on else eventlog.UNDO,
-            value=body.value if body and want_on else None,
-        )
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"changed": True, "node": _node_view(domain_id, node_id)}
+        day.leave(token, timeutil.now())
+    except DayError:
+        pass  # already over; a beacon has nobody to tell
+    return {"ok": True}
 
 
-@app.post("/api/domains/{domain_id}/nodes/{node_id}/complete")
-def toggle_complete(domain_id: str, node_id: str, body: Toggle | None = None) -> dict:
-    node = _node_view(domain_id, node_id)
-    currently_done = node["status"] == "done"
-    want_on = body.on if body and body.on is not None else not currently_done
-    if want_on == currently_done:
-        return {"changed": False, "node": node}
-
-    try:
-        store.record(
-            domain_id, node_id, eventlog.COMPLETE if want_on else eventlog.REOPEN
-        )
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"changed": True, "domain": store.domain_view(domain_id)}
+@app.post("/api/portal/media")
+def attach_media(body: AttachIn) -> dict:
+    now = timeutil.now()
+    day.attach(body.token, body.ref, media.kind_of(body.ref), now)
+    return _portal(now)
 
 
-@app.post("/api/domains/{domain_id}/nodes/{node_id}/phase")
-def toggle_phase(domain_id: str, node_id: str, body: PhaseIn) -> dict:
-    """Tick one phase of a project. A project accrues phases, not days."""
-    node = _node_view(domain_id, node_id)
-    if node["kind"] != "project":
-        raise HTTPException(400, f"`{node_id}` is not a project — it has no phases")
-    if body.phase not in node["phases"]:
-        raise HTTPException(
-            400, f"`{body.phase}` is not a phase of `{node_id}`"
-        )
-
-    currently_on = body.phase in node["phases_done"]
-    want_on = body.on if body.on is not None else not currently_on
-    if want_on == currently_on:
-        return {"changed": False, "node": node}
-
-    try:
-        store.record(
-            domain_id,
-            node_id,
-            eventlog.PHASE if want_on else eventlog.PHASE_UNDO,
-            text=body.phase,
-        )
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return {"changed": True, "node": _node_view(domain_id, node_id)}
+@app.post("/api/portal/media/detach")
+def detach_media(body: AttachIn) -> dict:
+    now = timeutil.now()
+    day.detach(body.token, body.ref, now)
+    return _portal(now)
 
 
-@app.post("/api/domains/{domain_id}/nodes/{node_id}/unlock")
-def unlock_node(domain_id: str, node_id: str) -> dict:
-    """Buy a node out of `sealed`. Permanent: there is no relock.
+@app.post("/api/portal/commit")
+def commit(body: CommitIn) -> dict:
+    """Seal the Record, then print it.
 
-    The price is written into the event, so retuning the economy later cannot
-    make a past purchase unaffordable or change what it cost. Affordability is
-    checked here rather than in the board, because the bank is global and a
-    domain view only knows about itself.
+    The print is best effort and comes second on purpose: the Record is sealed
+    the moment its JSON lands, and a PDF that fails to render — a corrupt
+    photo, a font problem — can be printed again from it later. Failing the
+    commit over the print would terminate a day that was, in fact, written.
     """
-    node = _node_view(domain_id, node_id)
-    price = xp.unlock_price(node["tier"])
-    if price <= 0:
-        raise HTTPException(409, f"`{node_id}` is tier I and costs nothing")
-    if node["unlocked"]:
-        raise HTTPException(409, f"`{node_id}` is already unlocked")
-
-    blocked = [c for c in node["conditions"] if not c["met"] and c["key"] != "unlock_price"]
-    if blocked:
-        raise HTTPException(
-            409,
-            f"`{node_id}` is not ready to unlock: "
-            + "; ".join(c["detail"] or c["label"] for c in blocked),
-        )
-
+    now = timeutil.now()
+    record = day.commit(body.token, body.model_dump(exclude={"token"}), now)
+    printed = True
     try:
-        store.spend_unlock(domain_id, node_id, price)
-    except DomainError as exc:
-        raise HTTPException(409, str(exc)) from exc
-
-    return {"node": _node_view(domain_id, node_id), "xp": store.dashboard()["xp"]}
-
-
-def _edit(domain_id: str, change) -> dict:
-    """Apply a structural edit and return the domain as the UI wants it back.
-
-    Every structural endpoint goes through here so that validation, the write
-    and the refreshed view stay in one place: `store.mutate` validates the new
-    Domain before it touches the file, so a rejected edit is a 400 and the
-    `.toml` on disk is untouched.
-    """
-    try:
-        store.mutate(domain_id, change)
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    view = store.domain_view(domain_id)
-    if view is None:
-        raise HTTPException(404, f"unknown domain `{domain_id}`")
-    return view
+        pdf.render(record["instance"])
+    except Exception:
+        printed = False
+    return {"record": _record_view(record), "printed": printed, **_portal(now)}
 
 
-@app.post("/api/domains", status_code=201)
-def create_domain(body: DomainIn) -> dict:
-    try:
-        domain = store.create_domain(
-            title=body.title,
-            priority=body.priority,
-            cadence=edits.parse_cadence(body.cadence, body.cadence_n),
-            color=body.color,
-            domain_id=body.id,
-            shape=body.shape,
-            strands=body.strands,
-        )
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return store.domain_view(domain.id) or {}
-
-
-@app.patch("/api/domains/{domain_id}")
-def patch_domain(domain_id: str, body: DomainPatch) -> dict:
-    fields = body.model_dump(exclude_none=True)
-    cadence_kind = fields.pop("cadence", None)
-    cadence_n = fields.pop("cadence_n", None)
-    try:
-        if cadence_kind is not None:
-            fields["cadence"] = edits.parse_cadence(cadence_kind, cadence_n or 1)
-    except DomainError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return _edit(domain_id, lambda d: edits.update_domain(d, **fields))
-
-
-@app.post("/api/domains/{domain_id}/season")
-def set_season(domain_id: str, body: SeasonIn) -> dict:
-    """Switch a domain between acquiring, holding and parked.
-
-    Deliberately its own endpoint rather than a field on the domain PATCH: this
-    is the one edit that changes what the *whole board* shows tomorrow, and it
-    should be as easy to find in the log of what you did as it is in the UI.
-    """
-    fields = body.model_dump(exclude_none=True)
-    return _edit(domain_id, lambda d: edits.set_season(d, **fields))
-
-
-@app.delete("/api/domains/{domain_id}")
-def delete_domain(domain_id: str) -> dict:
-    try:
-        store.delete_domain(domain_id)
-    except DomainError as exc:
-        raise HTTPException(404, str(exc)) from exc
-    return {"deleted": domain_id}
-
-
-@app.post("/api/domains/{domain_id}/nodes", status_code=201)
-def create_node(domain_id: str, body: NodeIn) -> dict:
-    created: dict = {}
-
-    def change(domain):
-        updated, node = edits.add_node(
-            domain,
-            **body.model_dump(),
-        )
-        created["id"] = node.id
-        return updated
-
-    view = _edit(domain_id, change)
-    return {"created": created.get("id"), "domain": view}
-
-
-@app.patch("/api/domains/{domain_id}/nodes/{node_id}")
-def patch_node(domain_id: str, node_id: str, body: NodePatch) -> dict:
-    fields = body.model_dump(exclude_none=True)
-    return _edit(domain_id, lambda d: edits.update_node(d, node_id, **fields))
-
-
-@app.delete("/api/domains/{domain_id}/nodes/{node_id}")
-def delete_node(domain_id: str, node_id: str) -> dict:
-    return _edit(domain_id, lambda d: edits.delete_node(d, node_id))
-
-
-@app.post("/api/domains/{domain_id}/edges")
-def connect_nodes(domain_id: str, body: EdgeIn) -> dict:
-    return _edit(domain_id, lambda d: edits.connect(d, body.source, body.target, soft=body.soft))
-
-
-@app.delete("/api/domains/{domain_id}/edges")
-def disconnect_nodes(domain_id: str, source: str, target: str) -> dict:
-    return _edit(domain_id, lambda d: edits.disconnect(d, source, target))
-
-
-@app.post("/api/domains/{domain_id}/nodes/{node_id}/reorder")
-def reorder_node(domain_id: str, node_id: str, body: ReorderIn) -> dict:
-    return _edit(domain_id, lambda d: edits.reorder(d, node_id, body.direction))
-
-
-@app.post("/api/admin/reindex")
-def reindex() -> dict:
-    """Rebuild the index from the log. Safe at any time; changes nothing."""
-    store.reindex()
-    return {"events_indexed": store.indexed, "warnings": store.warnings}
-
-
-@app.post("/api/admin/reload")
-def reload_domains() -> dict:
-    store.reload_domains()
-    return {"domains": len(store.domains), "errors": store.errors}
-
-
-# Mounted before the SPA catch-all, like every other /api route.
-app.include_router(capture_router)
+@app.get("/api/portal/pdf/{instance}")
+def get_pdf(instance: int):
+    target = pdf.path_of(instance)
+    if not target.is_file():
+        raise HTTPException(404, "no print of that Record")
+    return FileResponse(target, media_type="application/pdf", filename=f"{instance}.pdf")
 
 
 # Serve the built frontend last so it never shadows /api. The catch-all returns
-# index.html for unknown paths so client-side routes like /trees/korean survive
+# index.html for unknown paths so client-side routes like /settings survive
 # a page reload.
 if BUILD_DIR.exists():
 

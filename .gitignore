@@ -17,20 +17,15 @@ __pycache__/
 # The consequence is that the repo is NOT a backup. Every file below exists in
 # one copy on this disk unless something else copies it — see SYNC.md.
 #
-# Written `data/*` and not `data/` on purpose: git does not descend into an
-# excluded *directory*, so the negation below would never be reached.
+# Nothing under data/ is tracked: the Records, the prints and the media are
+# the user's, and a Record pushed to a remote is a day published. The seed
+# trees used to be the one exception; they went with the tech tree.
 data/*
 
 # The same, for a data directory that has moved somewhere else and been left
 # behind until its owner is sure. `data/*` does not cover a sibling name, and
 # what gets left behind is by definition the whole of someone's history.
 data.*/
-
-# ...except the seed trees. These are the six researched curricula as shipped,
-# not your live copies of them: read-only reference material that a fresh clone
-# copies into data/domains/ once, and that `test_shipped_data.py` checks has
-# not silently lost its estimates, gates or entry material.
-!data/seed/
 
 # The Trophic porting bundle: a copy of another repo's source, its schema, its
 # UI notes and 2058 golden fixtures. Read once, ported from, and not part of

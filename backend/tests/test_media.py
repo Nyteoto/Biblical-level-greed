@@ -57,7 +57,15 @@ def _jpeg_with_exif(size=(60, 20)) -> bytes:
 
 
 @pytest.fixture
-def client(data_dir):
+def client(data_dir, monkeypatch):
+    # Noon on a fixed day: the poster route asks the day who owns a clip, and
+    # the day's answer depends on the clock.
+    from datetime import datetime
+
+    from backend.app import timeutil
+
+    noon = datetime(2026, 9, 22, 12, 0, tzinfo=timeutil.TZ)
+    monkeypatch.setattr(timeutil, "now", lambda: noon)
     from backend.app.main import app
 
     with TestClient(app) as test_client:
@@ -167,6 +175,12 @@ def test_a_video_has_no_display_copy_until_a_poster_arrives(client):
     assert body["view_url"] == body["url"]
     assert media.path_for(media.view_ref(body["path"])) is None
 
+    # A poster is only taken for a clip today holds.
+    from backend.app import day
+
+    day._save({"day": "2026-09-22", "instance": 8193, "media": [
+        {"ref": body["path"], "kind": "video"}
+    ]})
     posted = client.post(
         f"/api/media?poster_for={body['path']}", content=_png(size=(64, 36))
     )

@@ -79,20 +79,11 @@ VENV_PY="$(.venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2]
 [ "$SYS_PY" = "$VENV_PY" ] || warn "venv is Python $VENV_PY but system PyGObject is built for $SYS_PY — delete .venv and re-run"
 
 say "3/6  Data"
-# The repo holds the app, not your practice, so `data/` is created here rather
-# than arriving with the clone. The six researched trees are copied out of
-# data/seed/ — once, and only into an empty directory.
-#
-# Deliberately not a sync, and deliberately not done at startup. A tree you
-# deleted in the UI has to stay deleted, and one you have edited must never be
-# reverted by re-running this script.
-mkdir -p data/domains data/log
-if [ -z "$(ls -A data/domains 2>/dev/null)" ]; then
-	cp data/seed/*.toml data/domains/
-	ok "seeded data/domains/ with $(find data/seed -name '*.toml' | wc -l) trees"
-else
-	ok "data/domains/ already has trees — left untouched"
-fi
+# The repo holds the app, not your Records, so `data/` is created here rather
+# than arriving with the clone. Nothing is copied into it: the Portal starts
+# with no Records, and the first Instance is the first.
+mkdir -p data/portal
+ok "data/portal/ ready"
 
 say "4/6  Frontend"
 if [ ! -d frontend/node_modules ]; then (cd frontend && npm install --silent); fi
