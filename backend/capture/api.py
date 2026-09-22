@@ -16,12 +16,32 @@ import re
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from . import index
 from .config import YEAR_RE
 from .store import store
 
 router = APIRouter(prefix="/api/capture", tags=["capture"])
 
 DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+#: How many entries a read hands back when the caller named no limit. Small
+#: for an open-ended read and large once a day or a span has been named,
+#: because the caller has already bounded it — the source's own three numbers.
+ENTRY_LIMITS = {"open": 20, "day": 500, "span": 2000}
+
+#: The ceiling, whatever was asked for.
+ENTRY_LIMIT_CAP = 5000
+
+
+def entry_limit(asked: int | None, asked_for: str) -> int:
+    """How many entries to read, given what the caller asked for and what
+    kind of read it is.
+
+    A named function rather than four lines inside the route: it is a real
+    policy — three defaults and a cap — and while it lived in the route body
+    the only way to exercise it was over HTTP.
+    """
+    return min(asked or ENTRY_LIMITS[asked_for], ENTRY_LIMIT_CAP)
 
 
 class CaptureIn(BaseModel):
@@ -94,17 +114,42 @@ def list_entries(
     when a day or a span was named, because the caller has already bounded it.
     """
     start = end = None
-    default = 20
+    asked_for = "open"
     if from_ and to:
         start, end = _day(from_, "from"), _day(to, "to")
-        default = 2000
+        asked_for = "span"
     elif date:
         start = end = _day(date, "date")
-        default = 500
+        asked_for = "day"
 
-    capped = min(limit or default, 5000)
     return {
-        "entries": store.entries(start, end, capped),
+        "entries": store.entries(start, end, entry_limit(limit, asked_for)),
+        "version": store.version,
+    }
+
+
+@router.get("/search")
+def search_entries(
+    q: str,
+    folder: str | None = None,
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    limit: int | None = None,
+) -> dict:
+    """Every entry whose text contains `q`, newest first. `folder` scopes it
+    to one album; `from`/`to` to a day span. The one route in this API that
+    reads by content rather than by when or where something was filed."""
+    start = end = None
+    if from_ and to:
+        start, end = _day(from_, "from"), _day(to, "to")
+    return {
+        "entries": store.search(
+            q,
+            index.scope_of(folder, index.EVERYTHING),
+            start,
+            end,
+            min(limit or 50, 500),
+        ),
         "version": store.version,
     }
 
@@ -199,23 +244,23 @@ def folder_detail(folder_id: str) -> dict:
 @router.patch("/folders/{folder_id}")
 def patch_folder(folder_id: str, body: FolderPatch) -> dict:
     """Rename it, move it along its life, and add or drop tag mappings. One
-    request can do all of them, which is what the mapping screen's drag needs
-    when it also creates."""
-    folder = None
-    if body.name is not None:
-        folder = store.rename_folder(folder_id, body.name)
-    if body.state is not None:
-        folder = store.set_folder_state(folder_id, body.state)
-    for tag in body.add_tags:
-        folder = store.map_tag(folder_id, tag)
-    for tag in body.remove_tags:
-        folder = store.unmap_tag(folder_id, tag)
-    if body.overview is not None:
-        folder = store.set_overview(folder_id, body.overview)
-    if body.overview_media is not None:
-        folder = store.set_overview_media(folder_id, body.overview_media)
-    if folder is None:
-        raise HTTPException(400, "nothing to change")
+    request can do all of them, which is what Record's held panel needs when
+    it points a loose tag at a folder it is also renaming.
+
+    One call, because the gesture is one thing: `amend_folder` validates the
+    whole patch before it appends any of it. This route used to make the six
+    calls itself, in order, which is how a rename could commit and a bad state
+    then answer 400 with the rename already in the log.
+    """
+    folder = store.amend_folder(
+        folder_id,
+        name=body.name,
+        state=body.state,
+        add_tags=body.add_tags,
+        remove_tags=body.remove_tags,
+        overview=body.overview,
+        overview_media=body.overview_media,
+    )
     return {"folder": folder, "version": store.version}
 
 
@@ -268,33 +313,43 @@ class GroupIn(BaseModel):
     name: str = ""
 
 
-def _album_folder(folder: str | None) -> str | None:
-    """The pile nothing has claimed is an album you can open, and it is spelled
-    `unfiled` wherever one is named. `None` is what everything below the API
-    calls it."""
+def _chapter_subject(folder: str | None) -> str | None:
+    """Which album a chapter is being cut in, as the *write* side spells it:
+    `None` for the pile, an id otherwise.
+
+    Reads do not come through here — they take an `index.Scope`, built once by
+    `index.scope_of`. This is the other half of that seam and the only
+    translation left at the wire: a cut names the subject an event will carry,
+    which is a different question from which entries a read is about.
+    """
     return None if folder in (None, "", "unfiled") else folder
 
 
 class ChapterIn(BaseModel):
-    """`month` is the chapter's *first* month, which is the anchor the name is
-    stored against. An empty `name` hands the chapter back to the reader that
-    names it from the words written inside it."""
+    """`month` is `YYYY-MM`, where the chapter begins — the cut, which is the
+    chapter's whole identity. An empty `name` is one cut and not yet named."""
 
-    year: str
-    month: int
+    month: str
     name: str = ""
 
 
 @router.put("/folders/{folder_id}/chapter")
-def name_chapter(folder_id: str, body: ChapterIn) -> dict:
-    """Name a chapter by hand, or clear the name.
+def split_chapter(folder_id: str, body: ChapterIn) -> dict:
+    """Cut a chapter here, or rename the one already cut here.
 
-    Answers with the whole album, because a rename can change more than the one
-    row that asked for it: naming a chapter that has since merged with another
-    resolves which name the run now carries, and a folder-shaped reply would
-    leave the client guessing.
+    One route for both because they are one event — see `split-chapter` in
+    eventlog.py. Answers with the whole album, because a cut changes more than
+    the row that asked for it: every chapter after it now ends a month earlier.
     """
-    album = store.name_chapter(_album_folder(folder_id), body.year, body.month, body.name)
+    album = store.split_chapter(_chapter_subject(folder_id), body.month, body.name)
+    return {**album, "version": store.version}
+
+
+@router.delete("/folders/{folder_id}/chapter")
+def unsplit_chapter(folder_id: str, month: str) -> dict:
+    """Take a cut back. Nothing written moves: the entries join the chapter
+    before them, and the album comes back saying so."""
+    album = store.unsplit_chapter(_chapter_subject(folder_id), month)
     return {**album, "version": store.version}
 
 
@@ -383,12 +438,49 @@ def shelf(year: str | None = None) -> dict:
     return {**store.shelf(_year(year)), "version": store.version}
 
 
+@router.get("/heat")
+def heat(year: str | None = None, folder: str | None = None) -> dict:
+    """Days and what each was worth, for the year lens.
+
+    `folder` absent is **everything** — every entry the year holds, filed or
+    not — which is what Map draws before a folder is chosen. `unfiled` is the
+    pile, and an id is that folder. Its own route rather than a key on
+    `/shelf`: the reading lens asks for the shelf every time the album
+    changes and has no use for three hundred rows.
+    """
+    return {
+        "days": store.heat(_year(year), index.scope_of(folder, index.EVERYTHING)),
+        "version": store.version,
+    }
+
+
+@router.get("/threads")
+def threads(folder: str | None = None) -> dict:
+    """Every deadline that has been carried forward — a `{}` whose reply set
+    the next one — live ones first.
+
+    `folder` absent is every thread there is; `unfiled` is the pile; an id is
+    that folder, matched against *any* turn so a reply tagged elsewhere cannot
+    make a thread vanish from the folder you would look in.
+
+    **No year.** A thread routinely crosses one, and cutting it at December
+    would show half a conversation. Its own route rather than a key on
+    `/banner`: the banner is read on every screen and has no use for a walk.
+    """
+    return {
+        "threads": store.threads(index.scope_of(folder, index.EVERYTHING)),
+        "version": store.version,
+    }
+
+
 @router.get("/album")
 def album(folder: str | None = None, year: str | None = None) -> dict:
     """One album, one year. `folder` absent (or `unfiled`) is the pile nothing
     has claimed, which the shelf offers as an album of its own."""
-    target = _album_folder(folder)
-    return {**store.album(target, _year(year)), "version": store.version}
+    return {
+        **store.album(index.album_scope_of(folder), _year(year)),
+        "version": store.version,
+    }
 
 
 class TimeIn(BaseModel):

@@ -15,6 +15,9 @@ export interface Entry {
 	/** `@place`. Captured like a pattern and, like one, pointing at nothing:
 	 *  only `folders` decides where an entry lives. */
 	places: string[];
+	/** `#count`. Captured like a place and, like one, pointing at nothing —
+	 *  a bare number attached to the line. */
+	counts: number[];
 	todo_lines: number[];
 	todo_done: number[];
 	/** Folders this entry was filed into by hand. At most one, like the source. */
@@ -33,6 +36,13 @@ export interface Entry {
 	/** And the other end of the thread: what answered *this* entry, or `''`.
 	 *  Derived from `reply_to` on the read, so the pair cannot disagree. */
 	replied_by: string;
+}
+
+/** A search hit: an entry plus where to go to be looking at it — the same
+ *  resolution `home_folder()` gives the banner. `null` is the unfiled pile,
+ *  a real album rather than an absence. */
+export interface SearchResult extends Entry {
+	home_folder: string | null;
 }
 
 /** The two URLs a stored file has: the original, and what to draw. The display
@@ -136,17 +146,24 @@ export interface Album extends Folder {
 	momentum: number;
 }
 
-/** A contiguous run of months inside one album-year, named from the user's own
- *  commonest tag or pattern inside it. Derived on every read. */
+/** A stretch of an album with a beginning you chose.
+ *
+ *  **Authored, never guessed.** This used to be a run of consecutive months the
+ *  server found and named from the commonest word written inside it. A chapter
+ *  now begins where you cut it and runs until the next cut, so a folder nobody
+ *  has cut has no chapters at all. */
 export interface Chapter {
+	/** `YYYY-MM` — the cut. This chapter's identity, what `?chapter=` names,
+	 *  and what a rename or a removal is addressed to. Not clipped to the year
+	 *  on screen: a chapter can have begun in one you are not looking at. */
+	month: string;
+	/** Empty for a chapter cut and not yet named. Every screen draws `range` in
+	 *  its place; none of them invents a word for it. */
 	name: string;
-	/** What the run would be called with nothing said about it — the commonest
-	 *  word written inside it. Carried beside the name so the panel can offer to
-	 *  hand the chapter back without asking the server what it would say. */
-	derived: string;
-	/** Whether `name` came from you rather than from the words in the run. */
-	named: boolean;
+	/** `Feb–May`, clipped to the year on screen. */
 	range: string;
+	/** 1-based, clipped to the year on screen — what Map's band spans and what
+	 *  the index compares a month against. */
 	first_month: number;
 	last_month: number;
 	entries: number;
@@ -179,6 +196,11 @@ export interface AlbumView {
 	entries: Entry[];
 	volumes: number[];
 	chapters: Chapter[];
+	/** Entries in this album that sit before its first cut, and so belong to no
+	 *  chapter. Record prints the number rather than the app inventing an
+	 *  opening chapter for them — you cut where something changed, not at the
+	 *  beginning, and having uncut writing is an ordinary state. */
+	uncut: number;
 	media_count: number;
 	/** Promises made in this album this year, and how many were kept. Derived
 	 *  on the read like every other figure here; the unfiled pile gets one
@@ -197,10 +219,48 @@ export interface AlbumView {
 	 *  found and taken back. Empty for the unfiled pile, which cannot be
 	 *  clocked: a session is logged from a folder's own screen. */
 	sessions: TimeSession[];
-	/** Every day of this year with anything on it, oldest first — the
-	 *  heatmap. Empty days are absent rather than zero: a year is 365 cells
-	 *  and the client can lay out a calendar without being sent one. */
-	heat: HeatDay[];
+	/* The year of days is not here. It is Map's question and it has its own
+	   route — `getHeat`, with a scope — which is also what lets it be asked
+	   about every folder at once. */
+}
+
+/** One turn of a thread: an entry, and the date it set.
+ *
+ *  `due_at` is the reminder this turn *sets* — the earliest still standing, or
+ *  the earliest there is once they have all been dismissed. One date per turn,
+ *  because a turn is a point on a spine. */
+export interface Turn {
+	entry_id: string;
+	ts: string;
+	day: string;
+	text: string;
+	due_at: string | null;
+	dismissed: boolean;
+	media: number;
+	/** A turn is an entry, so its promises come with it. Tickable in place —
+	 *  which is the whole of "a todo with a `{}` belongs on Threads". */
+	todo_lines: number[];
+	todo_done: number[];
+}
+
+/** A deadline that has been carried forward at least once.
+ *
+ *  **The hop is what makes a thread**: a `{}` whose reply sets the next one.
+ *  A prompt nobody answered is a reminder and the banner has it; a reply
+ *  carrying no `{}` is an answer rather than a date being moved. That last one
+ *  is still drawn — as the turn that closed the chain.
+ *
+ *  Not cut by year. A thread routinely crosses one. */
+export interface Thread {
+	/** The root entry's id. */
+	id: string;
+	/** Where the thread started, for the link into the reading lens. */
+	folder: string | null;
+	/** Oldest first, root first — a spine is read forwards. */
+	turns: Turn[];
+	/** The date still standing on the newest turn, or null when nothing is. */
+	due_at: string | null;
+	closed: boolean;
 }
 
 /** One day of one folder, and what it is worth: **one point per entry, one
@@ -209,7 +269,7 @@ export interface AlbumView {
  *  many there were.
  *
  *  `points` is uncapped. The ceiling that stops a very loud day out-glowing a
- *  good one is a property of the ramp and lives in `Heatmap.svelte`. */
+ *  good one is a property of the ramp and lives in `YearGrid.svelte`. */
 export interface HeatDay {
 	day: string;
 	entries: number;
@@ -259,6 +319,20 @@ export const getEntries = (params: { date?: string; from?: string; to?: string; 
 	return call<{ entries: Entry[]; version: number }>(`/entries?${q}`);
 };
 
+/** Every entry whose text contains `q`, newest first. The one read in this
+ *  API scoped by content rather than by when or where something was filed. */
+export const search = (params: {
+	q: string;
+	folder?: string;
+	from?: string;
+	to?: string;
+	limit?: number;
+}) => {
+	const q = new URLSearchParams();
+	for (const [k, v] of Object.entries(params)) if (v != null) q.set(k, String(v));
+	return call<{ entries: SearchResult[]; version: number }>(`/search?${q}`);
+};
+
 /** Where a queued capture is replayed to. The retry queue stores a URL and a
  *  body rather than a call, so it has to know the absolute path. */
 export const CAPTURE_URL = '/api/capture/entries';
@@ -301,6 +375,19 @@ export const unlogTime = (sessionId: string) =>
 	call<{ ok: boolean }>(`/time/${sessionId}`, { method: 'DELETE' });
 
 /** One album, one year. A null folder is the unfiled pile. */
+/** Every deadline carried forward, live ones first. `folder` omitted is every
+ *  thread there is; `unfiled` is the pile; an id is that folder, matched
+ *  against *any* turn. **No year** — a thread crosses them. */
+export const getThreads = (folder?: string | null) =>
+	call<{ threads: Thread[] }>(`/threads${folder ? `?folder=${folder}` : ''}`);
+
+/** Days and what each was worth, for the year lens. `folder` omitted is
+ *  everything the year holds, filed or not; `unfiled` is the pile. */
+export const getHeat = (year: string, folder?: string | null) =>
+	call<{ days: HeatDay[] }>(
+		`/heat?year=${year}${folder ? `&folder=${folder}` : ''}`
+	);
+
 export const getAlbum = (folder: string | null, year: string) =>
 	call<AlbumView>(`/album?folder=${folder ?? 'unfiled'}&year=${year}`);
 
@@ -424,23 +511,29 @@ export const renameGroup = (year: string, name: string, to: string) =>
 	});
 
 /**
- * Name a chapter by hand, or clear the name with an empty string.
+ * Cut a chapter at `month` (`YYYY-MM`), or rename the one already cut there.
  *
- * `month` is the run's **first** month, which is what the name is anchored to —
- * a chapter is a run of months and a run is derived, so there is nothing else
- * durable to hang it on. Answers with the whole album, because naming one that
- * has since merged with another decides which name the run now carries.
+ * One call for both, because they are one event: the cut is the chapter's
+ * identity, so writing the same month again with different words *is* the
+ * rename. An empty `name` is a chapter cut and not yet named — that is not a
+ * deletion, which is `unsplitChapter`.
+ *
+ * Answers with the whole album, because a cut changes more than the row that
+ * asked for it: every chapter after it now ends a month earlier.
  */
-export const nameChapter = (
-	folder: string | null,
-	year: string,
-	month: number,
-	name: string
-) =>
+export const splitChapter = (folder: string | null, month: string, name = '') =>
 	call<AlbumView & { version: number }>(`/folders/${folder ?? 'unfiled'}/chapter`, {
 		method: 'PUT',
-		body: JSON.stringify({ year, month, name })
+		body: JSON.stringify({ month, name })
 	});
+
+/** Take a cut back. Nothing written moves — a chapter is a heading over the
+ *  log, never a container of it, so the entries join the chapter before them. */
+export const unsplitChapter = (folder: string | null, month: string) =>
+	call<AlbumView & { version: number }>(
+		`/folders/${folder ?? 'unfiled'}/chapter?month=${month}`,
+		{ method: 'DELETE' }
+	);
 
 /**
  * Arrange one year's group headings.

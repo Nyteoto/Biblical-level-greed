@@ -48,7 +48,18 @@ import {
 } from '../src/lib/trophic/retry-queue.ts';
 import { todayKey } from '../src/lib/trophic/day.ts';
 import { tagForPin, withPinnedTag } from '../src/lib/trophic/pinned.ts';
-import { albumWeek, foldQuiet, groupDays, isoWeek } from '../src/lib/trophic/log.ts';
+import {
+	albumWeek,
+	groupDays,
+	inScope,
+	isoWeek,
+	pageAt,
+	pageOfEntry,
+	paginate,
+	stackBehind,
+	WHOLE_YEAR
+} from '../src/lib/trophic/log.ts';
+import { lensHref, readScope, thisYear } from '../src/lib/trophic/scope.ts';
 import { dropBefore, moveBefore } from '../src/lib/trophic/sortable.ts';
 import { reorderGroups, splitShelf } from '../src/lib/trophic/shelf.ts';
 import { lineFor, send } from '../src/lib/trophic/submission.ts';
@@ -345,16 +356,16 @@ const THEME: Record<string, string[]> = {
 	// from prose on screen is weight, which is applied in `ColorizedText.svelte`
 	// and is deliberately not in `colorize.ts`: the corpus pins the colour of
 	// each segment, not how heavily this app chooses to set it.
-	'#4fff9f': [
+	'#ffffff': [
 		'#3b82f6', // folder
 		'#9333ea', // time
 		'#e11d48', // pattern
 		'#d97706', // directive
 		'#8b5cf6', // todo
-		'#18181b' // ink — the caret, which is also peak emission here
+		'#18181b' // ink — the caret, which is also the accent here
 	],
 	// The refusal red the validation layer blinks a token in. It is the one
-	// colour `phosphorize()` refuses to fold into the ramp, for the same reason
+	// colour `toRamp()` refuses to fold into the ramp, for the same reason
 	// it is the one colour left in this table: a refusal that looks like output
 	// is not a refusal.
 	'#ff6a5a': ['#ef4444']
@@ -362,7 +373,7 @@ const THEME: Record<string, string[]> = {
 
 /** `rgba(r,g,b,a)` translations, alpha carried through unchanged. */
 const THEME_RGB: Record<string, string> = {
-	'79,255,159': '24,24,27' // ink — the caret and its halo
+	'255,255,255': '24,24,27' // ink — the caret and its halo
 };
 
 function translated(actual: string): string[] {
@@ -572,10 +583,10 @@ async function localChecks(): Promise<string[]> {
 		failures.push(`  CAP_WARN_AT ${CAP_WARN_AT} is not inside the last half of ${MAX_RAW_LEN}`);
 	}
 
-	// The Log's quiet-stretch merge. No corpus covers it — the source has no
-	// such thing — and it is the one piece of this UI that can *swallow* days
-	// rather than crash, so it gets an oracle here. The invariant being
-	// checked is the only one that matters: **merging never loses an entry.**
+	// The Log's own reading rules. No corpus covers them — the source has no
+	// such screen — and they are the piece of this UI that can *swallow* days
+	// rather than crash, so they get an oracle here. The invariant being
+	// checked is the only one that matters: **nothing ever loses an entry.**
 	const day = (key: string, texts: string[], media: string[] = []): Entry[] =>
 		texts.map((text, i) => ({
 			id: `${key}-${i}`,
@@ -605,27 +616,11 @@ async function localChecks(): Promise<string[]> {
 		failures.push(`  groupDays did not come back newest first: ${days.map((d) => d.key)}`);
 	}
 
-	const folded = foldQuiet(days);
-	const shape = folded
-		.map((row) => (row.kind === 'stretch' ? `stretch(${row.days.length})` : row.day.key))
-		.join(' ');
-	if (shape !== '2026-08-15 stretch(3) 2026-08-11 2026-08-10') {
-		failures.push(`  foldQuiet gave ${shape}`);
-	}
-	// A run of one stays a row: a strip saying "quiet stretch · 1 line" is
-	// longer than the line it is hiding.
-	if (folded.at(-1)?.kind !== 'day') {
-		failures.push('  foldQuiet merged a run of one quiet day into a stretch');
-	}
-	// Nothing may go missing, with the merge on or off.
-	for (const merge of [true, false]) {
-		const seen = foldQuiet(days, merge).flatMap((row) =>
-			row.kind === 'stretch' ? row.days : [row.day]
-		);
-		const count = seen.reduce((n, d) => n + d.entries.length, 0);
-		if (count !== feed.length) {
-			failures.push(`  foldQuiet(merge=${merge}) held ${count} entries, not ${feed.length}`);
-		}
+	// Every day that was written is a day you can reach. The deck is built from
+	// exactly these and nothing filters them on the way, so a day missing here
+	// is a day the album cannot open at all.
+	if (paginate(days).length < days.length) {
+		failures.push('  a day that was written has no page in the deck');
 	}
 
 	// ISO weeks belong to the year holding their Thursday, so the turn of the
@@ -658,6 +653,170 @@ async function localChecks(): Promise<string[]> {
 		if (got !== want) {
 			failures.push(`  albumWeek(${first}, ${key}) = ${got}, expected ${want}`);
 		}
+	}
+
+	// The paged reading view. The failure this is here to catch is the merge's
+	// failure one screen later: **a line that is drawn on no page at all.**
+	// Paging can lose one in a way scrolling never could — a day that splits
+	// wrongly simply omits the overflow, and nothing crashes.
+	const heavy = day(
+		'2026-09-10',
+		Array.from({ length: 20 }, (_, i) => `line ${i}`)
+	);
+	const ordinary = day('2026-09-09', ['one', 'two']);
+	const plate = day('2026-09-08', ['the caption'], ['x.jpg']);
+	const written = [...heavy, ...ordinary, ...plate];
+	const deck = paginate(groupDays(written));
+
+	const drawn = deck.flatMap((p) => [
+		...p.lines.map((e) => e.id),
+		...(p.caption ? [p.caption.id] : [])
+	]);
+	if (new Set(drawn).size !== drawn.length) {
+		failures.push('  paginate drew one entry on two pages');
+	}
+	for (const entry of written) {
+		if (!drawn.includes(entry.id)) failures.push(`  paginate never drew ${entry.id}`);
+	}
+
+	// A heavy day continues; an ordinary one does not.
+	const heavyPages = deck.filter((p) => p.day.key === '2026-09-10');
+	if (heavyPages.length < 2) {
+		failures.push(`  paginate left 20 lines on ${heavyPages.length} page(s)`);
+	}
+	if (heavyPages.some((p) => p.parts !== heavyPages.length)) {
+		failures.push('  paginate disagreed with itself about how many parts a day has');
+	}
+	if (deck.filter((p) => p.day.key === '2026-09-09').length !== 1) {
+		failures.push('  paginate split a two-line day');
+	}
+
+	// The lead plate belongs to the day, not to every part of it.
+	if (deck.some((p) => p.part > 0 && (p.hero || p.caption || p.ribbon.length > 0))) {
+		failures.push('  paginate repeated the lead plate on a continuation page');
+	}
+	// Every part can still open the whole day in the lightbox.
+	if (heavyPages.some((p) => p.shots.length !== heavyPages[0].shots.length)) {
+		failures.push('  paginate cut the day pool down on a continuation page');
+	}
+	if (new Set(deck.map((p) => p.key)).size !== deck.length) {
+		failures.push('  paginate made two pages carrying one key');
+	}
+
+	// **Every link in the app is `lensHref`, and nothing was checking it.**
+	// Three rules, all of them about what to leave *out*: no folder when there
+	// is none, no year when it is this one, no empty extras. Each is a silent
+	// wrong-link if it goes — `?folder=` says something false, and a link that
+	// spells this year is noise that then never matches a bare one.
+	const now = thisYear();
+	const links: [string, string][] = [
+		[lensHref('/log', { folder: null, year: now }), '/log'],
+		[lensHref('/log', { folder: 'abc', year: now }), '/log?folder=abc'],
+		[lensHref('/log', { folder: 'abc', year: '2019' }), '/log?folder=abc&year=2019'],
+		[lensHref('/log', { folder: null, year: 'all' }), '/log?year=all'],
+		[lensHref('/log', { folder: 'unfiled', year: now }), '/log?folder=unfiled'],
+		// Extras ride along, and an empty one is left out like a null folder.
+		[lensHref('/log', { folder: 'abc', year: now }, { month: '2026-08' }), '/log?folder=abc&month=2026-08'],
+		[lensHref('/log', { folder: 'abc', year: now }, { month: '' }), '/log?folder=abc'],
+		[lensHref('/log', { folder: 'abc', year: now }, { month: null }), '/log?folder=abc'],
+		[lensHref('/map', {}), '/map']
+	];
+	for (const [got, want] of links) {
+		if (got !== want) failures.push(`  lensHref gave ${got}, expected ${want}`);
+	}
+	// And it round-trips: what a link says is what the next lens reads.
+	const roundTrip = readScope(new URL(lensHref('/log', { folder: 'abc', year: '2019' }), 'http://x'));
+	if (roundTrip.folder !== 'abc' || roundTrip.year !== '2019') {
+		failures.push('  readScope did not read back what lensHref wrote');
+	}
+	const bare = readScope(new URL(lensHref('/log', { folder: null, year: now }), 'http://x'));
+	if (bare.folder !== null || bare.year !== now) {
+		failures.push('  a bare link did not read back as this year with no folder');
+	}
+
+	// **A scope cuts the deck and must not lose a line.** The filter used to
+	// sit on the reading lens, upstream of `paginate`, so every check above
+	// began one function after the place days could go missing — and a day
+	// dropped by a filter is a day drawn on no page at all, silently. It is
+	// behind the same interface now, so the same rule can be held to it.
+	const august = day('2026-08-20', ['in august']);
+	const across = [...written, ...august];
+	const septemberOnly = paginate(groupDays(across), { kind: 'month', month: '2026-09' });
+	const septemberIds = new Set(
+		septemberOnly.flatMap((p) => [...p.lines.map((e) => e.id), ...(p.caption ? [p.caption.id] : [])])
+	);
+	for (const entry of written) {
+		if (!septemberIds.has(entry.id)) {
+			failures.push(`  a month scope dropped ${entry.id}, which is in that month`);
+		}
+	}
+	if (septemberIds.has(august[0].id)) {
+		failures.push('  a month scope kept a day from another month');
+	}
+
+	// A chapter is a run of months, both ends inclusive.
+	const chapterDeck = paginate(groupDays(across), {
+		kind: 'chapter',
+		first_month: 8,
+		last_month: 9
+	});
+	if (chapterDeck.length !== paginate(groupDays(across)).length) {
+		failures.push('  a chapter spanning every month on record cut the deck');
+	}
+	const narrow = paginate(groupDays(across), { kind: 'chapter', first_month: 8, last_month: 8 });
+	if (narrow.length !== 1 || narrow[0].day.key !== '2026-08-20') {
+		failures.push('  a one-month chapter did not land on exactly that month');
+	}
+	// The whole year is the identity, and the default.
+	if (paginate(groupDays(across), WHOLE_YEAR).length !== paginate(groupDays(across)).length) {
+		failures.push('  WHOLE_YEAR is not what paginate does with no scope');
+	}
+	// The contact sheet reads the same filter the deck does; two readings of
+	// "in scope" is the drift this is here to make impossible.
+	if (inScope(groupDays(across), { kind: 'month', month: '2026-08' }).length !== 1) {
+		failures.push('  inScope and paginate disagree about one month');
+	}
+
+	// Landing on a page: exactly, nearest-at-or-before, and off the end.
+	if (deck[pageAt(deck, '2026-09-09')]?.day.key !== '2026-09-09') {
+		failures.push('  pageAt missed a day that is in the deck');
+	}
+	if (deck[pageAt(deck, '2026-09-11')]?.day.key !== '2026-09-10') {
+		failures.push('  pageAt did not fall back to the newest page');
+	}
+	if (pageAt(deck, '2026-09-07') !== -1) {
+		failures.push('  pageAt found a page older than the deck holds');
+	}
+	if (deck[pageOfEntry(deck, ordinary[1].id)]?.day.key !== '2026-09-09') {
+		failures.push('  pageOfEntry did not find the page holding an entry');
+	}
+	if (deck[pageOfEntry(deck, plate[0].id)]?.day.key !== '2026-09-08') {
+		failures.push('  pageOfEntry lost an entry promoted to a caption');
+	}
+	if (pageOfEntry(deck, 'nothing-like-this') !== -1) {
+		failures.push('  pageOfEntry invented a page for an entry that is not there');
+	}
+
+	// **The pile behind the page is what is left to read**, and both ends of it
+	// are off-by-one traps that look right on screen: a last page with a stack
+	// under it says there is more when there is not, and an empty deck with one
+	// says there is something when there is nothing.
+	if (stackBehind(10, 0, 4) !== 4) {
+		failures.push('  stackBehind did not fill the pile at the top of a long deck');
+	}
+	if (stackBehind(10, 7, 4) !== 2) {
+		failures.push('  stackBehind miscounted the pages left near the end');
+	}
+	if (stackBehind(10, 9, 4) !== 0) {
+		failures.push('  stackBehind drew a pile under the last page');
+	}
+	if (stackBehind(1, 0, 4) !== 0 || stackBehind(0, 0, 4) !== 0) {
+		failures.push('  stackBehind drew a pile under a deck with nothing behind it');
+	}
+	// An index the deck has outgrown — which happens on every filter change,
+	// before the deck clamps it — must not come back negative.
+	if (stackBehind(3, 99, 4) !== 0 || stackBehind(3, -5, 4) !== 2) {
+		failures.push('  stackBehind mishandled an index outside the deck');
 	}
 
 	// The retry queue, which has a corpus that cannot be satisfied (see below)

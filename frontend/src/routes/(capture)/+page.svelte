@@ -38,7 +38,6 @@
 	import { banner } from '$lib/trophic/banner-state.svelte';
 	import { uiDim } from '$lib/trophic/dim.svelte';
 	import SyntaxBar from '$lib/trophic/SyntaxBar.svelte';
-	import TabPill from '$lib/trophic/TabPill.svelte';
 	import TodoTally from '$lib/trophic/TodoTally.svelte';
 	import {
 		capture,
@@ -51,7 +50,7 @@
 		type Reminder,
 		type Vocab
 	} from '$lib/trophic/api';
-	import { GLOW_STOPS, UI_COLORS, phosphorize } from '$lib/trophic/colors';
+	import { GLOW_STOPS, UI_COLORS, toRamp } from '$lib/trophic/colors';
 	import { deviceType } from '$lib/trophic/device.svelte';
 	import { attach, release, type Attachment } from '$lib/trophic/media';
 	import { tagForPin, withPinnedTag } from '$lib/trophic/pinned';
@@ -570,7 +569,6 @@
 		? 'dimmed'
 		: ''}"
 >
-	<TabPill />
 
 	<div class="relative">
 		<button
@@ -582,7 +580,7 @@
 			}}
 		>
 			{#if pinnedFolder}
-				<span class="h-2 w-2 rounded-full" style="background:{phosphorize(pinnedFolder.color)}"></span>
+				<span class="h-2 w-2 rounded-full" style="background:{toRamp(pinnedFolder.color)}"></span>
 				<span class="text-[13px] font-semibold">{pinnedFolder.name}</span>
 				<span class="text-[11px] text-neutral-700">
 					pinned ·
@@ -649,8 +647,14 @@
      does not reflow here and neither should this: Safari scrolls a focused
      input into view on its own, and a layout that jumps under your thumb is
      worse than one that sits a little high. -->
-<main class="flex min-h-0 flex-1 flex-col items-center justify-center px-[30px]">
-	<div class="flex w-full max-w-[720px] flex-col gap-4">
+<!-- `my-auto` on the column rather than `justify-center` on this, and its own
+     scroll: `justify-content: center` overflows *both* ends when the content is
+     taller than the box, so a prompt, a long draft and the syntax panel
+     together pushed the top of the composer off the screen where nothing could
+     reach it. An auto margin centres it while there is room and gives up
+     gracefully when there is not. -->
+<main class="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-[30px]">
+	<div class="my-auto flex w-full max-w-[720px] shrink-0 flex-col gap-4 py-4">
 		<!-- The reminder strip. Above the box, because it is context for what
 		     you are about to write, not a task list to work through — and
 		     **one** strip, never a list, which is the same argument made in the

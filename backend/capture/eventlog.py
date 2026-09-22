@@ -170,22 +170,41 @@ ORDER_GROUPS = "order-groups"
 LIFT_TAG = "lift-tag"
 UNLIFT_TAG = "unlift-tag"
 
-# A chapter given a name by hand. `id` is the folder — or the literal `unfiled`,
-# which is an album you can open like any other and so is one you can name a
-# chapter in. `year` and `month` say which chapter; `text` is the name, and an
-# empty one hands the chapter back to the reader that names it from your own
-# words.
+# A chapter cut by hand, and taken back. `id` is the folder — or the literal
+# `unfiled`, which is an album you can open like any other and so is one you can
+# cut a chapter in. `month` is `YYYY-MM`, where the chapter begins; `text` is
+# what it is called.
 #
-# **A chapter has no id of its own because a chapter is a run of months, and a
-# run is derived.** So the name is anchored to a month instead: the run's first
-# month at the moment you named it. That works because of a property of this
-# log — entries are only ever appended, so a month never loses its last entry,
-# so a run can extend or merge but can never split or shrink. The anchor is
-# therefore inside the same run forever, whatever else lands around it.
+# **The cut is the chapter's identity, and it is the whole of the change here.**
+# A chapter used to be a *run of consecutive months with something in them*,
+# found by the app and named from the commonest word inside it, and that is why
+# the event this replaces (`name-chapter`, below) could only anchor a name to a
+# month: the thing being named had nothing to be keyed on. Runs are gone. A
+# chapter now begins exactly where you said it begins and runs until the next
+# cut, so the month you cut at *is* the chapter, for as long as the cut stands.
 #
-# When two named runs merge, the chapter has two names and takes the one
-# anchored earliest. That is a rule rather than a guess: the chapter began
-# there, and it is the same answer on every replay.
+# **Cutting and naming are one event.** Renaming is re-cutting the same month
+# with different words, which makes this last-wins on `(folder, month)` — a line
+# that arrives twice from a restored backup or an interrupted write says the
+# same thing twice and lands the same way. It is the shape `set-state` and
+# `order-groups` have, and it is here for the same reason: carry the whole fact,
+# never a delta.
+#
+# An empty `text` is a chapter cut and not yet named, which is a real state —
+# you know where something began before you know what to call it. It is **not**
+# a deletion. `unsplit-chapter` is, and the two being one event was a genuine
+# confusion in the thing this replaces: "I have not named it" and "I do not want
+# it" were the same line.
+SPLIT_CHAPTER = "split-chapter"
+UNSPLIT_CHAPTER = "unsplit-chapter"
+
+# Retired, and kept named so a log holding these is still readable prose.
+#
+# It anchored a name to a month because a chapter was derived and had nothing
+# else to hold on to; `index.apply` has no branch for it any more, so these
+# replay to nothing. That is deliberate and was agreed: the names were names for
+# runs the app invented, and the runs do not exist now. Nothing is chaptered
+# until you cut it.
 NAME_CHAPTER = "name-chapter"
 
 # ── Time events. `id` is the *session's*. ─────────────────────────────────
@@ -246,6 +265,10 @@ KINDS = {
     ORDER_GROUPS,
     LIFT_TAG,
     UNLIFT_TAG,
+    SPLIT_CHAPTER,
+    UNSPLIT_CHAPTER,
+    # Retired but still writable-shaped, because a log holding these has to
+    # stay readable by the same code that reads the rest of it.
     NAME_CHAPTER,
     LOG_TIME,
     UNLOG_TIME,
@@ -277,7 +300,11 @@ def append(
     media: list[str] | None = None,
     reply_to: str | None = None,
     year: str | None = None,
-    month: int | None = None,
+    # `YYYY-MM` — where a chapter was cut. It was a 1–12 integer beside a
+    # `year` field while a chapter's name was anchored to a month of one
+    # album; a cut belongs to the folder's whole timeline, so the month
+    # carries its own year now.
+    month: str | None = None,
     order: list[str] | None = None,
     seconds: int | None = None,
 ) -> dict:

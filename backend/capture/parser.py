@@ -5,6 +5,7 @@ Extracts from raw text:
  - times:      {time-link}      e.g. {q3}, {review_monday}
  - patterns:   \\sentiment       e.g. \\hate, \\burnout, \\win
  - places:     @place           e.g. @helsinki, @the-office
+ - counts:     #42              e.g. #100, #3
  - directives: --foldername     direct-file into a folder (stripped from text)
  - todos:      --todo           that line becomes a checkbox
 
@@ -21,6 +22,14 @@ boundary rule: forty of its inputs carry `a@b.com`, and all forty expect no
 capture. A place is deliberately the same shape as a pattern and points at
 nothing; only `<folder>` resolves anywhere. It is a separate list rather than
 a second class of pattern so that asking "where have I been" is a query.
+
+`counts` is the same kind of addition, one sigil later: a bare number you
+attach to a line — a tempo, a rep count, a take — without it polluting
+`patterns` the way typing `\tempo100` used to. It reuses `places`' word-start
+guard rather than inventing one: `F#7`, a sharp chord, has `#` preceded by a
+letter and is correctly read as plain text, while `did it #5 times` has `#`
+preceded by a space and captures. No corpus fixture exercises `#` at all, so
+there is nothing here for the golden corpus to pin either way.
 
 Why it is shaped this way
 -------------------------
@@ -198,6 +207,34 @@ def _scan_places(masked: str, raw: str) -> list[str]:
     return out
 
 
+def _scan_counts(masked: str, raw: str) -> list[str]:
+    """`#` followed by digits, word-start only — `places`' guard, one sigil
+    later.
+
+    The body is plain digits rather than `_is_lnm`: a count is a number, not a
+    word. The guard is `_scan_places`' exactly, read off `raw` for the same
+    reason — masking must not manufacture a word start where the unmasked text
+    has none. That guard is what keeps a sharp chord (`F#7`, `#` preceded by a
+    letter) from reading as a count while `did it #5 times` (`#` preceded by a
+    space) still does.
+    """
+    out: list[str] = []
+    i, n = 0, len(masked)
+    while i < n:
+        if masked[i] != "#" or i + 1 >= n or not masked[i + 1].isdigit():
+            i += 1
+            continue
+        if i > 0 and raw[i - 1] not in _JS_WS:
+            i += 1
+            continue
+        j = i + 1
+        while j < n and masked[j].isdigit():
+            j += 1
+        out.append(masked[i + 1 : j])
+        i = j  # resume after the match, as /g does
+    return out
+
+
 def _scan_directives(text: str):
     """`/--([\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}_-]*)/gu`, by hand.
 
@@ -280,6 +317,7 @@ class ParsedEntry:
     times: list[str] = field(default_factory=list)
     patterns: list[str] = field(default_factory=list)
     places: list[str] = field(default_factory=list)
+    counts: list[int] = field(default_factory=list)
     directive: str | None = None  # --foldername directive (lowercased)
     todo_lines: list[int] = field(default_factory=list)  # 0-based line indices
     clean_text: str = ""  # raw_text with --foldername and --todo stripped
@@ -292,6 +330,7 @@ def parse_entry(raw: str) -> ParsedEntry:
     times = _collect(masked, _TIME_RE)
     patterns = _dedupe(_scan_patterns(masked))
     places = _dedupe(_scan_places(masked, raw))
+    counts = [int(c) for c in _dedupe(_scan_counts(masked, raw))]
 
     # Find --"quoted folder" or --foldername (quoted form takes priority). The
     # quoted form has to match on `raw`: masking blanked its contents out.
@@ -330,6 +369,7 @@ def parse_entry(raw: str) -> ParsedEntry:
         times=times,
         patterns=patterns,
         places=places,
+        counts=counts,
         directive=directive,
         todo_lines=todo_lines,
         clean_text=clean_text,

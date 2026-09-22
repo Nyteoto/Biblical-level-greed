@@ -55,6 +55,11 @@ GROUP_NAME_MAX = 32
 # allowed to be the only thing that knows the shape of a stored field.
 YEAR_RE = re.compile(r"^\d{4}$")
 
+# A month, as a chapter cut spells it. Same argument as the year above: the
+# fold in `index.py` checks it as well as the store does, because an event
+# arriving from a restored backup never went through the request layer.
+MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
 # How many `--todo` lines may stand unchecked at once, across the whole log.
 #
 # A cap rather than a setting, and a small one. An open todo is a promise to

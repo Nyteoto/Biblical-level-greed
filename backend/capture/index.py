@@ -38,11 +38,12 @@ import calendar
 import json
 import sqlite3
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import eventlog
-from .config import DATE_LOCALE, INDEX_PATH, ensure_dirs
+from .config import DATE_LOCALE, INDEX_PATH, MONTH_RE, ensure_dirs
 from .parser import normalize_tag, parse_entry
 from .reminder import resolve_reminders
 
@@ -51,6 +52,103 @@ from .reminder import resolve_reminders
 # spelling in the log for that. A word rather than an empty string, and one no
 # folder id can collide with: ids are twelve hex characters.
 UNFILED_ALBUM = "unfiled"
+
+
+# ── Scope ─────────────────────────────────────────────────────────────────
+#
+# Which entries a read is about. Three subjects, and every scoped read in this
+# module takes one of these rather than a `folder_id: str | None`.
+#
+# That parameter used to mean four different things depending on which
+# function you had called: the unfiled pile in `album`, *no filter at all* in
+# `threads` and `search_entries`, `"unfiled"` as a filter value only `threads`
+# accepted, and `"everything"` as a word only `heat` accepted. Three
+# translations lived at the wire to keep them apart, and one of them was
+# wrong — a search scoped to the pile resolved to `None` and quietly searched
+# everything. None of that was visible from a signature: you had to read the
+# body to learn which convention you were calling into, and the wrong guess
+# returned plausible rows rather than raising.
+#
+# The union is the point. `AlbumScope` genuinely cannot hold `Everything`, so
+# a read that has no answer for "every folder at once" — an album, its
+# chapters, its twelve bars — says so in its own type instead of in prose.
+
+
+@dataclass(frozen=True)
+class Everything:
+    """Every entry there is, filed or not. What Map draws before a folder is
+    chosen, and what Threads means by no folder."""
+
+
+@dataclass(frozen=True)
+class Unfiled:
+    """The pile nothing has claimed — an album you can open like any other,
+    and the one `UNFILED_ALBUM` names in the log."""
+
+
+@dataclass(frozen=True)
+class InFolder:
+    """One folder, resolved through `membership` like everything else."""
+
+    id: str
+
+
+#: What an album can be about. No `Everything`: there is no all-folders album,
+#: which is why the reading lens opens the picker rather than redirecting.
+AlbumScope = Unfiled | InFolder
+
+Scope = Everything | AlbumScope
+
+EVERYTHING = Everything()
+UNFILED = Unfiled()
+
+
+def scope_of(word: str | None, default: Scope) -> Scope:
+    """The wire's spelling of a scope, as a scope.
+
+    `unfiled` is the pile — the same word the log uses, so a chapter cut in it
+    names the same subject either side of the wire. Anything else is a folder
+    id. Absent is `default`, because what "no folder" means is the route's to
+    say: Map means everything by it, the reading lens means the pile.
+    """
+    if word in (None, ""):
+        return default
+    if word == UNFILED_ALBUM:
+        return UNFILED
+    assert word is not None
+    return InFolder(word)
+
+
+def album_scope_of(word: str | None) -> AlbumScope:
+    """The wire's spelling of *an album's* subject, which is narrower: absent
+    is the pile, never everything.
+
+    There is no all-folders album — the reading lens opens the picker rather
+    than redirecting — so this returns the narrower type and the routes that
+    use it need no check for a case that cannot arrive.
+    """
+    if word in (None, "", UNFILED_ALBUM):
+        return UNFILED
+    assert word is not None
+    return InFolder(word)
+
+
+def subject_of(scope: AlbumScope) -> str:
+    """An album scope as the log spells it, for the tables keyed by the subject
+    an event named — `chapter_splits` is the one. The pile is a word rather
+    than a null so that a cut in it has somewhere to be stored."""
+    return UNFILED_ALBUM if isinstance(scope, Unfiled) else scope.id
+
+
+def _scope_clause(scope: Scope) -> tuple[str, list]:
+    """A scope as the `id IN (…)` fragment that narrows a read, and its
+    arguments. The one place the three-way question is asked."""
+    if isinstance(scope, Everything):
+        return "", []
+    if isinstance(scope, Unfiled):
+        return f" AND id IN ({_UNFILED})", []
+    return f" AND id IN ({_MEMBERSHIP})", [scope.id]
+
 
 TABLES = (
     "entries",
@@ -61,7 +159,7 @@ TABLES = (
     "entry_folders",
     "folder_names",
     "folder_groups",
-    "chapter_names",
+    "chapter_splits",
     "lifted_tags",
     "time_sessions",
 )
@@ -87,6 +185,9 @@ CREATE TABLE IF NOT EXISTS entries (
     -- the same reason: so "every place I have written" is one query rather
     -- than a scan of every raw line.
     places     TEXT NOT NULL DEFAULT '[]',
+    -- #counts. Derived the same way, a JSON array of ints rather than strings
+    -- since a count is a number and not a word.
+    counts     TEXT NOT NULL DEFAULT '[]',
     todo_lines TEXT NOT NULL DEFAULT '[]',
     todo_done  TEXT NOT NULL DEFAULT '[]',
     -- Paths under data/media, as a JSON array. Stored rather than derived:
@@ -198,17 +299,22 @@ CREATE TABLE IF NOT EXISTS folder_groups (
 );
 CREATE INDEX IF NOT EXISTS folder_groups_by_year ON folder_groups (year);
 
--- A chapter named by hand. Keyed on the month it was anchored to rather than
--- on the chapter, because a chapter is a run of months and a run is derived —
--- see `name-chapter` in eventlog.py for why a month is a safe anchor and what
--- happens when two named runs merge. `folder_id` is a folder or the literal
--- `unfiled`, which is an album like any other.
-CREATE TABLE IF NOT EXISTS chapter_names (
+-- Where a chapter was cut, and what it is called. `folder_id` is a folder or
+-- the literal `unfiled`, which is an album like any other.
+--
+-- `month` is `YYYY-MM` text rather than a year column and an integer, for two
+-- reasons: it sorts correctly as a string, which is the whole of the ordering
+-- this table needs; and a cut belongs to the folder's *timeline* rather than to
+-- one album, so a chapter opened in November goes on being the chapter you are
+-- in through January. Cutting the list to a year is `chapters()`'s job.
+--
+-- An empty `name` is a chapter cut and not yet named, which is why the name is
+-- a column here and not a row's absence. See `split-chapter` in eventlog.py.
+CREATE TABLE IF NOT EXISTS chapter_splits (
     folder_id TEXT NOT NULL,
-    year      TEXT NOT NULL,
-    month     INTEGER NOT NULL,
+    month     TEXT NOT NULL,
     name      TEXT NOT NULL,
-    PRIMARY KEY (folder_id, year, month)
+    PRIMARY KEY (folder_id, month)
 );
 
 -- `tag` is the primary key, not a pair: one tag belongs to at most one
@@ -299,7 +405,7 @@ CREATE VIEW IF NOT EXISTS membership AS
 
 COLUMNS = (
     "id, ts, day, raw_text, clean_text, folders, times, patterns, places, "
-    "todo_lines, todo_done, media, directive, reply_to"
+    "counts, todo_lines, todo_done, media, directive, reply_to"
 )
 PLACEHOLDERS = ", ".join("?" * len(COLUMNS.split(",")))
 
@@ -371,6 +477,7 @@ def derive(raw_text: str) -> dict:
         "times": parsed.times,
         "patterns": parsed.patterns,
         "places": parsed.places,
+        "counts": parsed.counts,
         "todo_lines": parsed.todo_lines,
     }
 
@@ -422,6 +529,7 @@ def _row(event: dict, done: list[int], media: list[str] | None = None) -> tuple[
         json.dumps(d["times"], ensure_ascii=False),
         json.dumps(d["patterns"], ensure_ascii=False),
         json.dumps(d["places"], ensure_ascii=False),
+        json.dumps(d["counts"]),
         json.dumps(d["todo_lines"]),
         json.dumps(sorted(done)),
         json.dumps(list(event.get("media", []) if media is None else media), ensure_ascii=False),
@@ -457,7 +565,7 @@ def order_seqs(drawn: list[str], order: list[str]) -> dict[str, int]:
 # upsert and the placeholder below have to agree with the schema about which
 # ones cannot be an empty string.
 _JSON_COLUMNS = frozenset(
-    ("folders", "times", "patterns", "places", "todo_lines", "todo_done", "media")
+    ("folders", "times", "patterns", "places", "counts", "todo_lines", "todo_done", "media")
 )
 
 # Every column of an `entries` row is derived from the capture event except
@@ -727,7 +835,7 @@ def apply(conn: sqlite3.Connection, event: dict) -> None:
         conn.execute("DELETE FROM folder_names WHERE folder_id = ?", (subject,))
         conn.execute("DELETE FROM folder_groups WHERE folder_id = ?", (subject,))
         # The half the targeted mirror used to miss.
-        conn.execute("DELETE FROM chapter_names WHERE folder_id = ?", (subject,))
+        conn.execute("DELETE FROM chapter_splits WHERE folder_id = ?", (subject,))
         # Time goes with the folder, unlike the entries. An entry is only
         # *resolved* into a folder and survives it being deleted intact; a
         # session is a measurement *of* that folder and cannot be re-resolved
@@ -812,26 +920,31 @@ def apply(conn: sqlite3.Connection, event: dict) -> None:
                 (year, subject),
             )
 
-    elif kind == eventlog.NAME_CHAPTER:
-        year = event.get("year") or ""
-        month = int(event.get("month") or 0)
-        # `unfiled` is a real album to name a chapter in and is the one
-        # subject here that is not a folder id.
+    elif kind == eventlog.SPLIT_CHAPTER:
+        month = str(event.get("month") or "")
+        # `unfiled` is a real album to cut a chapter in and is the one subject
+        # here that is not a folder id.
         known = subject == UNFILED_ALBUM or _folder_exists(conn, subject)
-        if known and year and 1 <= month <= 12:
+        if known and MONTH_RE.match(month):
+            # Last-wins on the pair: a re-cut of the same month is a rename,
+            # and the same line twice is the same chapter. An empty name is a
+            # chapter not yet named and is stored like any other.
             conn.execute(
-                "DELETE FROM chapter_names "
-                "WHERE folder_id = ? AND year = ? AND month = ?",
-                (subject, year, month),
+                "INSERT INTO chapter_splits (folder_id, month, name) VALUES (?, ?, ?) "
+                "ON CONFLICT (folder_id, month) DO UPDATE SET name = excluded.name",
+                (subject, month, event.get("text", "")),
             )
-            # An empty name is a deletion, which is what hands the chapter
-            # back to the reader that names it from your own words.
-            if event.get("text", ""):
-                conn.execute(
-                    "INSERT INTO chapter_names (folder_id, year, month, name) "
-                    "VALUES (?, ?, ?, ?)",
-                    (subject, year, month, event.get("text", "")),
-                )
+
+    elif kind == eventlog.UNSPLIT_CHAPTER:
+        month = str(event.get("month") or "")
+        if MONTH_RE.match(month):
+            # No folder guard: taking a cut back off a folder that is already
+            # gone is a no-op either way, and `DELETE … WHERE` touching no rows
+            # is the tolerance this function is built on.
+            conn.execute(
+                "DELETE FROM chapter_splits WHERE folder_id = ? AND month = ?",
+                (subject, month),
+            )
 
     # ── Tags ──────────────────────────────────────────────────────────────
     elif kind == eventlog.LIFT_TAG:
@@ -1114,12 +1227,150 @@ def due_reminders(conn: sqlite3.Connection, as_of: str) -> list[dict]:
     ]
 
 
-# ── Mirrors of the folder events ──────────────────────────────────────────
+# ── Threads ───────────────────────────────────────────────────────────────
 #
-# Each of these does to the tables what `fold` does to its dicts, so that a
-# write does not cost a full replay. They are the half of the projection most
-# likely to drift, which is why `test_capture_folders.py` deletes the index
-# after every one of them and asserts the rebuild agrees.
+# **A thread is a deadline that has been carried forward at least once.** You
+# write `{fri} finish the intro`; Friday comes; you answer it with a reply that
+# sets the next one. That chain is the whole of what this lens is for.
+#
+# The rule is the user's and it is narrower than "any reply chain" on purpose:
+# a `{}` with no reply is a reminder and the banner already has it, and a reply
+# carrying no `{}` of its own is an answer rather than a deadline being moved.
+# **The hop is what makes a thread** — the first reply that sets the next date.
+#
+# Everything below is a read. `entries.reply_to` is the link, `reminders` is
+# the deadline, and `store.capture` already dismisses the reminder a reply
+# answers, so there is no new event kind and nothing new stored.
+
+
+def _turn_due(conn: sqlite3.Connection, entry_id: str) -> tuple[str, int] | None:
+    """The reminder a turn *sets*: the earliest still standing, or the earliest
+    there is if every one has been dismissed.
+
+    One date per turn, because a turn is a point on a spine and a point with
+    two dates is not one. An entry can carry several `{}` lines — one reminder
+    per line is the corpus's rule — and the one that matters is the one that
+    would come due first.
+    """
+    row = conn.execute(
+        "SELECT due_at, dismissed FROM reminders WHERE entry_id = ? "
+        # Standing before dismissed, then soonest. A turn whose reminder is
+        # still pending is what makes a thread live, so that one wins.
+        "ORDER BY dismissed, due_at LIMIT 1",
+        (entry_id,),
+    ).fetchone()
+    return (row["due_at"], int(row["dismissed"])) if row else None
+
+
+#: One chain, root first. Recursive because a reply can answer a reply, and
+#: `reply_to` is the only link there is — `replied_by` is a query for the
+#: *oldest* answer and so can only ever walk one hop.
+_CHAIN = """
+WITH RECURSIVE chain(id) AS (
+    SELECT ?
+    UNION
+    SELECT e.id FROM entries e JOIN chain ON e.reply_to = chain.id
+)
+SELECT e.id, e.ts, e.day, e.clean_text, e.media, e.todo_lines, e.todo_done
+FROM entries e JOIN chain ON e.id = chain.id
+ORDER BY e.ts, e.rowid
+"""
+
+
+def _chain(conn: sqlite3.Connection, root_id: str) -> list[dict]:
+    """A root and everything descending from it, oldest first.
+
+    **Flattened by `ts`, not kept as a tree.** Answering a prompt dismisses it,
+    so two replies to one prompt is already an unusual shape; a deadline being
+    carried is a line of turns in time, and a fork drawn on the spine would be
+    a shape the domain does not have. `rowid` breaks the tie because `ts` is
+    second-resolution — the same reason `open_todos` uses it.
+    """
+    out = []
+    for row in conn.execute(_CHAIN, (root_id,)).fetchall():
+        due = _turn_due(conn, row["id"])
+        out.append(
+            {
+                "entry_id": row["id"],
+                "ts": row["ts"],
+                "day": row["day"],
+                "text": row["clean_text"],
+                "due_at": due[0] if due else None,
+                "dismissed": bool(due[1]) if due else False,
+                "media": len(json.loads(row["media"])),
+                # The turn is an entry, so its promises come with it. That is
+                # the whole of "a todo with a `{}` belongs here" — no section,
+                # no second list, and a todo whose chain never carries a `{}`
+                # is never a turn and so never appears.
+                "todo_lines": json.loads(row["todo_lines"]),
+                "todo_done": json.loads(row["todo_done"]),
+            }
+        )
+    return out
+
+
+def threads(conn: sqlite3.Connection, scope: Scope = EVERYTHING) -> list[dict]:
+    """Every deadline that has been carried forward, live ones first.
+
+    **It is not cut by year**, and that is deliberate: a thread
+    routinely crosses one — you answer in February something you asked in
+    November — and the reading lens already hands the year back before
+    following a reply for exactly this reason.
+
+    **The folder matches any turn, not only the root.** A reply tagged into a
+    different folder must not make a thread vanish from the folder you would
+    look for it in.
+
+    No clock is read. `dismissed` is stored and `due_at` is absolute, so what
+    "three days late" means is the client's to work out — and `index` is not
+    allowed to read a clock.
+    """
+    roots = conn.execute(
+        # A root is an entry that answers nothing and carries a reminder. The
+        # `EXISTS` is the hop: some reply to it must carry one too, or this is
+        # a reminder rather than a thread.
+        """
+        SELECT e.id FROM entries e
+        WHERE e.reply_to = ''
+          AND EXISTS (SELECT 1 FROM reminders r WHERE r.entry_id = e.id)
+          AND EXISTS (
+              SELECT 1 FROM entries c JOIN reminders r2 ON r2.entry_id = c.id
+              WHERE c.reply_to = e.id
+          )
+        ORDER BY e.ts DESC, e.rowid DESC
+        """
+    ).fetchall()
+
+    out = []
+    for root in roots:
+        turns = _chain(conn, root["id"])
+        if not turns:
+            continue
+        homes = [home_folder(conn, turn["entry_id"]) for turn in turns]
+        # `home_folder` spells the pile `None`, so the match is against that
+        # rather than against the word the log uses for it.
+        if not isinstance(scope, Everything):
+            want = None if isinstance(scope, Unfiled) else scope.id
+            if want not in homes:
+                continue
+        last = turns[-1]
+        # Nothing pending on the newest turn is what closed means: it carries
+        # no reminder, or carries one that was dismissed by hand. Answering
+        # dismisses what it answers, so every turn but the last is dismissed
+        # already — the last one is the only one that can still be standing.
+        pending = last["due_at"] if (last["due_at"] and not last["dismissed"]) else None
+        out.append(
+            {
+                "id": root["id"],
+                # Where to go to be looking at this thread. The root's, because
+                # that is where it started; the turns carry their own.
+                "folder": homes[0],
+                "turns": turns,
+                "due_at": pending,
+                "closed": pending is None,
+            }
+        )
+    return out
 
 
 # ── Reads ─────────────────────────────────────────────────────────────────
@@ -1137,6 +1388,7 @@ def _as_entry(row: sqlite3.Row) -> dict:
         "times": json.loads(row["times"]),
         "patterns": json.loads(row["patterns"]),
         "places": json.loads(row["places"]),
+        "counts": json.loads(row["counts"]),
         "todo_lines": json.loads(row["todo_lines"]),
         "todo_done": json.loads(row["todo_done"]),
         "media": json.loads(row["media"]),
@@ -1176,6 +1428,56 @@ def entries(
     sql += " ORDER BY ts DESC, id DESC LIMIT ?"
     args.append(limit)
     return [_as_entry(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def search_entries(
+    conn: sqlite3.Connection,
+    q: str,
+    scope: Scope = EVERYTHING,
+    start: str | None = None,
+    end: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Every entry whose text contains `q`, newest first.
+
+    Case-insensitive substring match against `clean_text` — what an entry
+    reads as, not the `--directive`/`--todo` text that never survives into it.
+    A plain `LIKE`, not a virtual FTS table: nothing here is stored beyond
+    `raw_text` either way, and a substring scan over one person's archive is
+    cheap enough that reaching for a second index would be solving a problem
+    this app does not have. `%` and `_` are escaped so searching for either
+    matches itself rather than acting as a wildcard.
+
+    `scope` filters through `membership`, the same view `folder_entries`
+    reads — a search scoped to a folder is a fact about where an entry lives,
+    resolved the same way everywhere. Scoping to `UNFILED` searches the pile
+    and nothing else, which the old `folder_id=None` could not express: the
+    wire spelled the pile `None` and this read took `None` for "no filter", so
+    searching the pile searched the whole archive and looked like it had
+    worked. `start`/`end` are the same inclusive day keys `entries()` takes.
+
+    Each result carries `home_folder` — where to go to be looking at it, the
+    same resolution `home_folder()` gives the banner — so a search result is
+    somewhere to land, not just a snippet.
+    """
+    needle = q.strip()
+    if not needle:
+        return []
+    escaped = needle.translate({ord("\\"): "\\\\", ord("%"): "\\%", ord("_"): "\\_"})
+    sql = f"{SELECT_ENTRIES} WHERE clean_text LIKE ? ESCAPE '\\'"
+    args: list = [f"%{escaped}%"]
+    clause, scope_args = _scope_clause(scope)
+    sql += clause
+    args += scope_args
+    if start and end:
+        sql += " AND day >= ? AND day <= ?"
+        args += [start, end]
+    sql += " ORDER BY ts DESC, id DESC LIMIT ?"
+    args.append(limit)
+    return [
+        {**_as_entry(r), "home_folder": home_folder(conn, r["id"])}
+        for r in conn.execute(sql, args).fetchall()
+    ]
 
 
 # ── Folders ───────────────────────────────────────────────────────────────
@@ -1279,22 +1581,22 @@ def folder_seconds(
 
 
 def folder_time_volumes(
-    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+    conn: sqlite3.Connection, scope: AlbumScope, year: str | None
 ) -> list[int]:
     """Twelve seconds-per-month totals, January first — the time-shaped twin of
     `_volumes`, and drawn on the same twelve bars.
 
-    `folder_id=None` is the unfiled pile, which can never have any: a session
-    is logged *against a folder* from that folder's own screen, so there is no
-    gesture that produces an unfiled one.
+    `UNFILED` can never have any: a session is logged *against a folder* from
+    that folder's own screen, so there is no gesture that produces an unfiled
+    one.
     """
     out = [0] * 12
-    if folder_id is None:
+    if isinstance(scope, Unfiled):
         return out
     clause, args = _year_clause(year)
     rows = conn.execute(
         "SELECT day, seconds FROM time_sessions WHERE folder_id = ?" + clause,
-        [folder_id] + args,
+        [scope.id] + args,
     ).fetchall()
     for row in rows:
         out[int(row["day"][5:7]) - 1] += int(row["seconds"])
@@ -1355,43 +1657,64 @@ def points(entries: int, seconds: int) -> int:
     return entries + seconds // SECONDS_PER_POINT
 
 
-def folder_heat(
-    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+def heat(
+    conn: sqlite3.Connection, year: str | None, scope: Scope = EVERYTHING
 ) -> list[dict]:
-    """A folder's days, oldest first — `{day, entries, seconds, points}`.
+    """Days and what each was worth, oldest first — `{day, entries, seconds,
+    points}`.
 
-    Only days with something on them. A year is 365 cells and at most a
-    couple of hundred of them are ever non-empty, so sending the empty ones
-    would be sending the calendar, which the client can work out for itself.
+    **One fold, three subjects**, because the Map lens asks for the year across
+    everything and the album asks for one folder, and two implementations of
+    "what is a day worth" is exactly the drift `apply()` was written to end:
+
+      - `EVERYTHING` — every entry in the year, filed or not, and every
+        session. What Map draws when no folder is chosen.
+      - `UNFILED` — the pile nothing has claimed. It has entries and no clock:
+        a session is logged *against a folder* from that folder's own screen,
+        so there is no gesture that makes an unfiled one.
+      - `InFolder(id)` — that folder, resolved through `membership` like
+        everything else.
+
+    Only days with something on them. A year is 365 cells and at most a couple
+    of hundred are ever non-empty, so sending the empty ones would be sending
+    the calendar, which the client can work out for itself.
 
     A day where a five-minute session was logged and nothing was written comes
     back with `points` of 0 rather than being dropped. It is a day you worked,
     the row is what the readout says when the cell is pressed, and a fold that
     silently forgot short sessions would be the same class of mistake as
     rounding them up.
-
-    The unfiled pile has no clock and no overview to draw this on, so it is
-    empty rather than an error — the same shape `folder_time_volumes` takes.
     """
-    if folder_id is None:
-        return []
     clause, args = _year_clause(year)
+
+    if isinstance(scope, Everything):
+        where, where_args = "1", []
+        clocked_where, clocked_args = "1", []
+    elif isinstance(scope, Unfiled):
+        where, where_args = f"id IN ({_UNFILED})", []
+        # The unfiled pile has no clock: `log-time` names a folder, and this is
+        # the absence of one. A predicate that matched nothing would do, but
+        # not running the query says so more plainly.
+        clocked_where, clocked_args = "0", []
+    else:
+        where, where_args = f"id IN ({_MEMBERSHIP})", [scope.id]
+        clocked_where, clocked_args = "folder_id = ?", [scope.id]
+
     made: dict[str, int] = {}
     for row in conn.execute(
-        f"SELECT day, count(*) AS n FROM entries WHERE id IN ({_MEMBERSHIP})"
-        + clause
-        + " GROUP BY day",
-        [folder_id] + args,
+        f"SELECT day, count(*) AS n FROM entries WHERE {where}{clause} GROUP BY day",
+        where_args + args,
     ).fetchall():
         made[row["day"]] = int(row["n"])
+
     clocked: dict[str, int] = {}
     for row in conn.execute(
-        "SELECT day, sum(seconds) AS n FROM time_sessions WHERE folder_id = ?"
-        + clause
-        + " GROUP BY day",
-        [folder_id] + args,
+        f"SELECT day, sum(seconds) AS n FROM time_sessions WHERE {clocked_where}"
+        f"{clause} GROUP BY day",
+        clocked_args + args,
     ).fetchall():
         clocked[row["day"]] = int(row["n"] or 0)
+
     return [
         {
             "day": day,
@@ -1417,7 +1740,7 @@ def momentum(
     """`folder id -> points` over one span of days, both ends inclusive.
 
     The shelf's sort key, and the reason it is computed here rather than
-    folded out of `folder_heat` once per folder: that would be one membership
+    folded out of `heat` once per folder: that would be one membership
     resolution per card, which is precisely the O(folders x entries) read that
     `_shelf_buckets` exists to have stopped doing. Two queries, whatever the
     shelf holds.
@@ -1636,118 +1959,123 @@ def _month_range(volumes: list[int]) -> str:
     return first if first == last else f"{first}–{last}"
 
 
-def _runs(volumes: list[int]) -> list[tuple[int, int]]:
-    """Contiguous months with activity, as (first, last) zero-based indices."""
-    out: list[tuple[int, int]] = []
-    start: int | None = None
-    for i, n in enumerate(volumes):
-        if n and start is None:
-            start = i
-        elif not n and start is not None:
-            out.append((start, i - 1))
-            start = None
-    if start is not None:
-        out.append((start, 11))
-    return out
+def chapter_splits(conn: sqlite3.Connection, scope: AlbumScope) -> list[tuple[str, str]]:
+    """Every cut this folder has, oldest first, as `(YYYY-MM, name)`.
 
-
-def chapter_names(
-    conn: sqlite3.Connection, folder_id: str | None, year: str | None
-) -> dict[int, str]:
-    """Month → the name given to the chapter anchored there, for one album in
-    one year. Empty for the all-years shelf: a chapter is a run of months
-    *inside a year*, so there is no chapter to have named across all of them."""
-    if year is None:
-        return {}
-    rows = conn.execute(
-        "SELECT month, name FROM chapter_names WHERE folder_id = ? AND year = ?",
-        (folder_id or UNFILED_ALBUM, year),
-    ).fetchall()
-    return {int(r["month"]): r["name"] for r in rows}
-
-
-def _chapter_name(rows: list[sqlite3.Row], first: int, last: int, owned: set[str]) -> str:
-    """What the app calls a run of months.
-
-    Named from the user's own words, never invented: the commonest `\\pattern`
-    or `<tag>` written inside the run, minus the tags that merely say which
-    album this is — those are true of every entry here and so distinguish
-    nothing. With no word to use, the month range is the name, which is honest
-    rather than clever.
+    The folder's whole timeline, not one album's: a chapter opened in November
+    is still the chapter January is in, and cutting the list to a year is
+    `chapters()`'s job rather than this one's.
     """
-    counts: dict[str, int] = {}
-    for row in rows:
-        month = int(row["day"][5:7]) - 1
-        if not first <= month <= last:
-            continue
-        for word in json.loads(row["patterns"]) + json.loads(row["folders"]):
-            if word in owned:
-                continue
-            counts[word] = counts.get(word, 0) + 1
-    if not counts:
-        return _month_range([1 if first <= i <= last else 0 for i in range(12)])
-    # Commonest wins; ties break on the word so a reload cannot rename a
-    # chapter the user is looking at.
-    name = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
-    return name.replace("-", " ").capitalize()
+    rows = conn.execute(
+        "SELECT month, name FROM chapter_splits WHERE folder_id = ? ORDER BY month",
+        (subject_of(scope),),
+    ).fetchall()
+    return [(r["month"], r["name"]) for r in rows]
 
 
 def chapters(
+    conn: sqlite3.Connection,
+    scope: AlbumScope,
+    year: str | None,
     rows: list[sqlite3.Row],
-    owned: set[str] = frozenset(),
-    named: dict[int, str] | None = None,
 ) -> list[dict]:
-    """Month runs, newest first. Derived on every read — see `_chapter_name` —
-    except where one has been named by hand, which is `named`.
+    """One album's chapters, newest first. **Authored, never guessed.**
 
-    A run takes the name anchored to the earliest of its months that has one.
-    Two named runs merge into one chapter when the month between them is
-    written in, and this is the rule that says which of the two names it keeps:
-    the one it began with. Renaming always anchors to the run's *first* month,
-    so a rename cannot be shadowed by an older name further along.
+    This used to find runs of consecutive months with something in them and
+    name each from the commonest word written inside it. That reading is gone
+    along with the events that overruled it: a chapter begins where the user
+    cut it and runs until the next cut, so **a folder nobody has cut has no
+    chapters at all**. An app that invents a heading over your writing and then
+    argues with you about the name is the thing this replaces.
+
+    A cut before the year in view opens that year — clipped to January, because
+    what you are looking at is the part of that chapter this album holds. That
+    falls out of the model rather than being a case: the cuts are a timeline and
+    a year is a window onto it.
+
+    The all-years album has none, as it had none before. A chapter is drawn as a
+    span across twelve month columns, and "every year at once" is not twelve
+    columns.
     """
+    if year is None:
+        return []
+
+    cuts = chapter_splits(conn, scope)
+    if not cuts:
+        return []
+
     volumes = _volumes(rows)
-    named = named or {}
+    start = f"{year}-01"
+    end = f"{year}-12"
+
     out = []
-    for first, last in reversed(_runs(volumes)):
-        window = [1 if first <= i <= last else 0 for i in range(12)]
-        # Months here are zero-based; the anchors, like the payload, are not.
-        given = next((named[m] for m in range(first + 1, last + 2) if m in named), "")
+    for i, (month, name) in enumerate(cuts):
+        after = cuts[i + 1][0] if i + 1 < len(cuts) else None
+        # Where this chapter stops: the month before the next cut, or the end
+        # of time. Compared as strings, which `YYYY-MM` is built to allow.
+        last = _month_before(after) if after else end
+        if month > end or last < start:
+            continue
+        first_month = int(month[5:7]) if month >= start else 1
+        last_month = int(last[5:7]) if last <= end else 12
+        window = [1 if first_month - 1 <= m <= last_month - 1 else 0 for m in range(12)]
         out.append(
             {
-                "name": given or _chapter_name(rows, first, last, owned),
-                # What the run is called with nothing said about it, so the
-                # panel can offer to hand it back without asking the server.
-                "derived": _chapter_name(rows, first, last, owned),
-                "named": bool(given),
+                # The cut itself: this chapter's identity, and what `?chapter=`
+                # names. Not clipped — it is where the chapter began, which may
+                # be in a year you are not looking at.
+                "month": month,
+                # Empty is a chapter cut and not yet named. The screens draw the
+                # range in its place; none of them invents a word.
+                "name": name,
                 "range": _month_range(window),
-                "first_month": first + 1,
-                "last_month": last + 1,
-                "entries": sum(volumes[first : last + 1]),
+                "first_month": first_month,
+                "last_month": last_month,
+                "entries": sum(volumes[first_month - 1 : last_month]),
             }
         )
+    out.reverse()
     return out
 
 
+def _month_before(month: str) -> str:
+    """`2026-01` → `2025-12`. The month a chapter ends in, given where the next
+    one begins."""
+    y, m = int(month[:4]), int(month[5:7])
+    return f"{y - 1}-12" if m == 1 else f"{y}-{m - 1:02d}"
+
+
+def uncut_entries(cuts: list[tuple[str, str]], rows: list[sqlite3.Row]) -> int:
+    """How many of this album's entries sit before its first cut.
+
+    Record prints this rather than the app inventing an opening chapter for
+    them. Entries that belong to no chapter are a real and ordinary state — you
+    cut where something changed, not at the beginning — and the number is the
+    honest way to say so.
+    """
+    if not cuts:
+        return 0
+    first = cuts[0][0]
+    return sum(1 for row in rows if row["day"][:7] < first)
+
+
 def _album_rows(
-    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+    conn: sqlite3.Connection, scope: AlbumScope, year: str | None
 ) -> list[sqlite3.Row]:
     """One album's entries in one year, as the handful of columns every
-    figure on a shelf card is folded out of. `folder_id=None` is the unfiled
-    pile.
+    figure on a shelf card is folded out of.
 
     `ts` is here only so `shelf()` can say which album was written in last. Day
     would nearly do, and ties on the same day would then fall to whatever order
     the folders happen to come back in — which is the kind of arbitrary that
     reads as a broken setting rather than as a coin toss."""
-    clause, args = _year_clause(year)
+    year_clause, year_args = _year_clause(year)
+    scope_clause, scope_args = _scope_clause(scope)
     columns = "ts, day, media, patterns, folders, todo_lines, todo_done"
-    if folder_id is None:
-        sql = f"SELECT {columns} FROM entries WHERE id IN ({_UNFILED})"
-    else:
-        sql = f"SELECT {columns} FROM entries WHERE id IN ({_MEMBERSHIP})"
-        args = [folder_id] + args
-    return conn.execute(sql + clause, args).fetchall()
+    # `_scope_clause` opens with `AND`, so the query needs a predicate to hang
+    # it off: `1` rather than a branch per scope.
+    sql = f"SELECT {columns} FROM entries WHERE 1{scope_clause}{year_clause}"
+    return conn.execute(sql, scope_args + year_args).fetchall()
 
 
 def _shelf_buckets(
@@ -1859,21 +2187,19 @@ def _lead_from(rows: list[dict], limit: int = 3) -> list[str]:
 
 
 def album_entries(
-    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+    conn: sqlite3.Connection, scope: AlbumScope, year: str | None
 ) -> list[dict]:
     """Everything in one album in one year, newest first."""
-    clause, args = _year_clause(year)
-    if folder_id is None:
-        sql = f"{SELECT_ENTRIES} WHERE id IN ({_UNFILED})"
-    else:
-        sql = f"{SELECT_ENTRIES} WHERE id IN ({_MEMBERSHIP})"
-        args = [folder_id] + args
-    sql += clause + " ORDER BY ts DESC, id DESC"
-    return [_as_entry(row) for row in conn.execute(sql, args).fetchall()]
+    year_clause, year_args = _year_clause(year)
+    scope_clause, scope_args = _scope_clause(scope)
+    sql = f"{SELECT_ENTRIES} WHERE 1{scope_clause}{year_clause} ORDER BY ts DESC, id DESC"
+    return [
+        _as_entry(row) for row in conn.execute(sql, scope_args + year_args).fetchall()
+    ]
 
 
 def album(
-    conn: sqlite3.Connection, folder_id: str | None, year: str | None
+    conn: sqlite3.Connection, scope: AlbumScope, year: str | None
 ) -> dict | None:
     """One album, one year: its entries, its twelve bars, its chapters.
 
@@ -1881,25 +2207,28 @@ def album(
     still renames, ships and deletes the *folder*, because a year is a way of
     reading a project rather than a second kind of thing to own.
     """
+    folder_id = scope.id if isinstance(scope, InFolder) else None
     record = folder(conn, folder_id) if folder_id else None
     if folder_id and record is None:
         return None
-    rows = _album_rows(conn, folder_id, year)
-    owned = set(record["tags"]) if record else set()
-    contents = album_entries(conn, folder_id, year)
+    rows = _album_rows(conn, scope, year)
+    contents = album_entries(conn, scope, year)
     return {
         "folder": record,
         "year": year,
         "entries": contents,
         "volumes": _volumes(rows),
-        "chapters": chapters(rows, owned, chapter_names(conn, folder_id, year)),
+        "chapters": chapters(conn, scope, year, rows),
+        # What sits before the first cut. Printed on Record rather than swept
+        # into an opening chapter nobody asked for — see `uncut_entries`.
+        "uncut": uncut_entries(chapter_splits(conn, scope), rows),
         "media_count": sum(len(json.loads(r["media"])) for r in rows),
         # The album's clock: the total for this year, the twelve monthly
         # totals that draw beside `volumes`, and the sessions themselves so
         # one logged by mistake can be found and taken back. All three are
         # sums over `time_sessions` and none of them is stored.
         "seconds": folder_seconds(conn, year).get(folder_id or "", 0),
-        "time_volumes": folder_time_volumes(conn, folder_id, year),
+        "time_volumes": folder_time_volumes(conn, scope, year),
         "sessions": time_sessions(conn, folder_id, year) if folder_id else [],
         # Promises made in here and promises kept, off the same rows the twelve
         # bars are counted from. The unfiled pile gets one like any other album
@@ -1907,11 +2236,12 @@ def album(
         # you can open.
         "todos": rows_tally(rows),
         "sentiments": folder_sentiments(conn, folder_id) if folder_id else [],
-        # The heatmap: every day of this year that has anything on it, and
-        # what it is worth. A reading like the sentiments beside it — the
-        # counts are drawn, the brightness is the count, and nothing here says
-        # whether a dim week was a bad one.
-        "heat": folder_heat(conn, folder_id, year),
+        # The year of days used to ride along here, and does not any more. It
+        # is Map's whole question, asked through `GET /heat` with a scope, and
+        # an album payload that also carried it was paying two queries on every
+        # folder change to answer something the reading lens does not draw.
+        # `heat(conn, year, scope)` is that same fold at this scope, for
+        # whoever asks for it next.
         # The group is a fact about this folder *in this year*, so it belongs
         # to the album rather than to the folder record beside it.
         "group": groups_for(conn, year)[0].get(folder_id or "", ""),
@@ -2027,7 +2357,13 @@ def shelf(conn: sqlite3.Connection, year: str | None, today: str | None = None) 
                 "seconds": clocked.get(record["id"], 0),
                 "volumes": volumes,
                 "months": _month_range(volumes),
-                "chapters": len(_runs(volumes)),
+                # Through the same reckoning the album uses rather than a
+                # second count of the same thing — one query per folder on a
+                # tiny table, against a card and a screen that can disagree
+                # about how many chapters a project has. That trade is the same
+                # one `test_momentum_agrees_with_the_days_the_heatmap_draws`
+                # exists to protect.
+                "chapters": len(chapters(conn, InFolder(record["id"]), year, rows)),
                 "lead": _lead_from(rows),
                 # Empty for a folder in the loose grid above the groups, which
                 # is where a folder starts and where most of them stay.

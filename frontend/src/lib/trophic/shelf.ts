@@ -20,6 +20,8 @@
  * all-years shelf has no groups at all — which falls out of `groups` being
  * empty rather than being a case anyone has to write.
  */
+import { lensHref } from './scope';
+
 import type { Album, Shelf } from './api';
 import { moveBefore } from './sortable';
 
@@ -52,7 +54,7 @@ export function splitShelf(shelf: Shelf | null): { loose: Album[]; sections: Sec
 /** Where an album opens. `null` is the unfiled pile, which is an album you can
  *  open like any other and is not a folder. */
 export function albumHref(folderId: string | null, year: string): string {
-	return `/folders/${folderId ?? 'unfiled'}?year=${year}`;
+	return lensHref('/log', { folder: folderId ?? 'unfiled', year });
 }
 
 /**

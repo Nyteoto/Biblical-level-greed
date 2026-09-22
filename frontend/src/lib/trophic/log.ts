@@ -6,22 +6,16 @@
  * corpus (or a local check) can replay; the component keeps the DOM, the
  * timers and the measuring.** None of the corpus's fixtures describe this
  * screen — it is this port's own invention — so `verify-ui.ts`'s local checks
- * are the oracle, and they exist because a quiet-stretch bug is exactly the
- * kind that hides: it swallows days rather than crashing.
+ * are the oracle, and they exist because the bugs this file can have are
+ * exactly the kind that hide: they swallow days rather than crashing.
  *
- * Two shapes, and the rule that separates them:
- *
- *   - The **lead day** is the newest day in the album and gets everything: the
- *     photograph, the caption, the ribbon, the timestamped lines.
- *   - Every day after it is a **light row** — a date, a line, a time — unless
- *     it joins a **quiet stretch**, which is a run of consecutive light days
- *     that had a line or two and no media at all.
- *
- * A quiet stretch is a merge, never a hide. The strip says how many lines it
- * is holding and expands into exactly the rows it replaced; the same days with
- * the merge switched off in Settings render one after another unchanged. If
- * expanding a stretch ever shows you something you could not have reached with
- * the setting off, this file is wrong.
+ * **A day is a page and every page is dressed the same.** There used to be two
+ * shapes here — a lead day with the photograph and the caption, and a light
+ * row with a date and a line — plus a fold that merged runs of quiet days into
+ * one strip. All three existed because three hundred days shared one scroll
+ * and only the top of it could afford anything. A deck removed that constraint
+ * and took the three shapes with it: see `paginate` below, and `PageDeck` for
+ * why turning pages is not the one-day-at-a-time travel this screen refuses.
  */
 
 import type { Entry } from './api';
@@ -53,90 +47,209 @@ export function groupDays(entries: Entry[]): Day[] {
 		}));
 }
 
-/** A day quiet enough to be worth merging: a line or two, and nothing made. */
-export function isQuiet(day: Day): boolean {
-	return day.media.length === 0 && day.entries.length <= 2;
+// ── Pages ─────────────────────────────────────────────────────────────────
+//
+// The reading view is a deck of pages and a page is a day. This is the whole
+// of the rule that decides what is on one, and it is here rather than in the
+// component for the reason the rest of this file is: a page that silently
+// drops a line is the kind of bug that hides, and a pure function is a thing
+// `verify-ui.ts` can hold to never dropping one.
+//
+// **Pages are for reading; the instruments are still for travelling.** The
+// year rail, the month spine, the chapter list and the jump field all land on
+// a page directly, so no day is ever more than one gesture away and turning is
+// only ever the adjacent-day move. That is the rule the album screen has
+// always had, restated for a view that turns instead of scrolling.
+
+/** One page: a day, or one part of a day too heavy to sit on a single one. */
+export type Shot = Day['media'][number];
+
+export type Page = {
+	/** `2026-08-14#0` — unique within a deck, and stable across a redraw,
+	 *  which is what both `{#key}` and the `{#each}` key need. */
+	key: string;
+	day: Day;
+	/** 0-based. Almost every day is one page and this is 0. */
+	part: number;
+	parts: number;
+	/** The lead photograph and the line written beside it. **The first part
+	 *  only** — a day is recognised once, and a continuation that opened with
+	 *  the same plate again would read as the day starting over. */
+	hero: Shot | null;
+	caption: Entry | null;
+	/** The day's other attachments, for the ribbon. First part only. */
+	ribbon: Shot[];
+	/** The day's whole pool, on every part, so a lightbox opened from page 3
+	 *  still walks the day rather than the page. */
+	shots: Shot[];
+	/** The lines this part draws, newest first. */
+	lines: Entry[];
+};
+
+/** How many lines a page holds before the day continues onto another. A
+ *  tuned constant, not a measurement: measuring rendered height means a
+ *  layout pass per keystroke of reflow, and a deterministic page is one a
+ *  local check can hold. A page that runs a little long simply scrolls —
+ *  scrolling *inside* a page is reading, which was never the thing the album
+ *  screen refused. */
+const PAGE_LINES = 7;
+/** The first part of a day holds fewer, because it is also carrying a
+ *  250px photograph and a ribbon under it. */
+const PAGE_LINES_LEAD = 4;
+/** A line this long is several on screen once it wraps, so it costs two. */
+const LONG_LINE = 400;
+
+function lineCost(entry: Entry): number {
+	return entry.clean_text.length > LONG_LINE ? 2 : 1;
 }
 
-export type Stretch = { kind: 'stretch'; days: Day[] };
-export type Single = { kind: 'day'; day: Day };
-export type Row = Single | Stretch;
-
 /**
- * Fold runs of quiet days into stretches. A run of one is left alone — a strip
- * saying "quiet stretch · 1 line" is longer than the line it is hiding.
+ * A day's pages, in reading order.
  *
- * `merge = false` is the Settings switch turned off, and it returns every day
- * as its own row. That is the whole implementation of that setting: the same
- * input, one branch, and nothing stored either way.
+ * Everything a page draws is decided here rather than in the component, so
+ * that "which entries get drawn" is answered exactly once. `LeadDay` used to
+ * work this out for itself — the hero, the caption promoted out of the list,
+ * the silent replies merged back in — and a second copy of that reckoning in
+ * a paged view is a second chance to lose a line.
  */
-export function foldQuiet(days: Day[], merge = true): Row[] {
-	if (!merge) return days.map((day) => ({ kind: 'day', day }) as Single);
+function pagesOf(day: Day): Page[] {
+	// A reply's attachments belong in its own bubble and are never the day's
+	// hero. Same rule `LeadDay` had, and the reason it had it: promoting one
+	// made the reply into a caption, which is the one shape that says this is
+	// not part of a conversation.
+	const shots = day.media.filter((shot) => !shot.entry.reply_to);
+	const hero = shots[0] ?? null;
+	const caption = hero?.entry ?? null;
+	const ribbon = shots.slice(1);
 
-	const out: Row[] = [];
-	let run: Day[] = [];
+	const rest = day.lines.filter((entry) => entry.id !== caption?.id);
+	/** A reply that said nothing — a photograph and no words. `day.lines`
+	 *  keeps only entries that said something, so without this one would be
+	 *  stored, threaded, and drawn nowhere at all. */
+	const silent = day.entries.filter((entry) => entry.reply_to && !entry.clean_text.trim());
+	const spoken = [...rest, ...silent].sort((a, b) => b.ts.localeCompare(a.ts));
 
-	const flush = () => {
-		if (run.length > 1) out.push({ kind: 'stretch', days: run });
-		else if (run.length === 1) out.push({ kind: 'day', day: run[0] });
-		run = [];
-	};
-
-	for (const day of days) {
-		if (isQuiet(day)) run.push(day);
-		else {
-			flush();
-			out.push({ kind: 'day', day });
+	const chunks: Entry[][] = [];
+	let current: Entry[] = [];
+	let spent = 0;
+	for (const entry of spoken) {
+		const cap = chunks.length === 0 && hero ? PAGE_LINES_LEAD : PAGE_LINES;
+		const price = lineCost(entry);
+		// `current.length > 0` is what stops a single over-budget line looping
+		// on an empty page forever: it always gets one of its own.
+		if (current.length > 0 && spent + price > cap) {
+			chunks.push(current);
+			current = [];
+			spent = 0;
 		}
+		current.push(entry);
+		spent += price;
 	}
-	flush();
-	return out;
+	if (current.length > 0) chunks.push(current);
+	// A day of nothing but a photograph is still a page.
+	if (chunks.length === 0) chunks.push([]);
+
+	return chunks.map((lines, part) => ({
+		key: `${day.key}#${part}`,
+		day,
+		part,
+		parts: chunks.length,
+		hero: part === 0 ? hero : null,
+		caption: part === 0 ? caption : null,
+		ribbon: part === 0 ? ribbon : [],
+		shots,
+		lines
+	}));
 }
 
 /**
- * `Mon 3 – Wed 12`, or `9 Feb – 28 Jul` when the stretch crosses a month.
+ * How the album is cut: the whole year, one month, or one chapter.
  *
- * The days are newest first, so the range reads from the older end — a stretch
- * is described the way it was lived. The month is dropped inside one month
- * because the header above already says which; it comes back the moment the
- * two ends are in different ones, where leaving it off makes the label a
- * genuine lie about how much time the strip is holding.
+ * A month is a filter and not a rung, and so is a chapter — one view, cut
+ * different ways. Which is why this is a value the deck takes rather than a
+ * second screen, and why `scopeName` on the lens is the only thing left that
+ * knows what to *call* a cut.
  */
-export function stretchLabel(days: Day[]): string {
-	const first = days[days.length - 1].key;
-	const last = days[0].key;
-	if (first.slice(0, 7) === last.slice(0, 7)) {
-		return `${shortDay(first)} – ${shortDay(last)}`;
+export type DeckScope =
+	| { kind: 'year' }
+	| { kind: 'month'; month: string }
+	| { kind: 'chapter'; first_month: number; last_month: number };
+
+export const WHOLE_YEAR: DeckScope = { kind: 'year' };
+
+/** A day key's month, 1-based. One reading of `YYYY-MM-DD`, because there
+ *  were three: this one, `here + 1` in the month band, and `live` on Map. */
+export const monthOf = (key: string) => Number(key.slice(5, 7));
+
+/**
+ * The days a scope leaves standing.
+ *
+ * This lived on the reading lens, upstream of `paginate` — which meant the
+ * one check that matters here, that no line is drawn on no page at all, began
+ * one function *after* the place days could go missing. A day dropped by a
+ * filter the verifier could not see is exactly the silent failure `paginate`
+ * was moved out of a component to prevent, so the filter moved out too.
+ *
+ * The lens still reads it directly for the contact sheet: one implementation,
+ * two callers, and the deck and the sheet cannot disagree about what is in
+ * scope.
+ */
+export function inScope(days: Day[], scope: DeckScope): Day[] {
+	if (scope.kind === 'month') {
+		return days.filter((d) => d.key.slice(0, 7) === scope.month);
 	}
-	return `${withMonth(first)} – ${withMonth(last)}`;
+	if (scope.kind === 'chapter') {
+		return days.filter((d) => {
+			const month = monthOf(d.key);
+			return month >= scope.first_month && month <= scope.last_month;
+		});
+	}
+	return days;
 }
 
-/** `9 Feb`. Weekday dropped: two weekdays and two months in one strip is more
- *  than the label can carry at 13px. */
-function withMonth(key: string): string {
-	const [y, m, d] = key.split('-').map(Number);
-	return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-		day: 'numeric',
-		month: 'short'
-	});
+/** The deck, newest page first — `days` is already in that order. */
+export function paginate(days: Day[], scope: DeckScope = WHOLE_YEAR): Page[] {
+	return inScope(days, scope).flatMap(pagesOf);
 }
 
-export function stretchTally(days: Day[]): string {
-	const lines = days.reduce((n, day) => n + day.entries.length, 0);
-	return `Quiet stretch · ${lines} ${lines === 1 ? 'line' : 'lines'}, no media`;
+/**
+ * How many sheet edges to draw behind the live page.
+ *
+ * The deck is a pile and the pile is not decoration: what stands behind the
+ * page is what is left to read, so the stack thins as you go and thickens as
+ * you come back. `cap` is only where it stops being countable by eye — a
+ * hundred sheets and four sheets say the same thing at a glance, and the
+ * `n of m` counter is what says the rest.
+ *
+ * Here rather than in the component because both ends are off-by-one traps
+ * that look right: the last page must show no pile at all (there is nothing
+ * under it), and an empty deck must not show one either.
+ */
+export function stackBehind(total: number, at: number, cap: number): number {
+	if (total <= 0 || cap <= 0) return 0;
+	const here = Math.min(Math.max(at, 0), total - 1);
+	return Math.min(cap, total - here - 1);
 }
 
-/** `Mon 3`. Weekday and date, no month: a stretch never crosses one by much
- *  and the header above already says which one it is. */
-export function shortDay(key: string): string {
-	const [y, m, d] = key.split('-').map(Number);
-	return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-		weekday: 'short',
-		day: 'numeric'
-	});
+/** Where `key` sits in the deck, or the nearest page at or before it — which
+ *  is what "open me at this day" means when the day itself has nothing in it
+ *  and so is not a page at all. `-1` when the deck holds nothing older. */
+export function pageAt(pages: Page[], dayKey: string): number {
+	const exact = pages.findIndex((p) => p.day.key === dayKey);
+	if (exact >= 0) return exact;
+	// Newest first, so the first page not newer than the target is the one
+	// the reader meant.
+	return pages.findIndex((p) => p.day.key <= dayKey);
 }
 
-/** `Sat 15 Aug`. The headline form, and the light rows' date column. */
+/** Which page holds an entry, or -1. What `?entry=` lands on. */
+export function pageOfEntry(pages: Page[], entryId: string): number {
+	return pages.findIndex(
+		(p) => p.lines.some((e) => e.id === entryId) || p.caption?.id === entryId
+	);
+}
+
+/** `Sat 15 Aug`. A page's headline, and the date on the edges that turn it. */
 export function dayLabel(key: string): string {
 	const [y, m, d] = key.split('-').map(Number);
 	return new Date(y, m - 1, d).toLocaleDateString(undefined, {

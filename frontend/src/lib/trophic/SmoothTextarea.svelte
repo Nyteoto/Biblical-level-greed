@@ -37,7 +37,7 @@
 		type BarState
 	} from './capture-bar';
 	import { loadStats, saveStats, type UsageStats } from './trie';
-	import { phosphorize } from './colors';
+	import { toRamp } from './colors';
 	import type { Vocab } from './api';
 
 	let {
@@ -331,7 +331,7 @@
 					>&#8203;</span
 				>{:else}<span
 					style="{seg.color
-						? `color:${phosphorize(seg.color)};${seg.role === 'token' ? 'font-weight:700;' : ''}`
+						? `color:${toRamp(seg.color)};${seg.role === 'token' ? 'font-weight:700;' : ''}`
 						: ''}{seg.animation ? `animation:${seg.animation}` : ''}">{seg.text}</span
 				>{/if}{/each}
 	</div>
@@ -395,7 +395,7 @@
 				class="block w-full whitespace-nowrap px-3 py-1 text-left font-mono text-[12px] transition-colors {s.selected
 					? 'bg-neutral-200'
 					: ''}"
-				style="color:{phosphorize(s.color)}"
+				style="color:{toRamp(s.color)}"
 				onmousedown={(e) => {
 					e.preventDefault();
 					onPick(i);

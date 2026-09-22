@@ -16,14 +16,8 @@
 // key, so it comes back open, which is the harmless direction to fail in.
 
 const KEY = 'trophic-collapsed-groups';
-/** The album sidebar's chapter list, which folds for the same reason and is
- *  kept apart from the groups for one: a group is free to be called Chapters,
- *  and folding it must not fold the chapter list under it. Its own key rather
- *  than a reserved name in the set above. */
-const CHAPTERS_KEY = 'trophic-collapsed-chapters';
 
 const state = $state({ shut: new Set<string>(), loaded: false });
-const chapters = $state({ shut: false, loaded: false });
 
 function read(): Set<string> {
 	try {
@@ -64,32 +58,6 @@ export function collapsedGroups() {
 			} catch {
 				// Private mode, or a full quota. The fold still works for this
 				// session; it just will not be remembered.
-			}
-		}
-	};
-}
-
-/** Whether the sidebar's chapter list is folded shut. One boolean, not a set:
- *  there is one chapter list and it is the same one on every album. */
-export function collapsedChapters() {
-	if (!chapters.loaded && typeof localStorage !== 'undefined') {
-		try {
-			chapters.shut = localStorage.getItem(CHAPTERS_KEY) === 'shut';
-		} catch {
-			/* open is the state this began in */
-		}
-		chapters.loaded = true;
-	}
-	return {
-		get shut() {
-			return chapters.shut;
-		},
-		toggle() {
-			chapters.shut = !chapters.shut;
-			try {
-				localStorage.setItem(CHAPTERS_KEY, chapters.shut ? 'shut' : 'open');
-			} catch {
-				/* the fold still works for this session */
 			}
 		}
 	};

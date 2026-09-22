@@ -1,24 +1,32 @@
 <script lang="ts">
 	/**
-	 * The newest day of an album, given the whole treatment: the photograph
-	 * first, then what was said about it, then the ribbon of everything else
-	 * made that day, then the remaining lines with their times.
+	 * One page of the diary: a day, given the whole treatment.
 	 *
-	 * The order is the argument. The ruler this replaced put the words first
-	 * and the media in a footnote, which is backwards for a journal whose
-	 * entries are mostly photographs and clips — the picture is what you
-	 * recognise the day by, and the caption is what you wrote about it.
+	 * This is `LeadDay` generalised. That component dressed exactly one day —
+	 * the newest — because three hundred of them shared one scroll and only the
+	 * top of it could afford a photograph at size. A deck of pages removes that
+	 * pressure: every day is the only thing on screen while you are on it, so
+	 * every day gets its plate, its caption and its lines. The compact row that
+	 * every other day used to get existed for a constraint that is gone.
 	 *
-	 * **The lead photograph is the newest attachment, and the caption is the
-	 * line it was written beside** — not a separate field. There is nowhere to
-	 * write a caption in this app; a caption is a capture that happened to
-	 * carry a photograph, which is why one line is promoted out of the list
-	 * rather than duplicated in it.
+	 * The order inside a page is `LeadDay`'s and the argument is unchanged: the
+	 * photograph first, then what was said about it, then the ribbon of
+	 * everything else made that day, then the remaining lines with their times.
+	 * You recognise a day by the picture and read the words once you have found
+	 * it.
 	 *
-	 * Media is pooled across the whole day rather than kept with its entry.
-	 * Three clips written into three lines within a minute are one moment, and
-	 * one ribbon says so; the line each came from is still one tap away in the
-	 * lightbox.
+	 * **It draws what it is given and works nothing out.** The hero, the caption
+	 * promoted out of the list, the silent replies merged back in, and which
+	 * lines belong to this part of a heavy day are all decided by `paginate` in
+	 * `log.ts`, where a local check can hold them to never dropping a line. A
+	 * second reckoning of that in here is a second chance to lose one.
+	 *
+	 * **The sheet is not this component's.** `PageDeck` draws it — the surface,
+	 * the radius, the edge — and this prints on it. That inversion is what
+	 * makes a pile possible: sheets have to be the same object at the same size
+	 * before their edges can stack behind one another, and a component as tall
+	 * as its own content can never be that. What is left here is the printing,
+	 * which is what it was always for.
 	 */
 	import ColorizedText from './ColorizedText.svelte';
 	import ReplyBubble from './ReplyBubble.svelte';
@@ -27,12 +35,11 @@
 	import { hold } from './hold';
 	import Glyph from './Glyph.svelte';
 	import { isVideo, plateFallback, type Shot } from './media';
-	import { dayLabel } from './log';
-	import type { Day } from './log';
+	import { dayLabel, type Page } from './log';
 	import type { Entry } from './api';
 
 	let {
-		day,
+		page,
 		today = false,
 		onopen,
 		onholdmedia,
@@ -41,83 +48,69 @@
 		onassign,
 		held = ''
 	}: {
-		day: Day;
+		page: Page;
 		today?: boolean;
 		onopen?: (shots: Shot[], index: number) => void;
 		/** Hold a photograph for what can be done *with* it — the album's
-		 *  overview picture. The day's own media answers this as readily as the
-		 *  contact sheet's, because they are the same photographs. */
+		 *  overview picture. */
 		onholdmedia?: (ref: string, x: number, y: number) => void;
-		/** The entry the reader was last sent to, marked until they look away.
-		 *  See `.entry-held` — the flash says *there*, this says *this one*. */
-		held?: string;
-		/** Follow the thread, both ways. See `LightDay`. */
+		/** Follow the thread, both ways. See `ReplyBubble`. */
 		onjump?: (entryId: string) => void;
 		ontoggle?: (entry: Entry, line: number) => void;
 		onassign?: (entry: Entry, x: number, y: number) => void;
+		/** The entry the reader was last sent to, marked until they look away. */
+		held?: string;
 	} = $props();
 
 	/** How many thumbnails fit before the overflow tile earns its place. */
 	const RIBBON = 5;
 
-	/** **A reply's attachments are its own and stay in its bubble.** They are
-	 *  taken out of the day's pool before anything here runs, which is what
-	 *  stops a reply being promoted to the day's hero — and it had been: the
-	 *  photograph became the lead and the reply became its caption,
-	 *  left-aligned and unlinked, which is the one shape that says this is not
-	 *  part of a conversation. See `ReplyBubble`. */
-	const shots = $derived(day.media.filter((shot) => !shot.entry.reply_to));
-	const hero = $derived(shots[0] ?? null);
-	/** The line the lead photograph was written beside, promoted out of the
-	 *  list below so it is not said twice. */
-	const caption = $derived(hero?.entry ?? null);
-	const rest = $derived(day.lines.filter((entry) => entry.id !== caption?.id));
-	const ribbon = $derived(shots.slice(1));
-
-	/** Replies that said nothing — a photograph and no words. `day.lines` keeps
-	 *  only entries that said something, so without this a media-only reply
-	 *  would be stored, threaded, and drawn nowhere at all. */
-	const silentReplies = $derived(
-		day.entries.filter((entry) => entry.reply_to && !entry.clean_text.trim())
-	);
-	const spoken = $derived([...rest, ...silentReplies].sort((a, b) => b.ts.localeCompare(a.ts)));
-
 	const time = (entry: Entry) =>
 		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-
-	// The counts are marks now rather than a joined string — see `Glyph`. A
-	// string could not carry them, which is why this stopped being one.
 </script>
 
-<article data-day={day.key} class="flex flex-col gap-[18px]">
+<article
+	data-day={page.day.key}
+	data-page={page.key}
+	class="flex flex-col gap-[18px] px-4 py-5 sm:px-[30px] sm:py-[26px]"
+>
 	<div class="flex items-baseline gap-3.5">
 		{#if today}
 			<span class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">Today</span>
 		{/if}
 		<h2 class="text-[34px] leading-none font-extrabold tracking-[-0.03em]">
-			{dayLabel(day.key)}
+			{dayLabel(page.day.key)}
 		</h2>
+		{#if page.parts > 1}
+			<!-- A heavy day continues, and says so where the date is rather than
+			     at the foot: you can land on part three from a jump, and a page
+			     that does not say which part it is reads as the day starting
+			     over. -->
+			<span class="font-mono text-[12px] text-neutral-600 tabular-nums">
+				{page.part + 1}/{page.parts}
+			</span>
+		{/if}
 		<span class="ml-auto flex items-center gap-3 text-[12px] text-neutral-700 tabular-nums">
 			<span class="flex items-center gap-1.5">
-				<Glyph kind="entries" count={day.entries.length} size={12} />
-				{day.entries.length}
+				<Glyph kind="entries" count={page.day.entries.length} size={12} />
+				{page.day.entries.length}
 			</span>
-			{#if shots.length}
+			{#if page.shots.length}
 				<span class="flex items-center gap-1.5">
-					<Glyph kind="media" count={shots.length} size={12} />
-					{shots.length}
+					<Glyph kind="media" count={page.shots.length} size={12} />
+					{page.shots.length}
 				</span>
 			{/if}
 		</span>
 	</div>
 
-	{#if hero}
+	{#if page.hero}
+		{@const hero = page.hero}
 		<button
 			type="button"
 			class="lift lift-md relative block h-[250px] w-full overflow-hidden rounded-[16px] bg-neutral-300 shadow-lg"
-			style="animation:plate-fade-in 400ms ease-out both"
 			use:hold={(x, y) => onholdmedia?.(hero.ref, x, y)}
-			onclick={() => onopen?.(shots, 0)}
+			onclick={() => onopen?.(page.shots, 0)}
 			aria-label="open the newest"
 		>
 			<img
@@ -136,7 +129,8 @@
 		</button>
 	{/if}
 
-	{#if caption && caption.clean_text.trim()}
+	{#if page.caption && page.caption.clean_text.trim()}
+		{@const caption = page.caption}
 		<div use:hold={(x, y) => onassign?.(caption, x, y)}>
 			<p
 				class="max-w-[640px] text-[19px] leading-[1.5] font-light tracking-[-0.01em]"
@@ -147,14 +141,14 @@
 		</div>
 	{/if}
 
-	{#if ribbon.length}
+	{#if page.ribbon.length}
 		<div class="trophic-scrollbar-hide flex items-center gap-[9px] overflow-x-auto">
-			{#each ribbon.slice(0, RIBBON) as shot, i (shot.entry.id + ':' + shot.ref)}
+			{#each page.ribbon.slice(0, RIBBON) as shot, i (shot.entry.id + ':' + shot.ref)}
 				<button
 					type="button"
 					class="lift lift-sm relative h-[70px] w-[96px] shrink-0 overflow-hidden rounded-[11px] bg-neutral-300 shadow-sm"
 					use:hold={(x, y) => onholdmedia?.(shot.ref, x, y)}
-					onclick={() => onopen?.(shots, i + 1)}
+					onclick={() => onopen?.(page.shots, i + 1)}
 					aria-label={isVideo(shot.ref) ? 'play clip' : 'open photo'}
 				>
 					<img
@@ -176,35 +170,33 @@
 					{/if}
 				</button>
 			{/each}
-			{#if ribbon.length > RIBBON}
+			{#if page.ribbon.length > RIBBON}
 				<button
 					type="button"
-					class="lift lift-sm flex h-[70px] w-[96px] shrink-0 items-center justify-center rounded-[11px] bg-surface text-[13px] text-neutral-700 shadow-sm"
-					onclick={() => onopen?.(shots, RIBBON + 1)}
+					class="lift lift-sm flex h-[70px] w-[96px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-200 text-[13px] text-neutral-700 shadow-sm"
+					onclick={() => onopen?.(page.shots, RIBBON + 1)}
 				>
-					+{ribbon.length - RIBBON}
+					+{page.ribbon.length - RIBBON}
 				</button>
 			{/if}
 		</div>
 	{/if}
 
-	{#if rest.length || silentReplies.length}
+	{#if page.lines.length}
 		<div class="flex max-w-[700px] flex-col gap-3.5 pt-1">
-			{#each spoken as entry, i (entry.id)}
+			{#each page.lines as entry (entry.id)}
 				<!-- Right-click, or long-press on a phone: file this line into a
 				     folder without having tagged it. -->
 				{@const answered = !!entry.reply_to}
 				{@const answeredBy = !entry.reply_to && !!entry.replied_by}
-				<!-- A reply sits on the other side of the column here too. This is
-				     where most of them are: you answer a prompt now, so the answer
-				     is on today's block and the thing it answers is weeks up the
-				     page. See `LightDay` for the argument. -->
+				<!-- A reply sits on the other side of the column: a thought you came
+				     back to weeks later reads as a conversation with yourself, so the
+				     answer is set against the margin the way a message you sent is. -->
 				<div
 					data-entry={entry.id}
 					class="flex gap-5"
 					class:flex-row-reverse={answered}
 					class:entry-held={entry.id === held}
-					style="animation:entry-fade-in 400ms ease-out both;animation-delay:{i * 50}ms"
 					use:hold={(x, y) => onassign?.(entry, x, y)}
 				>
 					<span class="w-[42px] shrink-0 pt-1 font-mono text-[11px] text-neutral-600">

@@ -115,10 +115,10 @@ function glowTexture(): THREE.CanvasTexture {
 	canvas.height = size;
 	const g = canvas.getContext('2d')!;
 	const grad = g.createRadialGradient(size / 2, size / 2, size * 0.16, size / 2, size / 2, size / 2);
-	const accent = css('--color-accent', '#4fff9f');
+	const accent = css('--color-accent', '#ffffff');
 	grad.addColorStop(0, accent);
-	grad.addColorStop(0.42, 'rgba(79, 255, 159, 0.34)');
-	grad.addColorStop(1, 'rgba(79, 255, 159, 0)');
+	grad.addColorStop(0.42, 'rgba(255, 255, 255, 0.28)');
+	grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
 	g.fillStyle = grad;
 	g.fillRect(0, 0, size, size);
 	const texture = new THREE.CanvasTexture(canvas);
@@ -227,7 +227,7 @@ export function mount(canvas: HTMLCanvasElement, initial: Figures): Tally {
 	// stock, and everything it shows comes from the lamps rather than the print.
 	const rimMaterial = new THREE.MeshStandardMaterial({
 		color: new THREE.Color(css('--color-neutral-400', '#1f583f')),
-		emissive: new THREE.Color(css('--color-accent', '#4fff9f')),
+		emissive: new THREE.Color(css('--color-accent', '#ffffff')),
 		emissiveIntensity: 0.16,
 		roughness: 0.26,
 		metalness: 0.6
@@ -276,10 +276,10 @@ export function mount(canvas: HTMLCanvasElement, initial: Figures): Tally {
 	const key = new THREE.DirectionalLight(new THREE.Color(0xa9ffd2), 2.6);
 	key.position.set(-2.2, 2.6, 3.2);
 	scene.add(key);
-	const fill = new THREE.DirectionalLight(new THREE.Color(css('--color-accent', '#4fff9f')), 0.9);
+	const fill = new THREE.DirectionalLight(new THREE.Color(css('--color-accent', '#ffffff')), 0.9);
 	fill.position.set(2.4, -1.4, -1.2);
 	scene.add(fill);
-	scene.add(new THREE.AmbientLight(new THREE.Color(css('--color-accent', '#4fff9f')), 0.3));
+	scene.add(new THREE.AmbientLight(new THREE.Color(css('--color-accent', '#ffffff')), 0.3));
 
 	let aimTurn = 0;
 	let aimPitch = 0;

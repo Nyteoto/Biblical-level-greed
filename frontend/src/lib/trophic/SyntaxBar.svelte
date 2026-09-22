@@ -38,7 +38,11 @@
 	let pressed = $state<string | null>(null);
 </script>
 
-<div class="flex justify-between">
+<!-- Wraps, because seven 46px keys and their gaps need ~362px and a phone
+     gives this column about 266. Unwrapped, `\` and `@` were off the right
+     edge with nothing to scroll — two of the five marks unreachable on the
+     device the row exists for. Above that width nothing moves. -->
+<div class="flex flex-wrap justify-between gap-2">
 	{#each [LEFT, RIGHT] as group, gi (gi)}
 		<div class="flex gap-2">
 			{#each group as k (k.label)}

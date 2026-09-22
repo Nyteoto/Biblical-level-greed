@@ -151,7 +151,7 @@ function beads(ctx: CanvasRenderingContext2D, radius: number): void {
  */
 export function paintFace(ctx: CanvasRenderingContext2D, figures: Figures): void {
 	const mid = TEXTURE / 2;
-	const ink = css('--color-accent', '#4fff9f');
+	const ink = css('--color-accent', '#ffffff');
 	const dim = css('--color-neutral-700', '#3cbe77');
 	const faint = css('--color-neutral-500', '#2d8f5a');
 
@@ -163,9 +163,9 @@ export function paintFace(ctx: CanvasRenderingContext2D, figures: Figures): void
 	ctx.fillStyle = css('--color-surface', '#0c1519');
 	ctx.fillRect(0, 0, TEXTURE, TEXTURE);
 	const sheen = ctx.createLinearGradient(0, 0, TEXTURE, TEXTURE);
-	sheen.addColorStop(0, 'rgba(79, 255, 159, 0.22)');
-	sheen.addColorStop(0.55, 'rgba(79, 255, 159, 0.05)');
-	sheen.addColorStop(1, 'rgba(79, 255, 159, 0.02)');
+	sheen.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+	sheen.addColorStop(0.55, 'rgba(255, 255, 255, 0.05)');
+	sheen.addColorStop(1, 'rgba(255, 255, 255, 0.02)');
 	ctx.fillStyle = sheen;
 	ctx.fillRect(0, 0, TEXTURE, TEXTURE);
 
@@ -246,7 +246,7 @@ export function paintFlat(ctx: CanvasRenderingContext2D, figures: Figures, size:
 
 	// The cut edge, as a hairline: with no rim to light there is nothing else
 	// to separate the sticker from the ground behind it.
-	ctx.strokeStyle = css('--color-accent', '#4fff9f');
+	ctx.strokeStyle = css('--color-accent', '#ffffff');
 	ctx.globalAlpha = 0.55;
 	ctx.lineWidth = 5;
 	ctx.stroke();

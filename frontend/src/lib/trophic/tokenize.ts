@@ -11,15 +11,18 @@
 // The backend does not have this; it only needs the parser. If a Python port
 // is ever wanted, `verify_golden.py tokenize` has 395 cases waiting.
 //
-// **One kind is this port's own: `place`.** Everything above still holds for
-// the other five — they are the source's, and the corpus is their spec — but
-// `@helsinki` does not exist upstream. It is added here rather than left for a
-// rewrite because the corpus can still police it: no fixture contains a
-// word-start `@`, so all 395 pass unchanged, and the seventeen that carry
-// `a@b.com` are exactly what pins the boundary rule below. A new kind is the
-// cheap half; keeping the old five byte-identical is the half that matters.
+// **Two kinds are this port's own: `place` and `count`.** Everything above
+// still holds for the other five — they are the source's, and the corpus is
+// their spec — but `@helsinki` and `#42` do not exist upstream. They are
+// added here rather than left for a rewrite because the corpus can still
+// police it: no fixture contains a word-start `@` or `#`, so all 395 pass
+// unchanged, and the seventeen that carry `a@b.com` are exactly what pins the
+// boundary rule below — `count` reuses that same rule rather than a second
+// one, which is also what keeps a sharp chord (`F#7`) from misreading as a
+// count. New kinds are the cheap half; keeping the old five byte-identical is
+// the half that matters.
 
-export type TokenKind = "folder" | "time" | "pattern" | "place" | "directive" | "todo" | "text"
+export type TokenKind = "folder" | "time" | "pattern" | "place" | "count" | "directive" | "todo" | "text"
 
 export type Token = {
   kind: TokenKind
@@ -48,9 +51,10 @@ export const NAV_COMMANDS: ReadonlyMap<string, string | null> = new Map([
   // Keeps the source's name even though the screen it opens is called the
   // log here — it is the same screen, under both words.
   ["log", "/log"],
-  // The mapping screen, which the redesign made a page hanging off Settings
-  // rather than a tab of its own.
-  ["assign", "/mapping"],
+  // The mapping screen is gone: pointing a tag at a folder is a fact about
+  // the folder, so it happens on the folder's own lens. Same word, same act,
+  // one screen fewer.
+  ["assign", "/record"],
   ["settings", "/settings"],
   ["codex", null],
   ["logout", null],
@@ -72,6 +76,10 @@ const PATTERNS: { kind: Exclude<TokenKind, "text">; re: RegExp; group?: number; 
   // written" is a query and not a convention, which is the whole reason for
   // spending a sigil on it.
   { kind: "place", re: /@([\p{L}\p{N}\p{M}]+(?:-[\p{L}\p{N}\p{M}]+)*)/gu },
+  // A count. Same word-start guard as `place`, digits only: a number
+  // attached to the line rather than a word. `F#7` (a sharp chord) has `#`
+  // preceded by a letter and is correctly left as plain text.
+  { kind: "count", re: /#(\d+)/g },
   // Quoted directive must come before unquoted so it wins on overlap
   {
     kind: "directive",
@@ -106,12 +114,14 @@ function isEscapedBackslash(text: string, pos: number): boolean {
 }
 
 /**
- * `@` only opens a place at the start of a word.
+ * `@` only opens a place, and `#` only opens a count, at the start of a word.
  *
  * This is the one rule `pattern` does not need and `place` cannot do without:
  * `\` is punctuation nobody types mid-word, but `@` is an email address. The
  * corpus is unambiguous about it — seventeen tokenize fixtures and forty parser
  * ones carry `a@b.com`, and every one expects plain text straight through.
+ * `count` reuses the same guard for the same reason: `#` mid-word is a sharp
+ * chord (`F#7`), not a number worth capturing.
  */
 function atWordStart(text: string, pos: number): boolean {
   return pos === 0 || /\s/.test(text[pos - 1]!)
@@ -123,14 +133,15 @@ export function tokenize(text: string): Token[] {
 
   for (const { kind, re, filter } of PATTERNS) {
     for (const m of text.matchAll(re)) {
-      // Skip patterns inside quoted strings. Places too: "text inside quotes
-      // triggers nothing" is the rule for the whole syntax, and a place is not
-      // the exception to it.
-      if ((kind === "pattern" || kind === "place") && inQuoted(m.index!, quoted)) continue
+      // Skip patterns inside quoted strings. Places and counts too: "text
+      // inside quotes triggers nothing" is the rule for the whole syntax, and
+      // neither is the exception to it.
+      if ((kind === "pattern" || kind === "place" || kind === "count") && inQuoted(m.index!, quoted)) continue
       // Skip escaped backslash (`\ `)
       if (kind === "pattern" && isEscapedBackslash(text, m.index!)) continue
-      // An `@` inside a word is an address, not a place.
-      if (kind === "place" && !atWordStart(text, m.index!)) continue
+      // An `@` inside a word is an address, not a place; a `#` inside a word
+      // is a sharp chord, not a count. Same guard, same reason.
+      if ((kind === "place" || kind === "count") && !atWordStart(text, m.index!)) continue
 
       const inner = kind === "todo" ? "todo" : (m[1]?.trim().toLowerCase() ?? "")
       if (!inner) continue

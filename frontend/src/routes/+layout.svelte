@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import '../app.css';
 	// Trophic's animation vocabulary, and the `.trophic` scope below that its
 	// reduced-motion rule keys off. It sits at the root now rather than on the
@@ -7,33 +8,35 @@
 	import '$lib/trophic/trophic.css';
 	import UploadBar from '$lib/trophic/UploadBar.svelte';
 	import HoldRing from '$lib/trophic/HoldRing.svelte';
-	import Warmup from '$lib/trophic/Warmup.svelte';
 	import Banner from '$lib/trophic/Banner.svelte';
+	import Rail from '$lib/trophic/Rail.svelte';
+	import SubjectBar from '$lib/trophic/SubjectBar.svelte';
 	import { banner } from '$lib/trophic/banner-state.svelte';
 	import { EXPECTED_API, getApiVersion, restartServer } from '$lib/api';
-	import { monitor } from '$lib/trophic/monitor.svelte';
 
 	let { children } = $props();
 
-	// The monitor's six numbers, read back from this machine. Until this runs
-	// the screen is lit by the defaults `:root` carries in `app.css`, which are
-	// the same numbers — so nothing flashes.
-	$effect(() => {
-		monitor.hydrate();
-	});
+	// The tech tree's own screens. They share this shell and nothing else — see
+	// the rail below.
+	const tree = $derived(
+		page.url.pathname.startsWith('/today') || page.url.pathname.startsWith('/tree')
+	);
+
+	/**
+	 * The four lenses, which are the four screens that *have* a subject.
+	 *
+	 * Capture has none — you have not written the line yet, which is the same
+	 * reason the rail's Capture key carries no scope. Settings and the Manual
+	 * are about the app rather than about a folder. So the bar is drawn on
+	 * exactly the screens that are questions about something.
+	 */
+	const lens = $derived(
+		['/map', '/log', '/threads', '/record'].some((p) => page.url.pathname.startsWith(p))
+	);
 
 	// The standing strip's one owner. Started here because it is drawn here, and
 	// its slow tick is cleared on teardown so a hot reload leaves nothing behind.
 	$effect(() => banner().start());
-
-	// The only place the settings reach the glass. Six custom properties onto
-	// the document element and nothing else: the layers below and the rules in
-	// `app.css` are unchanged and unaware, which is the same separation that
-	// lets the app be rewritten without touching the treatment.
-	$effect(() => {
-		const root = document.documentElement.style;
-		for (const [prop, value] of Object.entries(monitor.vars)) root.setProperty(prop, value);
-	});
 
 
 	/**
@@ -126,14 +129,14 @@
 		setTimeout(() => location.reload(), 4000);
 	}
 
-	// The shell is now almost nothing: a ground, an upload bar, and the page.
+	// The shell is a ground, the rail, an upload bar and the page.
 	//
-	// The tab bar that used to live here is gone, and so is the XP meter beside
-	// it. Both belonged to the arrangement where the tech tree was the app and
-	// capture was a fifth tab; capture is the app, the tree's screens are
-	// hidden, and there is no XP economy on screen to meter. Navigation is one
-	// white pill (`TabPill.svelte`) that each screen places for itself, because
-	// it does not sit in the same corner on all three — see that file.
+	// **Navigation lives here now.** It used to be one pill that each screen
+	// placed for itself, because the three tabs did not sit in the same corner
+	// on all of them. The rail is not a tab bar: it selects a *lens* on one
+	// subject — the folder and year in the URL — and that subject survives every
+	// switch, which is the whole architecture. A thing that is the same on every
+	// screen belongs to the shell.
 </script>
 
 <svelte:head>
@@ -145,16 +148,40 @@
      day headings are `header` elements too, and every one of them was quietly
      padding itself by the height of the notch. -->
 
-<!-- The tube coming on, once per launch. Above everything, including the
-     lightbox, because it is the moment before the app rather than a layer on
-     top of it. -->
-<Warmup />
-
-<!-- The hold gesture, over everything and belonging to nothing. Mounted here
-     for the same reason the glass is: it is the app's, not a screen's. -->
+<!-- The hold gesture, over everything and belonging to nothing. Mounted at the
+     root because it is the app's, not a screen's. -->
 <HoldRing />
 
-<div data-shell-header class="trophic flex min-h-dvh flex-col">
+<!--
+	**The shell owns the viewport, and each lens scrolls inside itself.**
+
+	It was `min-h-dvh`, which let it grow — and every screen that then set its
+	own `h-dvh` was a full viewport *below* the banner, so the document was
+	always taller than the window by the height of the strip. The rail and the
+	banner scrolled away with the page, the Log pinned its furniture and Record
+	did not, and nothing agreed about what a screenful was.
+
+	Pinned, the arithmetic is done once: the rail and the strip take what they
+	need and the page gets the remainder, which is what `min-h-0 flex-1` on the
+	four lenses has been asking for all along.
+
+	**The tech tree is the exception and stays a document.** `/today` and
+	`/tree` are the sibling app sharing this shell; they are long pages meant to
+	be scrolled, not instruments with furniture to hold still, and they do not
+	carry the rail either.
+-->
+<div
+	data-shell-header
+	class="trophic flex {tree ? 'min-h-dvh' : 'h-dvh overflow-hidden'}"
+>
+	<!-- The rail is capture's. The tech tree at `/today` and `/tree` is a
+	     sibling app sharing this shell — it never carried the tab bar either,
+	     and every key in the rail would take you out of it. -->
+	{#if !tree}
+		<Rail />
+	{/if}
+
+	<div class="flex min-w-0 flex-1 flex-col">
 	<!-- Above everything the app draws, because nothing below it can be trusted
 	     to mean what it says while this is true. -->
 	{#if stale}
@@ -179,57 +206,32 @@
 	{/if}
 
 	<!-- Above the page: an upload outlives the screen that started it, so its
-	     progress belongs to the shell rather than to the capture bar.
-	     It is `sticky`, and it stays *outside* the curve for that reason — a
-	     filtered ancestor becomes the containing block for anything positioned
-	     inside it, which would anchor this to the page instead of the viewport. -->
+	     progress belongs to the shell rather than to the capture bar. It is
+	     fixed, and it stays outside `main` so that nothing a page does to its
+	     own subtree — a transform, most of all — can become its containing
+	     block and anchor it to the page instead of the viewport. -->
 	<UploadBar />
 
-	<!-- Nothing here is filtered. Everything the glass does is done by the
-	     layers below, which are flat, fixed and know nothing about what they are
-	     over — see `app.css` for what the curve cost before it became one of
-	     them. -->
-	<!-- The standing strip, above the content on every screen. It is app
-	     content, not part of the monitor layer — the seven `pointer-events:none`
-	     siblings below know nothing about the app and this knows nothing about
-	     them. It sits inside the shell rather than inside `main` so it is not
-	     re-created by every page that renders. -->
+	<!-- The standing strip, above the content on every screen. It sits inside
+	     the shell rather than inside `main` so it is not re-created by every
+	     page that renders. -->
 	<Banner />
 
-	<main class="flex flex-1 flex-col">
-		{@render children()}
-	</main>
+		<!-- **The rail is the question; this is the subject.** Both belong to the
+		     shell and neither to a lens — which is the half of the navigation
+		     that was missing, and the reason a folder could only be chosen from
+		     inside Map. See `SubjectBar`. -->
+		{#if lens}
+			<SubjectBar />
+		{/if}
+
+		<!-- `overflow-hidden`, so a page that has not said how it scrolls is
+		     clipped rather than quietly pushing the shell past the window. That
+		     is the failure being fixed here, and it is the kind that is invisible
+		     until the rail slides off the top. -->
+		<main class="flex min-h-0 flex-1 flex-col {tree ? '' : 'overflow-hidden'}">
+			{@render children()}
+		</main>
+	</div>
 </div>
 
-<!-- The glass. Four full-screen layers and six small ones, over everything, `pointer-events: none`, entirely
-     unaware of the app underneath — which is what lets the app be rewritten
-     without any of this having to move.
-
-     Order is paint order, and it is the one thing here that is not arbitrary:
-     the sheen sits under the grain and the scanlines so the lines run *across*
-     the highlight the way they would on real glass, and the bezel is last
-     because it is the edge of the picture and nothing is outside that.
-
-     Four full-screen layers and not five: each is a viewport-sized paint on
-     every frame, and that count is the frame budget. Everything added to
-     suggest the curve is either folded into a layer that already existed or is
-     a few hundred pixels big. See `app.css` for what the tidier versions cost.
-
-     They come out of the document together when the monitor is off, rather than
-     staying at zero opacity: four full-viewport painted layers are a real cost
-     for something nobody can see, and the switch means the tube, not the
-     brightness. -->
-{#if monitor.on}
-	<div class="crt crt-glow"></div>
-	<div class="crt crt-grain"></div>
-	<div class="crt crt-scan"></div>
-	<div class="crt crt-vignette"></div>
-	<!-- The edge of the picture. Six small elements rather than a seventh
-	     full-viewport one — see `app.css` for the 12ms that cost. -->
-	<div class="crt-corner crt-corner-tl"></div>
-	<div class="crt-corner crt-corner-tr"></div>
-	<div class="crt-corner crt-corner-bl"></div>
-	<div class="crt-corner crt-corner-br"></div>
-	<div class="crt-rim crt-rim-top"></div>
-	<div class="crt-rim crt-rim-bottom"></div>
-{/if}

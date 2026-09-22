@@ -23,8 +23,16 @@
 	 * presents as a panel that renders perfectly and then ignores Escape, the
 	 * backdrop and its own close button equally.
 	 *
-	 * It exists so those two paragraphs are true in one place. There are two
-	 * hold-opened panels now and there will be more.
+	 * **A panel opened by a *click* has nothing to absorb, and must say so.**
+	 * All of that is about a press that is still down when the panel appears.
+	 * Record opens the chapter panel from an ordinary click on a row — that
+	 * click is over before this component exists, so the next one is the user's
+	 * real choice and swallowing it makes the first press of every option do
+	 * nothing. `armed` starts true in that case, and the caller is the only
+	 * thing that knows which gesture it was.
+	 *
+	 * It exists so those paragraphs are true in one place. There are three
+	 * panels in this shell now and there will be more.
 	 */
 	import type { Snippet } from 'svelte';
 
@@ -32,11 +40,15 @@
 		x,
 		y,
 		width = 290,
+		armed: openArmed = false,
 		onclose,
 		children
 	}: {
 		x: number;
 		y: number;
+		/** True when a click opened this rather than a hold — see the header.
+		 *  There is no release to absorb, so the next click is a real choice. */
+		armed?: boolean;
 		/** The panel's width, in pixels. Fixed rather than intrinsic because these
 		 *  open under a finger: a menu that changes width with its longest line
 		 *  moves under the thumb already reaching for it. */
@@ -50,7 +62,8 @@
 	// and a new hold is a new instance of this component.
 	// svelte-ignore state_referenced_locally
 	let pos = $state({ x, y });
-	let armed = $state(false);
+	// svelte-ignore state_referenced_locally
+	let armed = $state(openArmed);
 
 	$effect(() => {
 		const el = panel;

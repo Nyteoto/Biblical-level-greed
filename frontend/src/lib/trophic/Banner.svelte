@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { lensHref } from './scope';
 	/**
 	 * The standing strip: one open todo, and the next reminder.
 	 *
@@ -139,7 +140,7 @@
 
 	const albumHref = (item: { folder: string | null; entry_id: string; day?: string }) => {
 		const year = (item.day ?? '').slice(0, 4) || 'all';
-		return `/folders/${item.folder ?? 'unfiled'}?year=${year}&entry=${item.entry_id}`;
+		return lensHref('/log', { folder: item.folder ?? 'unfiled', year }, { entry: item.entry_id });
 	};
 
 	async function tick() {

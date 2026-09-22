@@ -31,7 +31,7 @@
 	 * dismiss what it opened all live in `HoldMenu` — there are two of these
 	 * panels now and those rules are subtle enough that a second copy would drift.
 	 */
-	import { phosphorize } from './colors';
+	import { toRamp } from './colors';
 	import HoldMenu from './HoldMenu.svelte';
 	import Segmented from './Segmented.svelte';
 	import type { Folder, UnassignedTag } from './api';
@@ -134,7 +134,7 @@
 				>
 					<span
 						class="h-2 w-2 shrink-0 self-center rounded-full"
-						style="background:{phosphorize(folder.color)}"
+						style="background:{toRamp(folder.color)}"
 					></span>
 					<span class="truncate">{folder.name}</span>
 					<span class="shrink-0 text-[12px] font-normal text-neutral-700">rename</span>

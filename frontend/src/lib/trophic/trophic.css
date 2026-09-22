@@ -95,6 +95,23 @@
 	}
 }
 
+/* Turning a page of the diary used to be two keyframes here — a fresh sheet
+   fading in from the side you pressed. It is not a keyframe any more, and the
+   reason is the whole of step 3: a keyframe cannot be driven by a finger.
+   `PageDeck` sets the transforms itself, so one motion serves the edge, the
+   drag and the arrow keys, and the sheet can be halfway through a turn and
+   change its mind. The curve they share is `--ease-sheet` in `app.css`.
+
+   Transform and opacity only, there as here, and deliberately: both are
+   composited, so a turn costs nothing per frame. Same reason the monitor's
+   curve was painted rather than filtered — see the note in CLAUDE.md about the
+   23ms a real `feDisplacementMap` cost every frame. An animation that repaints
+   is an animation you feel.
+
+   The blanket `prefers-reduced-motion` rule at the foot of this file cannot
+   reach a transform set from script, so the deck checks the query itself and
+   commits the turn with no motion at all. */
+
 /* Idle dim. Copied byte-for-byte from the source, and note which way round it
    actually runs: a CSS transition is read off the state being entered, so
    adding .dimmed animates to opacity 0 over THIRTY SECONDS, and removing it

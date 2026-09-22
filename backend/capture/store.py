@@ -30,6 +30,7 @@ from .config import (
     MAX_NAME_LEN,
     MAX_RAW_LEN,
     MAX_SESSION_SECONDS,
+    MONTH_RE,
     YEAR_RE,
 )
 from .import_csv import compose_line, flex_parse_time, parse_import_csv
@@ -120,6 +121,31 @@ class Store:
         with self._lock:
             return index.entries(self.conn, start, end, limit)
 
+    def search(
+        self,
+        q: str,
+        scope: index.Scope = index.EVERYTHING,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
+        with self._lock:
+            return index.search_entries(self.conn, q, scope, start, end, limit)
+
+    def heat(self, year: str | None, scope: index.Scope = index.EVERYTHING) -> list[dict]:
+        with self._lock:
+            return index.heat(self.conn, year, scope)
+
+    def threads(self, scope: index.Scope = index.EVERYTHING) -> list[dict]:
+        """Every deadline carried forward, for one folder or for all of them.
+
+        No year, and no clock. A thread crosses years by nature, and what
+        "late" means is the client's arithmetic over an absolute `due_at` —
+        see `index.threads`.
+        """
+        with self._lock:
+            return index.threads(self.conn, scope)
+
     def dates(self) -> dict[str, int]:
         with self._lock:
             return index.dates(self.conn)
@@ -159,11 +185,11 @@ class Store:
         with self._lock:
             return index.shelf(self.conn, year, today)
 
-    def album(self, folder_id: str | None, year: str | None) -> dict:
+    def album(self, scope: index.AlbumScope, year: str | None) -> dict:
         with self._lock:
-            found = index.album(self.conn, folder_id, year)
+            found = index.album(self.conn, scope, year)
             if found is None:
-                raise NotFound(f"no such folder: {folder_id}")
+                raise NotFound(f"no such folder: {index.subject_of(scope)}")
             return found
 
     def unassigned_tags(self) -> list[dict]:
@@ -495,7 +521,10 @@ class Store:
             for tag in tags:
                 self._map_tag(folder_id, tag, steal=True)
 
-            self.version += 1
+            # No bump here: `_commit` moves `version` on every event it
+            # appends, and this method has already appended at least the
+            # create. A second one by hand advanced the counter the frontend
+            # polls without a write behind it.
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def rename_folder(self, folder_id: str, name: str) -> dict:
@@ -562,6 +591,86 @@ class Store:
             self._commit(eventlog.SET_STATE, folder_id, text=state)
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
+    def amend_folder(
+        self,
+        folder_id: str,
+        *,
+        name: str | None = None,
+        state: str | None = None,
+        add_tags: Iterable[str] = (),
+        remove_tags: Iterable[str] = (),
+        overview: str | None = None,
+        overview_media: str | None = None,
+    ) -> dict:
+        """Change several things about one folder in one gesture.
+
+        **Everything validates before anything is appended.** This used to run
+        at the wire as six sequential calls into the six methods below, which
+        made it the one write in the app that could half-happen: a rename that
+        committed, followed by a state that raised, left the rename in an
+        append-only log and answered 400. Nothing downstream could see the
+        gesture at all — it existed only as the order of six statements in a
+        route — so nothing below HTTP could test it either.
+
+        The folder comes back once, at the end. The old shape returned
+        whichever of the six calls happened to go last, which meant the answer
+        depended on which fields the request carried.
+
+        An empty patch is a refusal here rather than at the wire, for the same
+        reason: "was anything asked for" is a question about the request, and
+        the route used to answer it by checking whether a local variable was
+        still `None`.
+        """
+        with self._lock:
+            folder = index.folder(self.conn, folder_id)
+            if folder is None:
+                raise NotFound(f"no such folder: {folder_id}")
+
+            adding = [t for t in (parser.normalize_tag(t) for t in add_tags) if t]
+            dropping = [t for t in (parser.normalize_tag(t) for t in remove_tags) if t]
+            if (
+                name is None
+                and state is None
+                and overview is None
+                and overview_media is None
+                and not adding
+                and not dropping
+            ):
+                raise CaptureError("nothing to change")
+
+            # -- validate ------------------------------------------------
+            clean_name = None
+            if name is not None:
+                clean_name = self._checked_name(name, except_id=folder_id)
+            if state is not None and state not in FOLDER_STATES:
+                allowed = ", ".join(sorted(s or "none" for s in FOLDER_STATES))
+                raise CaptureError(f"unknown state {state!r} — {allowed}")
+
+            # -- write ---------------------------------------------------
+            if clean_name is not None:
+                self._commit(eventlog.RENAME_FOLDER, folder_id, text=clean_name)
+            if state is not None and folder["state"] != state:
+                self._commit(eventlog.SET_STATE, folder_id, text=state)
+            for tag in adding:
+                self._map_tag(folder_id, tag, steal=True)
+            for tag in dropping:
+                # Re-read: an earlier mapping in this same amend may have moved
+                # the tag, and dropping one the folder no longer holds is a
+                # no-op rather than a refusal.
+                held = index.folder(self.conn, folder_id)
+                if held is not None and tag in held["tags"]:
+                    self._commit(eventlog.UNMAP_TAG, folder_id, tag=tag)
+            if overview is not None:
+                self._commit(eventlog.SET_OVERVIEW, folder_id, text=overview)
+            if overview_media is not None:
+                self._commit(
+                    eventlog.SET_OVERVIEW_MEDIA,
+                    folder_id,
+                    media=[overview_media] if overview_media else [],
+                )
+
+            return index.folder(self.conn, folder_id)  # type: ignore[return-value]
+
     def set_folder_group(self, folder_id: str, year: str, name: str) -> dict:
         """Put a folder in a named group on one year's shelf, or take it out.
 
@@ -586,39 +695,52 @@ class Store:
             self._commit(eventlog.SET_GROUP, folder_id, text=name, year=year)
             return index.shelf(self.conn, year)
 
-    def name_chapter(
-        self, folder_id: str | None, year: str, month: int, name: str
-    ) -> dict:
-        """Give a chapter a name of your own, or hand it back.
+    def split_chapter(self, folder_id: str | None, month: str, name: str) -> dict:
+        """Cut a chapter at `month`, or rename the one already cut there.
 
-        A chapter is the one thing on the album screen that had no way to be
-        wrong: it is a run of months named from the commonest word written
-        inside it, which is right often enough to be worth doing and wrong often
-        enough to need overruling. An empty `name` deletes the override and the
-        reader names it again.
+        One call for both, because they are one event: the cut is the chapter's
+        identity, so writing the same month again with different words *is* the
+        rename. An empty `name` is a chapter you have cut and not yet named —
+        it is not a deletion, which is `unsplit_chapter` below. See
+        `split-chapter` in eventlog.py.
 
-        The month is the run's first, and the caller is the only one that knows
-        it — `index.chapters` hands `first_month` out with every chapter for
-        exactly this. See `name-chapter` in eventlog.py for why a month is a
-        durable anchor for something derived.
+        The album comes back, because a cut changes more than the row that
+        asked for it: every chapter after this one now ends a month earlier.
         """
         name = self._group_name(name)
-        if not YEAR_RE.match(year):
-            raise CaptureError(f"not a year: {year!r}")
-        if not 1 <= month <= 12:
+        if not MONTH_RE.match(month):
             raise CaptureError(f"not a month: {month!r}")
 
         subject = folder_id or index.UNFILED_ALBUM
         with self._lock:
             if subject != index.UNFILED_ALBUM and index.folder(self.conn, subject) is None:
                 raise NotFound(f"no such folder: {folder_id}")
-            self._commit(
-                eventlog.NAME_CHAPTER, subject, text=name, year=year, month=month
-            )
-            found = index.album(self.conn, folder_id, year)
-            if found is None:
+            self._commit(eventlog.SPLIT_CHAPTER, subject, text=name, month=month)
+            return self._album_or_404(folder_id, month[:4])
+
+    def unsplit_chapter(self, folder_id: str | None, month: str) -> dict:
+        """Take a cut back. What was written stays exactly where it was — a
+        chapter is a heading over the log, never a container of it, so the
+        entries simply join the chapter before them."""
+        if not MONTH_RE.match(month):
+            raise CaptureError(f"not a month: {month!r}")
+
+        subject = folder_id or index.UNFILED_ALBUM
+        with self._lock:
+            if subject != index.UNFILED_ALBUM and index.folder(self.conn, subject) is None:
                 raise NotFound(f"no such folder: {folder_id}")
-            return found
+            self._commit(eventlog.UNSPLIT_CHAPTER, subject, month=month)
+            return self._album_or_404(folder_id, month[:4])
+
+    def _album_or_404(self, folder_id: str | None, year: str) -> dict:
+        """The album a chapter write hands back. `folder_id` is the log's own
+        spelling — `None` for the pile — because that is what the write side
+        has in hand; the scope is built here rather than at every caller."""
+        scope = index.UNFILED if folder_id is None else index.InFolder(folder_id)
+        found = index.album(self.conn, scope, year)
+        if found is None:
+            raise NotFound(f"no such folder: {folder_id}")
+        return found
 
     def _group_name(self, name: str) -> str:
         """One tidy-and-cap, so a name typed in the panel and one arriving from
@@ -793,8 +915,11 @@ class Store:
 
     def map_tag(self, folder_id: str, tag: str) -> dict:
         with self._lock:
+            # `_map_tag` is allowed to write nothing — an empty tag, or one
+            # this folder already holds. `_commit` bumps `version` when there
+            # is an event; bumping here as well moved the counter the frontend
+            # polls for a gesture that changed nothing.
             self._map_tag(folder_id, tag, steal=True)
-            self.version += 1
             return index.folder(self.conn, folder_id)  # type: ignore[return-value]
 
     def unmap_tag(self, folder_id: str, tag: str) -> dict:

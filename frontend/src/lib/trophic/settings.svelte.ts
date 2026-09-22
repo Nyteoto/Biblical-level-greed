@@ -22,7 +22,6 @@ export type OpenOn = 'shelf' | 'latest';
 
 const KEYS = {
 	openOn: 'log-open-on',
-	mergeQuiet: 'log-merge-quiet',
 	yearAlbums: 'log-year-albums'
 } as const;
 
@@ -48,23 +47,16 @@ class LogSettings {
 	// what renders on the server; `hydrate()` reconciles on the client, which
 	// is a frame later and invisible.
 	openOn = $state<OpenOn>('shelf');
-	mergeQuiet = $state(true);
 	yearAlbums = $state(true);
 
 	hydrate() {
 		this.openOn = read(KEYS.openOn, 'shelf') === 'latest' ? 'latest' : 'shelf';
-		this.mergeQuiet = read(KEYS.mergeQuiet, '1') === '1';
 		this.yearAlbums = read(KEYS.yearAlbums, '1') === '1';
 	}
 
 	setOpenOn(value: OpenOn) {
 		this.openOn = value;
 		write(KEYS.openOn, value);
-	}
-
-	setMergeQuiet(value: boolean) {
-		this.mergeQuiet = value;
-		write(KEYS.mergeQuiet, value ? '1' : '0');
 	}
 
 	setYearAlbums(value: boolean) {

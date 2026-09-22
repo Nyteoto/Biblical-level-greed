@@ -9,7 +9,18 @@
 	import { UI_COLORS } from './colors';
 	import type { Entry } from './api';
 
-	let { entry, ontoggle }: { entry: Entry; ontoggle?: (line: number) => void } = $props();
+	/** Only the three fields it actually draws, so a *turn* of a thread can be
+	 *  handed to it as readily as an entry of a day. They are the same object
+	 *  under two names — a turn is an entry — and typing this to the whole
+	 *  `Entry` was the only thing stopping the two screens sharing one
+	 *  checkbox. */
+	let {
+		entry,
+		ontoggle
+	}: {
+		entry: Pick<Entry, 'clean_text' | 'todo_lines' | 'todo_done'>;
+		ontoggle?: (line: number) => void;
+	} = $props();
 
 	const lines = $derived(entry.clean_text.split('\n'));
 	const done = $derived(new Set(entry.todo_done));

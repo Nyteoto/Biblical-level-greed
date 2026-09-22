@@ -179,7 +179,7 @@
 					cy="52"
 					r="46"
 					fill="none"
-					stroke="rgba(79, 255, 159, 0.16)"
+					stroke="rgba(255, 255, 255, 0.16)"
 					stroke-width="5"
 				/>
 				<!-- Rotated a quarter turn so the path's own start — three

@@ -12,7 +12,6 @@
 	 * below exists because a specific way of keeping a journal was found to
 	 * lose things.
 	 */
-	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { SYNTAX_COLORS } from '$lib/trophic/colors';
 
 	const syntax = [
@@ -32,7 +31,7 @@
 			glyph: '\\pattern',
 			color: SYNTAX_COLORS.pattern,
 			name: 'a pattern',
-			body: 'How it went, in your own word. `\\win`, `\\stuck`, `\\steady`. They are counted and drawn under Readings, and never interpreted — nothing here will tell you what your week meant.'
+			body: 'How it went, in your own word. `\\win`, `\\stuck`, `\\steady`. They are counted on Record, and never interpreted — nothing here will tell you what your week meant.'
 		},
 		{
 			glyph: '@place',
@@ -51,9 +50,10 @@
 
 <svelte:head><title>Manual · Trophic</title></svelte:head>
 
-<div class="flex min-h-dvh flex-col">
+<!-- The one capture screen that is a document rather than an instrument, so
+     it says so: the shell clips what does not scroll itself. -->
+<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
 	<div class="flex shrink-0 items-center justify-between px-[34px] pt-[22px]">
-		<TabPill />
 		<a href="/settings" class="text-[13px] font-semibold text-neutral-700 hover:text-ink">
 			← Settings
 		</a>

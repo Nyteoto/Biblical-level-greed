@@ -699,10 +699,10 @@ def test_a_folder_is_grouped_per_year_not_once(capture_store):
     assert capture_store.shelf("2025")["groups"] == ["Field"]
     assert capture_store.shelf("2026")["groups"] == ["Archive"]
     assert (
-        capture_store.album(folder["id"], "2025")["group"] == "Field"
+        capture_store.album(index.InFolder(folder["id"]), "2025")["group"] == "Field"
     )
     assert (
-        capture_store.album(folder["id"], "2026")["group"] == "Archive"
+        capture_store.album(index.InFolder(folder["id"]), "2026")["group"] == "Archive"
     )
 
 
@@ -727,10 +727,10 @@ def test_grouping_moves_no_entry(capture_store):
     folder = capture_store.create_folder("Garden", ["garden"])
     year = capture_store.shelf(None)["years"][0]
 
-    before = capture_store.album(folder["id"], year)["entries"]
+    before = capture_store.album(index.InFolder(folder["id"]), year)["entries"]
     capture_store.set_folder_group(folder["id"], year, "Field")
 
-    assert capture_store.album(folder["id"], year)["entries"] == before
+    assert capture_store.album(index.InFolder(folder["id"]), year)["entries"] == before
     assert capture_store.shelf(year)["unfiled"] == 1
 
 
@@ -1385,3 +1385,55 @@ def test_the_directive_survives_the_index_being_deleted(capture_store):
         assert fresh.unassigned_tags() == [{"tag": "greenhouse", "count": 1}]
     finally:
         fresh.close()
+
+
+def test_a_rejected_amend_writes_nothing(capture_store):
+    """The gesture is one thing, so half of it is not an outcome.
+
+    Six sequential writes at the wire could commit the rename and then refuse
+    the state, leaving the new name in an append-only log behind a 400 — a
+    correction that can only be made by appending another rename. Nothing
+    below HTTP could see the gesture, so nothing below HTTP could test it.
+    """
+    folder = capture_store.create_folder("Darkroom")
+    before = capture_store.version
+
+    with pytest.raises(CaptureError):
+        capture_store.amend_folder(
+            folder["id"], name="Studio", state="not-a-state", add_tags=["prints"]
+        )
+
+    after = index.folder(capture_store.conn, folder["id"])
+    assert after["name"] == "Darkroom"
+    assert after["tags"] == []
+    assert capture_store.version == before
+
+    # And the log itself, not just the projection folded out of it.
+    fresh = rebuilt_from_log(capture_store)
+    try:
+        assert fresh.folder_detail(folder["id"])["folder"]["name"] == "Darkroom"
+    finally:
+        fresh.close()
+
+
+def test_an_empty_amend_is_refused_below_the_wire(capture_store):
+    """"Was anything asked for" is a question about the request. It used to be
+    answered by checking whether a local variable in the route was still
+    `None`, which made it true of a patch that named fields carrying nothing."""
+    folder = capture_store.create_folder("Darkroom")
+
+    with pytest.raises(CaptureError, match="nothing to change"):
+        capture_store.amend_folder(folder["id"])
+    with pytest.raises(CaptureError, match="nothing to change"):
+        capture_store.amend_folder(folder["id"], add_tags=["  "])
+
+
+def test_mapping_a_tag_the_folder_already_holds_moves_no_version(capture_store):
+    """`version` is what the frontend polls. A gesture that writes nothing
+    must not advance it, or every client refetches for no reason."""
+    folder = capture_store.create_folder("Darkroom")
+    capture_store.map_tag(folder["id"], "prints")
+    settled = capture_store.version
+
+    capture_store.map_tag(folder["id"], "prints")
+    assert capture_store.version == settled

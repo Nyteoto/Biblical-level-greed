@@ -40,4 +40,14 @@ thing that is not wrong. That case is a page reload, which the message says.
 #     without the route, stopping a timer reported `not logged — retry` and
 #     every retry 404'd identically, so the screen said the send had failed
 #     and could not say that the *server* was the thing that was old.
-API_VERSION = 6
+# 7 — `#count`, `entries.counts` beside `places`, and `GET /search` — the
+#     first route in this app that reads by content rather than by when or
+#     where something was filed.
+# 8 — the lenses. `GET /heat` with a scope; the album stops carrying a year of
+#     days; and chapters stop being derived — `split-chapter`/`unsplit-chapter`
+#     replace `name-chapter`, the chapter route takes a `YYYY-MM` cut, and a
+#     chapter's payload is its cut rather than a run the server found.
+# 9 — `GET /threads`: the reply chain walked, so a `{}` whose reply sets the
+#     next one is one object with turns. Nothing new is stored — the chain is
+#     `reply_to` and the dates are the reminders that were already there.
+API_VERSION = 9

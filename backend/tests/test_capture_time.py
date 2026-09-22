@@ -267,7 +267,7 @@ def test_the_monthly_totals_line_up_with_the_twelve_bars(capture_store):
     _log_on(capture_store, folder["id"], "2026-01-20", 300)
     _log_on(capture_store, folder["id"], "2026-08-02", 7200)
 
-    volumes = index.folder_time_volumes(capture_store.conn, folder["id"], "2026")
+    volumes = index.folder_time_volumes(capture_store.conn, index.InFolder(folder["id"]), "2026")
     assert len(volumes) == 12
     assert volumes[0] == 900
     assert volumes[7] == 7200
@@ -277,7 +277,7 @@ def test_the_monthly_totals_line_up_with_the_twelve_bars(capture_store):
 def test_the_unfiled_pile_can_never_be_clocked(capture_store):
     """A session is logged from a folder's own screen, so there is no gesture
     that produces one nothing has claimed."""
-    assert index.folder_time_volumes(capture_store.conn, None, "2026") == [0] * 12
+    assert index.folder_time_volumes(capture_store.conn, index.UNFILED, "2026") == [0] * 12
 
 
 # ── What the screens read ─────────────────────────────────────────────────
@@ -289,7 +289,7 @@ def test_the_album_carries_the_clock(capture_store):
     capture_store.map_tag(folder["id"], "darkroom")
     _log_on(capture_store, folder["id"], "2026-08-02", 5400)
 
-    album = capture_store.album(folder["id"], "2026")
+    album = capture_store.album(index.InFolder(folder["id"]), "2026")
     assert album["seconds"] == 5400
     assert album["time_volumes"][7] == 5400
     assert [s["seconds"] for s in album["sessions"]] == [5400]

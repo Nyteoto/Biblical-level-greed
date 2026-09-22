@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Settings — disk, the folder/tag mapping, how the Log behaves, the monitor,
+	 * Settings — disk, the folder/tag mapping, how the Log behaves,
 	 * the manual. One at a time, down a column on the left.
 	 *
 	 * It was one screen with everything stacked on it, and it stopped fitting.
@@ -16,7 +16,7 @@
 	 * `accent-fill` on the one you are in. Two sidebars that behave alike are one
 	 * thing to learn.
 	 *
-	 * **Which section is open lives in the URL** (`?s=monitor`), which is what
+	 * **Which section is open lives in the URL** (`?s=log`), which is what
 	 * makes the rows plain links: back and forward work, a reload puts you back
 	 * where you were, and there is no third copy of "where am I" to keep in sync.
 	 * The route has no `load`, so switching sections re-runs nothing — `report`,
@@ -37,11 +37,6 @@
 	 *   - **Log**, where the two model additions the redesign assumes are
 	 *     switches rather than a fork in the design. Neither stores anything;
 	 *     see `settings.svelte.ts`.
-	 *   - **Monitor**, because the glass is the loudest opinion in the app and
-	 *     the person reading through it is the only one who can say whether it
-	 *     is too much. The dials write the same six custom properties the effect
-	 *     already reads, so this screen adjusts the monitor without knowing
-	 *     anything about how it is drawn — see `monitor.svelte.ts`.
 	 *   - **Manual**, which is read closely once and skimmed rarely after that.
 	 *     It is a link out rather than a pane: it is a document, and it already
 	 *     has a route that can hold one.
@@ -53,9 +48,7 @@
 	 */
 	import { page } from '$app/state';
 	import Segmented from '$lib/trophic/Segmented.svelte';
-	import TabPill from '$lib/trophic/TabPill.svelte';
 	import { logSettings, dayBoundary, type OpenOn } from '$lib/trophic/settings.svelte';
-	import { monitor, type MonitorKey } from '$lib/trophic/monitor.svelte';
 	import {
 		bytes,
 		getBackup,
@@ -65,7 +58,7 @@
 		type BackupStatus,
 		type StorageReport
 	} from '$lib/api';
-	import { phosphorize, TOKEN_COLORS } from '$lib/trophic/colors';
+	import { toRamp, TOKEN_COLORS } from '$lib/trophic/colors';
 	import {
 		getFolders,
 		getTags,
@@ -75,6 +68,7 @@
 		type TagCensus
 	} from '$lib/trophic/api';
 	import { lifted } from '$lib/trophic/lifted.svelte';
+	import { lensHref } from '$lib/trophic/scope';
 
 	let report = $state<StorageReport | null>(null);
 	let backup = $state<BackupStatus | null>(null);
@@ -143,7 +137,7 @@
 	 * sidebar. Silence is the default: a section with nothing to say shows
 	 * nothing rather than a zero.
 	 */
-	type SectionId = 'disk' | 'folders' | 'log' | 'monitor';
+	type SectionId = 'disk' | 'folders' | 'log';
 
 	const SECTIONS: { id: SectionId; label: string; title: string; blurb: string }[] = [
 		{
@@ -163,12 +157,6 @@
 			label: 'Log',
 			title: 'Log',
 			blurb: 'How the days are grouped on the way out. None of it changes a stored byte.'
-		},
-		{
-			id: 'monitor',
-			label: 'Monitor',
-			title: 'Monitor',
-			blurb: 'The glass over the app: scanlines, vignette, grain, bloom and the light on the tube.'
 		}
 	];
 
@@ -182,8 +170,7 @@
 		return {
 			disk: report ? bytes(report.total_bytes) : '',
 			folders: unmapped > 0 ? `${unmapped} loose` : '',
-			log: '',
-			monitor: monitor.on ? '' : 'off'
+			log: ''
 		} as Record<SectionId, string>;
 	});
 
@@ -256,88 +243,7 @@
 		{ value: 'latest', label: 'Latest day' }
 	];
 
-	/**
-	 * The six dials, in the order the eye meets the effect: the lines across
-	 * the picture, then the darkening at its edges, then the noise, then the
-	 * halo on the type, then the light sitting on the front of the glass.
-	 *
-	 * Each range starts at zero — every part of the monitor can be taken away
-	 * on its own, which is the only way to find out which part you actually
-	 * object to. The tops are where the effect stops reading as a monitor and
-	 * starts reading as damage; they are generous, not safe.
-	 */
-	const DIALS: {
-		key: MonitorKey;
-		label: string;
-		hint: string;
-		min: number;
-		max: number;
-		step: number;
-		format: (value: number) => string;
-	}[] = [
-		{
-			key: 'scanAlpha',
-			label: 'Scanlines',
-			hint: 'How dark the lines between the lines are.',
-			min: 0,
-			max: 0.2,
-			step: 0.005,
-			format: (v) => v.toFixed(3)
-		},
-		{
-			key: 'scanPeriod',
-			label: 'Line spacing',
-			hint: 'How far apart they sit. Tighter is a smaller tube.',
-			min: 2,
-			max: 8,
-			step: 0.5,
-			format: (v) => `${v}px`
-		},
-		{
-			key: 'vignette',
-			label: 'Vignette',
-			hint: 'The falloff into the corners.',
-			min: 0,
-			max: 0.75,
-			step: 0.01,
-			format: (v) => v.toFixed(2)
-		},
-		{
-			key: 'grain',
-			label: 'Grain',
-			hint: 'Sensor noise over the whole picture.',
-			min: 0,
-			max: 0.08,
-			step: 0.002,
-			format: (v) => v.toFixed(3)
-		},
-		{
-			key: 'bloom',
-			label: 'Bloom',
-			hint: 'The halo lit type throws. At zero the text is flat.',
-			min: 0,
-			max: 2,
-			step: 0.05,
-			format: (v) => `${v.toFixed(2)}×`
-		},
-		{
-			key: 'sheen',
-			label: 'Glass',
-			hint: 'Light on the front of the tube, and how round its corners are.',
-			min: 0,
-			max: 2,
-			step: 0.05,
-			format: (v) => `${v.toFixed(2)}×`
-		}
-	];
-
 	const LOG_SWITCHES = $derived([
-		{
-			label: 'Merge quiet stretches',
-			on: logSettings.mergeQuiet,
-			set: (v: boolean) => logSettings.setMergeQuiet(v),
-			hint: 'Days with a line or two and no media collapse into one strip that expands.'
-		},
 		{
 			label: 'Albums restart each year',
 			on: logSettings.yearAlbums,
@@ -347,12 +253,13 @@
 	]);
 </script>
 
-<div class="flex h-dvh flex-col">
+<!-- The remainder under the shell, not a viewport of its own — see
+     `+layout.svelte`. -->
+<div class="flex min-h-0 flex-1 flex-col">
 	<!-- The pill in the same corner as on every other screen, above the column
 	     rather than inside it — the same arrangement the album screen arrived at,
 	     and for the same reason. -->
 	<div class="flex shrink-0 items-center justify-between gap-6 px-[34px] pt-[22px] pb-[22px]">
-		<TabPill />
 		<!-- The data root, truncated rather than allowed to set the page's width.
 		     An absolute path is as long as it is, and at phone width this one span
 		     was pushing the document wide enough to raise a horizontal scrollbar —
@@ -363,14 +270,18 @@
 		</span>
 	</div>
 
-	<div class="flex min-h-0 flex-1">
+	<!-- Stacked below `sm`, side by side above it. At 390px the rail takes 64
+	     and this aside took 274, which left the pane 52px of which 64 were
+	     padding — the section you had chosen was off the right edge with no way
+	     to reach it. Above `sm` nothing moves. -->
+	<div class="flex min-h-0 flex-1 flex-col sm:flex-row">
 		<!-- ── The column ──────────────────────────────────────────────────
 		     No border. Cards on the tinted ground, which is the rule everywhere
 		     in this design: a group is a white surface, never a rule. -->
 		<!-- Same 34px gutter as the album sidebar and the shelf rail: it is the
 		     page's, the nav pill is at it on every screen, and this aside is what
 		     sits under the pill here. -->
-		<aside class="flex w-[274px] shrink-0 flex-col pb-6 pl-[34px] pr-3">
+		<aside class="flex shrink-0 flex-col px-[34px] pb-6 sm:w-[274px] sm:pr-3 sm:pl-[34px]">
 			<div class="flex items-baseline gap-[9px] pb-5">
 				<span class="text-[22px] font-extrabold tracking-[-0.02em]">Settings</span>
 			</div>
@@ -545,14 +456,14 @@
 							{#each mapped as folder (folder.id)}
 								{@const shipped = folder.state === 'shipped'}
 								<a
-									href="/folders/{folder.id}"
+									href={lensHref('/log', { folder: folder.id })}
 									class="flex items-center gap-3 rounded-[10px] px-2 py-3 transition-colors hover:bg-neutral-200"
 								>
 									<span
 										class="h-2 w-2 shrink-0 rounded-full"
 										style="background:{shipped
 											? 'var(--color-neutral-400)'
-											: phosphorize(folder.color)}"
+											: toRamp(folder.color)}"
 									></span>
 									<span
 										class="min-w-0 flex-1 truncate text-[14px] {shipped
@@ -570,7 +481,7 @@
 									{:else}
 										<span
 											class="shrink-0 truncate font-mono text-[12px]"
-											style="color:{phosphorize(folder.color)}"
+											style="color:{toRamp(folder.color)}"
 										>
 											{folder.tags.map((t) => `<${t}>`).join(' ')}
 										</span>
@@ -588,14 +499,16 @@
 						     needs acting on and a capped list would scroll it out of
 						     sight. -->
 						<a
-							href="/mapping"
+							href="/record"
 							class="lift lift-sm flex items-center gap-3 rounded-[12px] bg-surface px-4 py-3 shadow-sm transition-colors"
 						>
 							<span class="min-w-0 flex-1 text-[14px] font-semibold text-accent-700">
 								{unmapped}
 								{unmapped === 1 ? 'tag points' : 'tags point'} nowhere
 							</span>
-							<span class="shrink-0 text-[13px] font-semibold">Map them →</span>
+							<!-- Record, not a mapping screen: a tag points at a folder, so
+							     the folder is where it is pointed. -->
+							<span class="shrink-0 text-[13px] font-semibold">Point them →</span>
 						</a>
 
 						<!-- ── Lifting ──────────────────────────────────────────
@@ -648,7 +561,7 @@
 											style={row.lifted
 												? undefined
 												: `color:${row.folder
-														? phosphorize(colorOf.get(row.folder) ?? '')
+														? toRamp(colorOf.get(row.folder) ?? '')
 														: TOKEN_COLORS.folder}`}
 										>
 											{row.lifted ? row.tag : `<${row.tag}>`}
@@ -719,88 +632,6 @@
 								<span class="font-mono text-[13px] text-neutral-800">{dayBoundary()}</span>
 							</div>
 						</div>
-					{:else if current.id === 'monitor'}
-						<div class="rounded-[16px] bg-surface px-4 py-2 shadow-md">
-							<div class="flex items-center gap-3.5 py-[13px]">
-								<span class="flex-1">
-									<span class="block text-[14px]">Tube</span>
-									<span class="mt-0.5 block text-[12px] leading-[1.45] text-neutral-700">
-										Off takes the glass away entirely. Your numbers are kept.
-									</span>
-								</span>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={monitor.on}
-									aria-label="the monitor effect"
-									class="flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[3px] transition-colors {monitor.on
-										? 'accent-fill-flat justify-end'
-										: 'justify-start bg-neutral-300'}"
-									onclick={() => monitor.setOn(!monitor.on)}
-								>
-									<span class="h-5 w-5 rounded-full bg-surface shadow-sm"></span>
-								</button>
-							</div>
-
-							<!-- Two up, under the switch rather than beside it. Six dials
-							     in one column was the other thing on this screen tall enough
-							     to need scrolling, and they are independent of each other —
-							     nothing is lost by reading them in pairs. -->
-							<div class="grid grid-cols-2 gap-x-7">
-								{#each DIALS as dial (dial.key)}
-									{@const value = monitor[dial.key]}
-								<!-- The whole row goes quiet with the tube, not just the
-								     slider. `:disabled` on the input alone is not enough:
-								     WebKitGTK — the engine `desktop.py` ships — computes the
-								     opacity and then paints the restyled thumb at full
-								     strength anyway, so the one control that had to look
-								     unavailable was the one that still looked lit. -->
-								<div
-									class="flex flex-col gap-[3px] py-[11px] transition-opacity {monitor.on
-										? ''
-										: 'opacity-40'}"
-								>
-									<div class="flex items-baseline gap-3">
-										<span class="text-[14px]">{dial.label}</span>
-										<span class="flex-1"></span>
-										<span class="font-mono text-[12px] text-neutral-800 tabular-nums">
-											{dial.format(value)}
-										</span>
-									</div>
-									<!-- The whole point of putting these here is that the
-									     screen you are adjusting is the screen you are
-									     looking at, so they write on every input event
-									     rather than on release. -->
-									<input
-										type="range"
-										class="dial"
-										min={dial.min}
-										max={dial.max}
-										step={dial.step}
-										{value}
-										disabled={!monitor.on}
-										aria-label={dial.label}
-										style="--dial-fill:{((value - dial.min) / (dial.max - dial.min)) * 100}%"
-										oninput={(e) => monitor.set(dial.key, Number(e.currentTarget.value))}
-									/>
-									<span class="text-[12px] leading-[1.45] text-neutral-700">{dial.hint}</span>
-								</div>
-								{/each}
-							</div>
-						</div>
-
-						<!-- Absent rather than disabled at the defaults: a control that is
-						     always there and usually does nothing has to be read every
-						     time to find out which. -->
-						{#if !monitor.isDefault}
-							<button
-								type="button"
-								class="lift lift-sm w-fit rounded-[11px] bg-surface px-4 py-[11px] text-[13px] font-semibold shadow-sm"
-								onclick={() => monitor.reset()}
-							>
-								Reset to defaults
-							</button>
-						{/if}
 					{/if}
 
 					{#if error}

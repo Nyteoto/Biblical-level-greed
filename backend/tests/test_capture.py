@@ -312,6 +312,34 @@ def test_an_email_address_is_not_a_place(capture_store):
     assert capture_store.entries(limit=1)[0]["places"] == ["oslo"]
 
 
+def test_a_count_is_a_number_that_points_nowhere(capture_store):
+    """`#count` is `place`'s addition one sigil later: same shape, same
+    non-membership, its own list."""
+    capture_store.capture("tempo #100 <practice>")
+    entry = capture_store.entries(limit=1)[0]
+    assert entry["counts"] == [100]
+    assert entry["folders"] == ["practice"]  # the count is not in here
+
+
+def test_a_sharp_chord_is_not_a_count(capture_store):
+    """`place`'s word-start guard, reused: `#` preceded by a letter is a
+    sharp chord, not a number worth capturing."""
+    capture_store.capture("played F#7 then did it #5 times")
+    assert capture_store.entries(limit=1)[0]["counts"] == [5]
+
+
+def test_counts_are_deduplicated_in_appearance_order(capture_store):
+    capture_store.capture("#5 attempts, #5 again, #12 later")
+    assert capture_store.entries(limit=1)[0]["counts"] == [5, 12]
+
+
+def test_a_quoted_count_triggers_nothing(capture_store):
+    """Text inside quotes triggers nothing — the rule for the whole syntax,
+    and a count is not the exception to it."""
+    capture_store.capture('quoting "#5" but really #12')
+    assert capture_store.entries(limit=1)[0]["counts"] == [12]
+
+
 def test_capture_writes_nowhere_near_the_tech_tree(capture_store):
     """Sibling app, own subtree. If this ever fails, the two logs have started
     sharing a directory and one app's reindex can drop the other's events."""
