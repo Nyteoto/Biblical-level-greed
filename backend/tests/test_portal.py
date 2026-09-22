@@ -406,6 +406,31 @@ def test_a_book_starts_every_record_on_a_front(data_dir):
     assert _pages(bound) == 3  # 8191 · blank back · 8192
 
 
+def test_every_page_is_laid_out_on_its_own_side(data_dir, monkeypatch):
+    """A front's text block sits right of the binder margin, a back's left of
+    it — decided by page number, the same as the holes. It once drifted after
+    the page break between two Records: page 3 was laid out as a back while
+    its holes were drawn as a front."""
+    seen: dict[int, float] = {}
+    real = pdf._decorate
+
+    def spy(canvas, doc):
+        seen[canvas.getPageNumber()] = doc.frame._x1
+        real(canvas, doc)
+
+    monkeypatch.setattr(pdf, "_decorate", spy)
+    long = "\n".join(f"Line {i} of a long day." for i in range(40))
+    for n, day, body in ((8190, "2026-09-19", long), (8191, "2026-09-20", "x"), (8192, "2026-09-21", long)):
+        records.write(
+            {"instance": n, "day": day, "selfie": _blob(f"s{n}.png"), "media": [],
+             "body": body, "wish": "y", "signature": str(n), "mood": 5}
+        )
+    pdf.book([8190, 8191, 8192], config.PDF_DIR / "book.pdf")
+    assert len(seen) >= 4
+    for page, x in seen.items():
+        assert x == (pdf.BINDER if page % 2 else pdf.MARGIN), (page, x)
+
+
 # ── Through the routes ────────────────────────────────────────────────────
 
 

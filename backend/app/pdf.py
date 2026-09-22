@@ -426,12 +426,16 @@ def _story(record: dict, follows: dict | None, styles) -> list[Flowable]:
     # The plates: a clip or the first photograph mounted large, the rest two
     # to a row, each captioned with its number.
     items = record.get("media") or []
-    story.append(_label(f"plates  {len(items)}", styles))
+    heading = _label(f"plates  {len(items)}", styles)
     if items:
         gap = 5 * mm
         half = (frame_w - gap) / 2
-        grid: list[list] = []
-        spans: list[int] = []
+        # The label is the table's first row rather than a paragraph above it:
+        # a table never splits between its header and its first row, so the
+        # label cannot be stranded at the foot of a page while the plates it
+        # names start on the next — which is what a standalone label did.
+        grid: list[list] = [[heading, ""]]
+        spans: list[int] = [0]
         pending: list = []
         for i, item in enumerate(items):
             large = i == 0 or item["kind"] == "video"
@@ -449,19 +453,20 @@ def _story(record: dict, follows: dict | None, styles) -> list[Flowable]:
                     pending = []
         if pending:
             grid.append(pending + [""])
-        plates = Table(grid, colWidths=[half + gap / 2, half + gap / 2])
+        plates = Table(grid, colWidths=[half + gap / 2, half + gap / 2], repeatRows=1)
         plates.setStyle(TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4 * mm),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 0),
             ]
             + [("SPAN", (0, r), (1, r)) for r in spans]
         ))
         story.append(plates)
     else:
-        story.append(Paragraph("No plates were mounted.", styles["caption"]))
+        story += [heading, Paragraph("No plates were mounted.", styles["caption"])]
     story.append(Spacer(1, 5 * mm))
 
     # What this sheet hands to the next one.
@@ -582,10 +587,18 @@ class _Binder(BaseDocTemplate):
         def frame(x: float, name: str) -> Frame:
             return Frame(x, bottom, FRAME_W + 12, height, id=name)
 
-        self.addPageTemplates([
-            PageTemplate("front", [frame(BINDER, "f")], onPageEnd=_decorate, autoNextPageTemplate="back"),
-            PageTemplate("back", [frame(MARGIN, "b")], onPageEnd=_decorate, autoNextPageTemplate="front"),
-        ])
+        self._front = PageTemplate("front", [frame(BINDER, "f")], onPageEnd=_decorate)
+        self._back = PageTemplate("back", [frame(MARGIN, "b")], onPageEnd=_decorate)
+        self.addPageTemplates([self._front, self._back])
+
+    def handle_pageBegin(self) -> None:
+        # The side is chosen from the page number, the same way `_decorate`
+        # chooses where the holes go. ReportLab's `autoNextPageTemplate` was
+        # the first way this alternated, and it drifted after an explicit
+        # page break between Records: page 3 of a book was laid out as a back
+        # while its holes were drawn as a front, so the text sat in the spine.
+        self.pageTemplate = self._front if (self.page + 1) % 2 else self._back
+        super().handle_pageBegin()
 
 
 def _write(story: list[Flowable], target: Path, **meta) -> Path:
