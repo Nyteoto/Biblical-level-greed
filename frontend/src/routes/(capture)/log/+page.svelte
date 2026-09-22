@@ -15,10 +15,12 @@
 	 * here starts needing a scroll — or a run of page turns — to *reach* rather
 	 * than to *read*, it has gone backwards.
 	 *
-	 * The header is journal-first on purpose — the week number and what the deck
-	 * is cut to, not the folder name. You are reading a stretch of your life
-	 * that happens to be filed under a project, and the index already says
-	 * which.
+	 * The header is the band and two buttons, and nothing else. It carried a
+	 * week number, a pill naming the cut, a `chapter starts here` in prose, a
+	 * round timer and a worded contact-sheet toggle — four kinds of thing in
+	 * one row. The cut is the lit column on the band and pressing it again
+	 * hands the year back; a chapter is started from a mark on the band at the
+	 * month being read; the two buttons are the same square.
 	 *
 	 * ## A day is a page
 	 *
@@ -53,7 +55,6 @@
 	import { clockFace, duration, timer } from '$lib/trophic/timer.svelte.js';
 	import { todayKey } from '$lib/trophic/day';
 	import {
-		albumWeek,
 		groupDays,
 		inScope,
 		monthLabel,
@@ -85,6 +86,7 @@
 	import Glyph from '$lib/trophic/Glyph.svelte';
 	import HoldMenu from '$lib/trophic/HoldMenu.svelte';
 	import ChapterPanel from '$lib/trophic/ChapterPanel.svelte';
+	import { quietTags } from '$lib/trophic/quiet';
 
 	/**
 	 * The subject, read off the scope rather than off a route parameter.
@@ -431,8 +433,11 @@
 		deckIndex = at >= 0 ? at : 0;
 	});
 
+	// Inside a folder's album its own tags say nothing — see `quiet.ts`.
+	quietTags(() => album?.folder?.tags ?? []);
+
 	/** Whether the page on screen is already inside a cut of its own month —
-	 *  which is the one case where "chapter starts here" would do nothing. */
+	 *  which is the one case where the band's cut mark would do nothing. */
 	const cutHere = $derived(
 		!!openPage && !!album?.chapters.some((c) => c.month === openPage.day.key.slice(0, 7))
 	);
@@ -462,7 +467,14 @@
 	 *  Nothing scrolls afterwards: a new scope is a new deck, and a new deck
 	 *  opens at its first page — which is a fresh sheet already at its top. */
 	function jumpToMonth(month: number) {
-		scopeTo({ month: `${year}-${String(month + 1).padStart(2, '0')}` });
+		const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+		// The lit column is the cut, so pressing it again is the way back out —
+		// which is what the pill that named the cut used to be for.
+		scopeTo(monthParam === key ? {} : { month: key });
+	}
+
+	function jumpToChapter(chapter: Chapter) {
+		scopeTo(chapterParam === chapter.month ? {} : { chapter: chapter.month });
 	}
 
 	/** Follow a thread. It goes through the URL rather than straight to a
@@ -534,9 +546,8 @@
 	     third place — and a navigation control that moves is one you have to
 	     look for every time.
 
-	     After the pill it is journal-first: the month and the week, then the
-	     album's name as a small pill so a collapsed sidebar still says where
-	     you are. -->
+	     The band on the left, two square buttons on the right. The folder's
+	     name is the subject bar's, above this row. -->
 	<div
 		class="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 pt-[22px] pb-[22px] sm:px-[34px]"
 	>
@@ -551,72 +562,23 @@
 						{album}
 						live={liveMonth}
 						month={monthParam ?? chapterParam}
+						reading={openPage ? openPage.day.key.slice(0, 7) : null}
+						oncut={openPage && !cutHere
+							? () => act(splitChapter(folderId, openPage.day.key.slice(0, 7), ''))
+							: undefined}
 						onpickmonth={jumpToMonth}
-						onpickchapter={(chapter) => scopeTo({ chapter: chapter.month })}
+						onpickchapter={jumpToChapter}
 						onholdchapter={(chapter, x, y) => (chapterPanel = { chapter, x, y })}
 					/>
 				</div>
 			{/if}
-			<!-- The month and the year used to be printed here as `AUGUST 2026`,
-			     and both were already on screen twice over: the month in the spine
-			     down the right edge and in the chapter rows, the year at the top of
-			     the sidebar — and the first day heading in the column says the whole
-			     date in the largest type on the page. This label was not even a
-			     scroll indicator; it read off the lead day and never moved. The week
-			     number stays because nothing else prints it. -->
-			<!-- The album's own week, not the calendar's. `days` is newest first,
-			     so the last of them is where this album starts.
-
-			     It counts to the page you are *reading* rather than to the newest
-			     day in the album. Against a scroll that was the only honest
-			     answer — the header could not know where you had got to — and it
-			     is why the month label that used to sit here was deleted for
-			     lying. A deck knows exactly which day is on screen, so this is
-			     true by construction now. -->
-			{#if openPage && days.length}
-				<span class="hidden text-[12px] text-neutral-700 sm:inline">
-					week {albumWeek(days[days.length - 1].key, openPage.day.key)}
-				</span>
-			{/if}
-
-			<!-- What the deck has been cut down to, and the way back out. Only
-			     when something is on: an unfiltered album says nothing, because
-			     "the whole year" is what the screen already is. -->
-			{#if scopeName}
-				<button
-					type="button"
-					class="flex items-center gap-2 rounded-[10px] bg-surface px-2.5 py-1 text-[12px] font-semibold shadow-sm transition-colors hover:text-accent-700"
-					title="read the whole year again"
-					onclick={() => scopeTo({})}
-				>
-					{scopeName}
-					<span class="text-[13px] leading-none text-neutral-600">×</span>
-				</button>
-			{/if}
-
-			<!-- **A chapter starts here.** Cutting belongs to Record, and this is
-			     the moment you notice one: you are reading the day the thing
-			     changed. So the list and all the editing stay there, and this
-			     writes the cut and leaves you on the page.
-
-			     In the header rather than on the sheet, because a sheet is paper
-			     now and app chrome printed on the paper is what the deck spent a
-			     whole step getting away from. The header already knows which page
-			     is open — the week number is read off it.
-
-			     Gone once that month is cut: a control that would do nothing is
-			     worse than one that is not there. -->
-			{#if openPage && !cutHere}
-				{@const at = openPage.day.key.slice(0, 7)}
-				<button
-					type="button"
-					class="hidden text-[12px] text-neutral-600 transition-colors hover:text-ink sm:inline"
-					title="a chapter begins in {monthLabel(at).split(' ')[0]}"
-					onclick={() => act(splitChapter(folderId, at, ''))}
-				>
-					chapter starts here
-				</button>
-			{/if}
+			<!-- The week number stood here, then a pill naming the cut, then
+			     `chapter starts here` in prose. The week said where the page was
+			     in the album, which the band's lit column already says; the pill
+			     said what the deck was cut to, which the band's lit column also
+			     says; and the chapter control is a mark on the band now, at the
+			     month being read — the place a cut is drawn is the place it is
+			     made. -->
 		</div>
 
 		<!-- Words off: everything ever made in here, densest possible. This is
@@ -640,14 +602,13 @@
 			     with a control next to it. -->
 			{#if album?.folder}
 				{@const clocked = album.folder.id}
-				<!-- ── The one round control in the app ──────────────────────
-				     Every other control on this screen is a rounded rectangle
-				     with a word in it. This one is a circle with a mark in it,
-				     and the difference is doing work: it is the only control
-				     here that starts something that goes on running after you
-				     look away, and it should not read as one more thing you
-				     could tap. A circle in a row of pills is found without
-				     being looked for.
+				<!-- ── Two square buttons, a mark in each ─────────────────────
+				     This was the one round control in the app, set apart on
+				     purpose because it starts something that keeps running.
+				     A running clock says so on its own — it fills, and its
+				     time is printed beside it — so the circle was a second
+				     way of saying that, and a fourth shape in one row. It is
+				     the contact sheet's twin now.
 
 				     The word moves into the label rather than disappearing —
 				     the same rule `Glyph` follows — so the tooltip and the
@@ -662,8 +623,8 @@
 						? `timer ${clock.running ? 'running' : 'paused'}`
 						: `timer — ${duration(album.seconds)} clocked`}
 					class="lift lift-sm flex h-[34px] w-[34px] shrink-0 items-center justify-center
-					       rounded-full transition-colors {clock.isOn(clocked)
-						? 'bg-ink text-ground'
+					       transition-colors {clock.isOn(clocked)
+						? 'accent-fill'
 						: 'bg-surface text-neutral-800 shadow-sm hover:text-ink'}"
 					onclick={() => {
 						// Opening the screen is what starts it, so the button is
@@ -718,7 +679,7 @@
 					<span>{duration(unsent.seconds)} not logged — {unsent.message}</span>
 					<button
 						type="button"
-						class="rounded-lg px-2 py-1 font-semibold underline disabled:no-underline
+						class=" px-2 py-1 font-semibold underline disabled:no-underline
 						       disabled:opacity-60"
 						disabled={sending}
 						onclick={() => send(unsent!.seconds)}
@@ -735,14 +696,14 @@
 				<button
 					type="button"
 					aria-pressed={contacts}
-					class="flex items-center gap-2 rounded-lg px-[11px] py-1.5 transition-colors {contacts
-						? 'lift lift-sm bg-surface font-semibold text-ink shadow-sm'
-						: 'hover:text-ink'}"
+					aria-label="contact sheet, {shots.length} {shots.length === 1 ? 'photograph' : 'photographs'}"
+					title="contact sheet · {shots.length}"
+					class="lift lift-sm flex h-[34px] w-[34px] shrink-0 items-center justify-center transition-colors {contacts
+						? 'accent-fill'
+						: 'bg-surface text-neutral-800 shadow-sm hover:text-ink'}"
 					onclick={() => (contacts = !contacts)}
 				>
-					<Glyph kind="media" count={shots.length} size={13} />
-					<span class="tabular-nums">{shots.length}</span>
-					<span>{contacts ? 'reading' : 'contact sheet'}</span>
+					<Glyph kind="media" count={shots.length} size={16} align="center" />
 				</button>
 			{/if}
 		</div>

@@ -139,7 +139,7 @@
 			{#if clock.running}
 				<button
 					type="button"
-					class="lift lift-sm rounded-lg bg-surface px-5 py-2.5 text-[13px] font-semibold
+					class="lift lift-sm bg-surface px-5 py-2.5 text-[13px] font-semibold
 					       text-neutral-800 shadow-sm"
 					onclick={() => clock.pause()}
 				>
@@ -148,7 +148,7 @@
 			{:else}
 				<button
 					type="button"
-					class="lift lift-sm rounded-lg bg-surface px-5 py-2.5 text-[13px] font-semibold
+					class="lift lift-sm bg-surface px-5 py-2.5 text-[13px] font-semibold
 					       text-ink shadow-sm"
 					onclick={() => clock.start(session.folderId, session.folderName)}
 				>
@@ -158,7 +158,7 @@
 
 			<button
 				type="button"
-				class="rounded-lg bg-ink px-5 py-2.5 text-[13px] font-bold text-ground"
+				class=" bg-ink px-5 py-2.5 text-[13px] font-bold text-ground"
 				onclick={onstop}
 			>
 				stop &amp; log
@@ -171,12 +171,12 @@
 		     screen exists. The lengths only appear in pomodoro mode, because a
 		     stopwatch has nothing to be told. -->
 		<div class="flex flex-col items-center gap-3 text-[12px] text-neutral-600">
-			<div class="flex items-center gap-1 rounded-[10px] bg-neutral-200 p-1">
+			<div class="flex items-center gap-1 bg-neutral-200 p-1">
 				{#each [['stopwatch', 'stopwatch'], ['pomodoro', 'pomodoro']] as const as [value, label] (value)}
 					<button
 						type="button"
 						aria-pressed={clock.mode === value}
-						class="rounded-lg px-3 py-1 transition-colors {clock.mode === value
+						class=" px-3 py-1 transition-colors {clock.mode === value
 							? 'bg-surface font-semibold text-ink shadow-sm'
 							: 'hover:text-ink'}"
 						onclick={() => clock.setMode(value)}
@@ -194,7 +194,7 @@
 							type="number"
 							min="1"
 							max="240"
-							class="w-[52px] rounded-lg bg-surface px-2 py-1 text-center tabular-nums
+							class="w-[52px] bg-surface px-2 py-1 text-center tabular-nums
 							       text-neutral-800 shadow-sm outline-none focus:text-ink"
 							value={clock.workMin}
 							onchange={(e) => {
@@ -214,7 +214,7 @@
 							type="number"
 							min="1"
 							max="240"
-							class="w-[52px] rounded-lg bg-surface px-2 py-1 text-center tabular-nums
+							class="w-[52px] bg-surface px-2 py-1 text-center tabular-nums
 							       text-neutral-800 shadow-sm outline-none focus:text-ink"
 							value={clock.restMin}
 							onchange={(e) => {
@@ -227,7 +227,7 @@
 					<button
 						type="button"
 						aria-pressed={clock.muted}
-						class="rounded-lg px-2 py-1 {clock.muted ? 'text-neutral-600' : 'text-ink'}"
+						class=" px-2 py-1 {clock.muted ? 'text-neutral-600' : 'text-ink'}"
 						title={clock.muted ? 'chime off' : 'chime on'}
 						onclick={() => clock.setMuted(!clock.muted)}
 					>

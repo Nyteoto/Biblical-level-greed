@@ -196,7 +196,7 @@
 			</span>
 			<button
 				type="button"
-				class="accent-fill ml-auto rounded-[9px] px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+				class="accent-fill ml-auto px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
 				disabled={restarting}
 				onclick={restart}
 			>

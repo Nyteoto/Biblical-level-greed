@@ -28,6 +28,13 @@
 	 * buttons. `hold` is attached in the one case because `data-hold` says in
 	 * the DOM that a node has properties, and a band that cannot be held
 	 * should not claim it can.
+	 *
+	 * **The cut mark** is the one thing here that is not a chapter: a short
+	 * dashed rule at the start of a month, where a new cut would begin. Only
+	 * the reading lens asks for it. Every item is pinned to the first row, so
+	 * the mark can stand over a chapter that already covers its month —
+	 * which is exactly the case where cutting splits one — without the grid
+	 * pushing it onto a row of its own.
 	 */
 	import { hold } from './hold';
 	import type { Chapter } from './api';
@@ -36,6 +43,8 @@
 		chapters,
 		current = 0,
 		compact = false,
+		cutAt = 0,
+		oncut,
 		onpick,
 		onhold
 	}: {
@@ -48,6 +57,9 @@
 		/** The reading lens sits this under the month row and wants it tight;
 		 *  Map has the room. */
 		compact?: boolean;
+		/** 1-based month to draw the cut mark at, or 0 for none. */
+		cutAt?: number;
+		oncut?: () => void;
 		onpick?: (chapter: Chapter) => void;
 		onhold?: (chapter: Chapter, x: number, y: number) => void;
 	} = $props();
@@ -68,11 +80,11 @@
 		} ${on ? 'text-ink' : interactive ? 'text-neutral-600 hover:text-ink' : 'text-neutral-600'}`;
 
 	const style = (c: Chapter, on: boolean) =>
-		`grid-column: ${c.first_month} / span ${c.last_month - c.first_month + 1};` +
+		`grid-row: 1; grid-column: ${c.first_month} / span ${c.last_month - c.first_month + 1};` +
 		`box-shadow:inset 2px 0 0 0 ${on ? 'var(--color-accent)' : 'var(--color-neutral-500)'}`;
 </script>
 
-{#if band.length}
+{#if band.length || (cutAt > 0 && oncut)}
 	<div class="grid min-w-0 grid-cols-12 {compact ? 'gap-[3px]' : 'gap-1'}">
 		{#each band as chapter (chapter.month)}
 			{@const on = covers(chapter)}
@@ -97,5 +109,37 @@
 				</span>
 			{/if}
 		{/each}
+		{#if cutAt > 0 && oncut}
+			<!-- Above the chapter it would split, and small: it begins the
+			     month's cell rather than filling it, so a chapter's name running
+			     through that month is still readable past it. -->
+			<button
+				type="button"
+				class="cut-mark relative z-10 flex items-center justify-center self-stretch justify-self-start
+				       {compact ? 'h-[18px] w-[18px] text-[12px]' : 'h-6 w-6 text-[13px]'}"
+				style="grid-row: 1; grid-column: {cutAt} / span 1"
+				title="start a chapter here"
+				aria-label="start a chapter here"
+				onclick={oncut}
+			>
+				+
+			</button>
+		{/if}
 	</div>
 {/if}
+
+<style>
+	/* Dashed where a chapter's edge is solid: a cut that could be, drawn in
+	   the shape of the ones that are. On the ground so it reads over a
+	   chapter's name rather than through it. */
+	.cut-mark {
+		color: var(--color-neutral-600);
+		background: var(--color-ground);
+		border-left: 2px dashed var(--color-neutral-500);
+		transition: color 150ms ease-out, border-color 150ms ease-out;
+	}
+	.cut-mark:hover {
+		color: var(--color-ink);
+		border-left-color: var(--color-accent);
+	}
+</style>

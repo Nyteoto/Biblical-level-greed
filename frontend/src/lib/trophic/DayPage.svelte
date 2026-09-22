@@ -10,10 +10,27 @@
 	 * every other day used to get existed for a constraint that is gone.
 	 *
 	 * The order inside a page is `LeadDay`'s and the argument is unchanged: the
-	 * photograph first, then what was said about it, then the ribbon of
-	 * everything else made that day, then the remaining lines with their times.
-	 * You recognise a day by the picture and read the words once you have found
-	 * it.
+	 * photographs first, then what was said about the first of them, then the
+	 * remaining lines. You recognise a day by the picture and read the words
+	 * once you have found it.
+	 *
+	 * ## Two sizes of photograph, and no third
+	 *
+	 * One photograph goes the full width of the sheet; two or three share a row
+	 * at equal size; more than three are rows of three, the last tile saying
+	 * how many are left. It was a 250px hero and a strip of 96px thumbnails —
+	 * a jump from the whole sheet straight to a postage stamp, with nothing
+	 * between, so the second-best photograph of a day was drawn at a
+	 * fourteenth of the size of the first. Which photograph leads is still
+	 * `paginate`'s; this only decides how big they are.
+	 *
+	 * ## Every line has its time on the left
+	 *
+	 * The caption had no time, a reply had its time on the right because the
+	 * whole row was mirrored, and a todo had it on the left — three places for
+	 * one fact on one page. Every line now has the same gutter, always on the
+	 * left, the caption included. The reply bubble's rounded shape is what says
+	 * it is an answer; it does not need the margin as well.
 	 *
 	 * **It draws what it is given and works nothing out.** The hero, the caption
 	 * promoted out of the list, the silent replies merged back in, and which
@@ -36,6 +53,7 @@
 	import Glyph from './Glyph.svelte';
 	import { isVideo, plateFallback, type Shot } from './media';
 	import { dayLabel, type Page } from './log';
+	import { clockLabel, weekdayLabel } from './day';
 	import type { Entry } from './api';
 
 	let {
@@ -62,11 +80,19 @@
 		held?: string;
 	} = $props();
 
-	/** How many thumbnails fit before the overflow tile earns its place. */
-	const RIBBON = 5;
+	/** Two rows of three before the last tile turns into a count. The rest are
+	 *  one press away in the lightbox, which pages through all of them. */
+	const PLATES = 6;
 
-	const time = (entry: Entry) =>
-		new Date(entry.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+	const time = (entry: Entry) => clockLabel(entry.ts);
+
+	/** Every photograph on this part of the day, in `page.shots` order — so
+	 *  a tile's index here is its index in the lightbox. */
+	const plates = $derived(page.hero ? [page.hero, ...page.ribbon] : []);
+	const shown = $derived(plates.slice(0, PLATES));
+	const hidden = $derived(plates.length - shown.length);
+	/** One across, or up to three. */
+	const across = $derived(plates.length === 1 ? 1 : plates.length === 2 ? 2 : 3);
 </script>
 
 <article
@@ -75,12 +101,19 @@
 	class="flex flex-col gap-[18px] px-4 py-5 sm:px-[30px] sm:py-[26px]"
 >
 	<div class="flex items-baseline gap-3.5">
-		{#if today}
-			<span class="text-[10px] font-bold tracking-[0.22em] text-accent-700 uppercase">Today</span>
-		{/if}
 		<h2 class="text-[34px] leading-none font-extrabold tracking-[-0.03em]">
 			{dayLabel(page.day.key)}
 		</h2>
+		<!-- The weekday is a label beside the date rather than a word inside
+		     it — see `day.ts`. Today says so instead: that is the more useful
+		     thing to know about it, and you already know what day today is. -->
+		<span
+			class="text-[10px] font-bold tracking-[0.22em] uppercase {today
+				? 'text-accent-700'
+				: 'text-neutral-600'}"
+		>
+			{today ? 'Today' : weekdayLabel(page.day.key)}
+		</span>
 		{#if page.parts > 1}
 			<!-- A heavy day continues, and says so where the date is rather than
 			     at the foot: you can land on part three from a jump, and a page
@@ -104,81 +137,65 @@
 		</span>
 	</div>
 
-	{#if page.hero}
-		{@const hero = page.hero}
-		<button
-			type="button"
-			class="lift lift-md relative block h-[250px] w-full overflow-hidden rounded-[16px] bg-neutral-300 shadow-lg"
-			use:hold={(x, y) => onholdmedia?.(hero.ref, x, y)}
-			onclick={() => onopen?.(page.shots, 0)}
-			aria-label="open the newest"
-		>
-			<img
-				src={mediaViewUrl(hero.ref)}
-				alt=""
-				onerror={(e) => plateFallback(e, hero.ref)}
-				class="h-full w-full object-cover"
-			/>
-			<!-- The file's own name, in the mono. It is the one thing about a
-			     photograph the app knows and did not invent. -->
-			<span
-				class="absolute bottom-4 left-4 rounded-[7px] bg-ground/85 px-2 py-1 font-mono text-[11px] text-neutral-800"
-			>
-				{hero.ref.split('/').pop()}
-			</span>
-		</button>
-	{/if}
-
-	{#if page.caption && page.caption.clean_text.trim()}
-		{@const caption = page.caption}
-		<div use:hold={(x, y) => onassign?.(caption, x, y)}>
-			<p
-				class="max-w-[640px] text-[19px] leading-[1.5] font-light tracking-[-0.01em]"
-				style="text-wrap:pretty"
-			>
-				<ColorizedText text={caption.clean_text} />
-			</p>
-		</div>
-	{/if}
-
-	{#if page.ribbon.length}
-		<div class="trophic-scrollbar-hide flex items-center gap-[9px] overflow-x-auto">
-			{#each page.ribbon.slice(0, RIBBON) as shot, i (shot.entry.id + ':' + shot.ref)}
+	{#if shown.length}
+		<div class="grid gap-[9px]" style="grid-template-columns:repeat({across}, minmax(0, 1fr))">
+			{#each shown as shot, i (shot.entry.id + ':' + shot.ref)}
+				{@const more = hidden > 0 && i === shown.length - 1}
 				<button
 					type="button"
-					class="lift lift-sm relative h-[70px] w-[96px] shrink-0 overflow-hidden rounded-[11px] bg-neutral-300 shadow-sm"
+					class="lift {across === 1 ? 'lift-md shadow-lg' : 'lift-sm shadow-sm'} relative block w-full overflow-hidden bg-neutral-300
+					       {across === 1 ? 'h-[300px]' : across === 2 ? 'h-[220px]' : 'h-[170px]'}"
 					use:hold={(x, y) => onholdmedia?.(shot.ref, x, y)}
-					onclick={() => onopen?.(page.shots, i + 1)}
-					aria-label={isVideo(shot.ref) ? 'play clip' : 'open photo'}
+					onclick={() => onopen?.(page.shots, i)}
+					aria-label={more ? `${hidden + 1} more` : isVideo(shot.ref) ? 'play clip' : 'open photo'}
 				>
 					<img
 						src={mediaViewUrl(shot.ref)}
 						alt=""
-						loading="lazy"
+						loading={i === 0 ? undefined : 'lazy'}
 						decoding="async"
 						onerror={(e) => plateFallback(e, shot.ref)}
 						class="h-full w-full object-cover"
 					/>
-					{#if isVideo(shot.ref)}
+					{#if more}
+						<span
+							class="absolute inset-0 flex items-center justify-center bg-ground/70 text-[17px] font-semibold text-ink"
+						>
+							+{hidden + 1}
+						</span>
+					{:else if isVideo(shot.ref)}
 						<!-- Never a `<video>` in a tile: a day with thirty clips would
 						     be thirty media pipelines. The poster and a badge. -->
 						<span
-							class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+							class="absolute bottom-1.5 left-1.5 bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 						>
 							▶
 						</span>
 					{/if}
 				</button>
 			{/each}
-			{#if page.ribbon.length > RIBBON}
-				<button
-					type="button"
-					class="lift lift-sm flex h-[70px] w-[96px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-200 text-[13px] text-neutral-700 shadow-sm"
-					onclick={() => onopen?.(page.shots, RIBBON + 1)}
-				>
-					+{page.ribbon.length - RIBBON}
-				</button>
-			{/if}
+		</div>
+	{/if}
+
+	{#if page.caption && page.caption.clean_text.trim()}
+		{@const caption = page.caption}
+		<!-- What was said about the first photograph, larger than the lines
+		     under it — and in the same gutter they are, with its time. -->
+		<div
+			data-entry={caption.id}
+			class="flex gap-5"
+			class:entry-held={caption.id === held}
+			use:hold={(x, y) => onassign?.(caption, x, y)}
+		>
+			<span class="w-[42px] shrink-0 pt-[7px] font-mono text-[11px] text-neutral-600">
+				{time(caption)}
+			</span>
+			<p
+				class="max-w-[640px] min-w-0 text-[19px] leading-[1.5] font-light tracking-[-0.01em]"
+				style="text-wrap:pretty"
+			>
+				<ColorizedText text={caption.clean_text} />
+			</p>
 		</div>
 	{/if}
 
@@ -189,13 +206,9 @@
 				     folder without having tagged it. -->
 				{@const answered = !!entry.reply_to}
 				{@const answeredBy = !entry.reply_to && !!entry.replied_by}
-				<!-- A reply sits on the other side of the column: a thought you came
-				     back to weeks later reads as a conversation with yourself, so the
-				     answer is set against the margin the way a message you sent is. -->
 				<div
 					data-entry={entry.id}
 					class="flex gap-5"
-					class:flex-row-reverse={answered}
 					class:entry-held={entry.id === held}
 					use:hold={(x, y) => onassign?.(entry, x, y)}
 				>

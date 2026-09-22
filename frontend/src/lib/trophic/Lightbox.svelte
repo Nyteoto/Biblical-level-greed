@@ -138,7 +138,7 @@
 			     screen that is mostly used with a hand. -->
 			<button
 				type="button"
-				class="flex h-11 w-11 items-center justify-center rounded-full text-[18px] text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+				class="flex h-11 w-11 items-center justify-center text-[18px] text-white/70 transition-colors hover:bg-white/10 hover:text-white"
 				onclick={(e) => {
 					keep(e);
 					onclose();
@@ -164,7 +164,7 @@
 					autoplay
 					playsinline
 					preload="metadata"
-					class="max-h-full max-w-full rounded-[12px] bg-black"
+					class="max-h-full max-w-full bg-black"
 					onclick={keep}
 				></video>
 			{:else}
@@ -174,7 +174,7 @@
 					src={mediaViewUrl(shot.ref)}
 					alt=""
 					onerror={(e) => plateFallback(e, shot.ref)}
-					class="max-h-full max-w-full rounded-[12px] object-contain"
+					class="max-h-full max-w-full object-contain"
 					onclick={keep}
 				/>
 			{/if}
@@ -199,7 +199,7 @@
 			<div class="mt-4 flex items-center justify-center gap-3">
 				<button
 					type="button"
-					class="flex h-11 w-11 items-center justify-center rounded-full text-[20px] text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:hover:bg-transparent"
+					class="flex h-11 w-11 items-center justify-center text-[20px] text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:hover:bg-transparent"
 					disabled={atStart}
 					aria-label="previous"
 					onclick={() => step(-1)}
@@ -210,13 +210,13 @@
 					href="/media/{shot.ref}"
 					target="_blank"
 					rel="noreferrer"
-					class="rounded-full px-4 py-3 text-[12px] text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+					class=" px-4 py-3 text-[12px] text-white/55 transition-colors hover:bg-white/10 hover:text-white"
 				>
 					original
 				</a>
 				<button
 					type="button"
-					class="flex h-11 w-11 items-center justify-center rounded-full text-[20px] text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:hover:bg-transparent"
+					class="flex h-11 w-11 items-center justify-center text-[20px] text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:hover:bg-transparent"
 					disabled={atEnd}
 					aria-label="next"
 					onclick={() => step(1)}

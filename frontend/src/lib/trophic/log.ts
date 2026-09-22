@@ -19,6 +19,7 @@
  */
 
 import type { Entry } from './api';
+import { dateLabel } from './day';
 
 export type Day = {
 	key: string;
@@ -249,15 +250,10 @@ export function pageOfEntry(pages: Page[], entryId: string): number {
 	);
 }
 
-/** `Sat 15 Aug`. A page's headline, and the date on the edges that turn it. */
-export function dayLabel(key: string): string {
-	const [y, m, d] = key.split('-').map(Number);
-	return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-		weekday: 'short',
-		day: 'numeric',
-		month: 'short'
-	});
-}
+/** `15 Aug`. A page's headline, and the date on the edges that turn it —
+ *  the one spelling in `day.ts`, re-exported because every reader of a page
+ *  already imports this module. */
+export const dayLabel = dateLabel;
 
 /**
  * The ISO-8601 week number, which is the one the header means by `week 33`.

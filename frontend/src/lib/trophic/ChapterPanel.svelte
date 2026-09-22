@@ -76,7 +76,7 @@
 				bind:value
 				autofocus
 				spellcheck="false"
-				class="w-full rounded-lg bg-neutral-200 px-2.5 py-1.5 text-[13px]"
+				class="w-full bg-neutral-200 px-2.5 py-1.5 text-[13px]"
 				onkeydown={(e) => {
 					if (e.key === 'Escape') renaming = false;
 				}}

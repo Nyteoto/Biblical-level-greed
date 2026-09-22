@@ -113,7 +113,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={panel}
-		class="absolute flex flex-col gap-3 rounded-[14px] bg-surface p-4 shadow-lg"
+		class="absolute flex flex-col gap-3 bg-surface p-4 shadow-lg"
 		style="left:{pos.x}px; top:{pos.y}px; width:{width}px; animation:landing-fade-in 0.15s ease-out"
 		onclick={(e) => e.stopPropagation()}
 	>

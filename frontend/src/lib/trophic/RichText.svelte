@@ -104,7 +104,7 @@
 		{#each TOOLS as tool (tool.label)}
 			<button
 				type="button"
-				class="lift lift-sm h-8 min-w-8 rounded-[9px] bg-surface px-2 text-[13px] shadow-sm {tool.bold
+				class="lift lift-sm h-8 min-w-8 bg-surface px-2 text-[13px] shadow-sm {tool.bold
 					? 'font-bold'
 					: ''}"
 				title={tool.title}
@@ -124,7 +124,7 @@
 		tabindex="0"
 		aria-label="overview"
 		data-placeholder={placeholder}
-		class="prose-overview min-h-[220px] flex-1 overflow-y-auto rounded-[14px] bg-surface p-4 text-[14px] leading-[1.7] shadow-md"
+		class="prose-overview min-h-[220px] flex-1 overflow-y-auto bg-surface p-4 text-[14px] leading-[1.7] shadow-md"
 		oninput={sync}
 		{onpaste}
 	></div>

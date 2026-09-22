@@ -286,13 +286,13 @@
 				<span class="text-[22px] font-extrabold tracking-[-0.02em]">Settings</span>
 			</div>
 
-			<nav class="flex flex-col gap-0.5 rounded-[14px] bg-surface p-2 shadow-md">
+			<nav class="flex flex-col gap-0.5 bg-surface p-2 shadow-md">
 				{#each SECTIONS as s (s.id)}
 					{@const on = s.id === current.id}
 					<a
 						href="/settings?s={s.id}"
 						aria-current={on ? 'page' : undefined}
-						class="flex items-center gap-2.5 rounded-[10px] px-3 py-[9px] transition-colors {on
+						class="flex items-center gap-2.5 px-3 py-[9px] transition-colors {on
 							? 'accent-fill'
 							: 'hover:bg-neutral-200'}"
 					>
@@ -317,7 +317,7 @@
 			     thing you only click wrong once but resent every time. -->
 			<a
 				href="/manual"
-				class="mt-2.5 flex items-center gap-2.5 rounded-[12px] px-3 py-[11px] transition-colors hover:bg-neutral-200"
+				class="mt-2.5 flex items-center gap-2.5 px-3 py-[11px] transition-colors hover:bg-neutral-200"
 			>
 				<span class="min-w-0 flex-1 truncate text-[14px] text-neutral-800">Manual</span>
 				<span class="shrink-0 text-[13px] text-neutral-600">→</span>
@@ -357,14 +357,14 @@
 							     change what any two of them say about each other — and one
 							     tall column of five was the only thing on this screen that
 							     still ran off the bottom. -->
-							<div class="grid grid-cols-2 gap-x-7 rounded-[16px] bg-surface px-[18px] py-1.5 shadow-md">
+							<div class="grid grid-cols-2 gap-x-7 bg-surface px-[18px] py-1.5 shadow-md">
 								{#each report.parts as part (part.key)}
 									<div class="flex flex-col gap-[7px] py-[13px]">
 										<div class="flex items-baseline gap-3">
 											<span class="text-[15px] font-bold">{part.label}</span>
 											{#if part.recoverable}
 												<span
-													class="rounded-md bg-neutral-200 px-[7px] py-[3px] text-[9px] font-bold tracking-[0.12em] text-neutral-700 uppercase"
+													class=" bg-neutral-200 px-[7px] py-[3px] text-[9px] font-bold tracking-[0.12em] text-neutral-700 uppercase"
 													title="Derived data — deleting it only costs a rebuild"
 												>
 													rebuildable
@@ -375,7 +375,7 @@
 												{bytes(part.bytes)}
 											</span>
 										</div>
-										<span class="block h-[7px] overflow-hidden rounded-[4px] bg-neutral-200">
+										<span class="block h-[7px] overflow-hidden bg-neutral-200">
 											<!-- Widths are relative to the biggest part, not the
 											     total: with media at 99% every other bar would be
 											     invisible, which is exactly when you most want to
@@ -385,7 +385,7 @@
 											     ones take a grey. The bar's colour is the same
 											     statement as the chip beside the label. -->
 											<span
-												class="block h-full rounded-[4px]"
+												class="block h-full"
 												style="width:{part.bytes === 0
 													? 0
 													: Math.max(1.5, (part.bytes / largest) * 100)}%;
@@ -409,7 +409,7 @@
 							<div class="flex flex-wrap gap-2.5">
 								<button
 									type="button"
-									class="lift lift-sm rounded-[11px] bg-surface px-4 py-[11px] text-[13px] font-semibold shadow-sm disabled:opacity-50"
+									class="lift lift-sm bg-surface px-4 py-[11px] text-[13px] font-semibold shadow-sm disabled:opacity-50"
 									disabled={busy !== null}
 									onclick={() => act('reindex', reindex)}
 								>
@@ -417,7 +417,7 @@
 								</button>
 								<button
 									type="button"
-									class="lift lift-sm rounded-[11px] bg-surface px-4 py-[11px] text-[13px] font-semibold shadow-sm disabled:opacity-50"
+									class="lift lift-sm bg-surface px-4 py-[11px] text-[13px] font-semibold shadow-sm disabled:opacity-50"
 									disabled={busy !== null}
 									onclick={() => act('reload', reloadFromDisk)}
 								>
@@ -425,7 +425,7 @@
 								</button>
 								<button
 									type="button"
-									class="accent-fill rounded-[11px] px-4 py-[11px] text-[13px] font-semibold disabled:opacity-50"
+									class="accent-fill px-4 py-[11px] text-[13px] font-semibold disabled:opacity-50"
 									disabled={busy !== null || backup?.running}
 									onclick={() => act('backup', runBackup)}
 								>
@@ -452,12 +452,12 @@
 						     album sidebar is: this list is as long as the user's projects,
 						     and everything under it — the loose tags, the lifting — was
 						     reachable only by scrolling past all of them. -->
-						<div class="max-h-[40vh] overflow-y-auto rounded-[16px] bg-surface px-2 py-2 shadow-md">
+						<div class="max-h-[40vh] overflow-y-auto bg-surface px-2 py-2 shadow-md">
 							{#each mapped as folder (folder.id)}
 								{@const shipped = folder.state === 'shipped'}
 								<a
 									href={lensHref('/log', { folder: folder.id })}
-									class="flex items-center gap-3 rounded-[10px] px-2 py-3 transition-colors hover:bg-neutral-200"
+									class="flex items-center gap-3 px-2 py-3 transition-colors hover:bg-neutral-200"
 								>
 									<span
 										class="h-2 w-2 shrink-0 rounded-full"
@@ -500,7 +500,7 @@
 						     sight. -->
 						<a
 							href="/record"
-							class="lift lift-sm flex items-center gap-3 rounded-[12px] bg-surface px-4 py-3 shadow-sm transition-colors"
+							class="lift lift-sm flex items-center gap-3 bg-surface px-4 py-3 shadow-sm transition-colors"
 						>
 							<span class="min-w-0 flex-1 text-[14px] font-semibold text-accent-700">
 								{unmapped}
@@ -535,7 +535,7 @@
 
 							{#if tags.length > 8}
 								<form
-									class="focus-pill flex items-center gap-2.5 rounded-[11px] bg-surface px-3.5 py-2.5 shadow-sm"
+									class="focus-pill flex items-center gap-2.5 bg-surface px-3.5 py-2.5 shadow-sm"
 									onsubmit={(e) => e.preventDefault()}
 								>
 									<span class="shrink-0 font-mono text-[13px] text-neutral-600">&lt;&gt;</span>
@@ -548,9 +548,9 @@
 								</form>
 							{/if}
 
-							<div class="max-h-[46vh] overflow-y-auto rounded-[16px] bg-surface px-2 py-2 shadow-md">
+							<div class="max-h-[46vh] overflow-y-auto bg-surface px-2 py-2 shadow-md">
 								{#each shownTags as row (row.tag)}
-									<div class="flex items-center gap-3 rounded-[10px] px-2 py-2.5">
+									<div class="flex items-center gap-3 px-2 py-2.5">
 										<!-- The tag as the log now draws it, which is the whole
 										     feedback this control needs: bracketed and lit, or
 										     the bare word in the prose weight. -->
@@ -571,7 +571,7 @@
 										</span>
 										<button
 											type="button"
-											class="shrink-0 rounded-lg px-2.5 py-1 text-[12px] font-semibold transition-colors {row.lifted
+											class="shrink-0 px-2.5 py-1 text-[12px] font-semibold transition-colors {row.lifted
 												? 'text-neutral-700 hover:text-ink'
 												: 'text-accent-700 hover:bg-neutral-200'}"
 											onclick={() => toggleLift(row)}
@@ -589,7 +589,7 @@
 							</div>
 						</div>
 					{:else if current.id === 'log'}
-						<div class="rounded-[16px] bg-surface px-4 py-2 shadow-md">
+						<div class=" bg-surface px-4 py-2 shadow-md">
 							<div class="flex items-center gap-3.5 py-[13px]">
 								<span class="flex-1 text-[14px]">Opens on</span>
 								<Segmented
@@ -613,12 +613,12 @@
 										role="switch"
 										aria-checked={row.on}
 										aria-label={row.label}
-										class="flex h-[26px] w-[44px] shrink-0 items-center rounded-full p-[3px] transition-colors {row.on
+										class="flex h-[26px] w-[44px] shrink-0 items-center p-[3px] transition-colors {row.on
 											? 'accent-fill-flat justify-end'
 											: 'justify-start bg-neutral-300'}"
 										onclick={() => row.set(!row.on)}
 									>
-										<span class="h-5 w-5 rounded-full bg-surface shadow-sm"></span>
+										<span class="h-5 w-5 bg-surface shadow-sm"></span>
 									</button>
 								</div>
 							{/each}

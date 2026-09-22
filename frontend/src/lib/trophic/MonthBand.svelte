@@ -20,6 +20,11 @@
 	 * them out. A grid whose columns are different widths stops reading as a
 	 * calendar, and the whole point of twelve fixed columns is that August is
 	 * always in the same place.
+	 *
+	 * **A chapter is started here too**, from a mark at the month of the page
+	 * being read. It was `chapter starts here` in prose in the header, beside
+	 * the band that draws the chapters it made — the control in one place and
+	 * its result in another. The mark sits where the cut will be drawn.
 	 */
 	import { MONTH_ABBR } from './log';
 	import ChapterBand from './ChapterBand.svelte';
@@ -29,6 +34,8 @@
 		album,
 		live = -1,
 		month = null,
+		reading = null,
+		oncut,
 		onpickmonth,
 		onpickchapter,
 		onholdchapter
@@ -40,6 +47,12 @@
 		/** `YYYY-MM` when the deck is cut to a month or a chapter, so the column
 		 *  that did it can mark itself. */
 		month?: string | null;
+		/** `YYYY-MM` of the page on screen: where the cut mark stands. */
+		reading?: string | null;
+		/** Start a chapter at `reading`. Absent when that month is already cut,
+		 *  and then no mark is drawn — a control that does nothing is worse than
+		 *  none. */
+		oncut?: () => void;
 		onpickmonth?: (month: number) => void;
 		onpickchapter?: (chapter: Chapter) => void;
 		onholdchapter?: (chapter: Chapter, x: number, y: number) => void;
@@ -59,7 +72,9 @@
 				type="button"
 				disabled={!n}
 				aria-current={on ? 'true' : undefined}
-				title={n ? `${label} · ${n} ${n === 1 ? 'entry' : 'entries'}` : `${label} · nothing`}
+				title={n
+					? `${label} · ${n} ${n === 1 ? 'entry' : 'entries'}${on ? ' — press again for the year' : ''}`
+					: `${label} · nothing`}
 				class="flex h-[26px] flex-col justify-end gap-[3px] px-1 pb-1 transition-colors {on
 					? 'accent-fill'
 					: n
@@ -95,6 +110,8 @@
 	<ChapterBand
 		chapters={album?.chapters ?? []}
 		current={here + 1}
+		cutAt={oncut && reading ? Number(reading.slice(5, 7)) : 0}
+		{oncut}
 		compact
 		onpick={onpickchapter}
 		onhold={onholdchapter}

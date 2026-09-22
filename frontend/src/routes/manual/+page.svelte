@@ -83,7 +83,7 @@
 				until you decide otherwise. The marks are how you say something extra without
 				stopping to fill in a form.
 			</p>
-			<div class="mt-1 rounded-[16px] bg-surface px-[18px] py-2 shadow-md">
+			<div class="mt-1 bg-surface px-[18px] py-2 shadow-md">
 				{#each syntax as item (item.glyph)}
 					<div class="flex flex-col gap-1.5 py-[15px]">
 						<div class="flex items-baseline gap-3">
@@ -114,7 +114,7 @@
 				which folder an entry is in. None of it is stored anywhere; all of it is recomputed
 				on the way to your eyes.
 			</p>
-			<div class="rounded-[16px] bg-surface px-[18px] py-4 shadow-md">
+			<div class=" bg-surface px-[18px] py-4 shadow-md">
 				<p class="text-[14px] leading-[1.6] text-neutral-800">
 					Three things follow, and they are the reason for the whole arrangement:
 				</p>
@@ -222,7 +222,7 @@
 			<h2 class="text-[10px] font-bold tracking-[0.22em] text-neutral-600 uppercase">
 				6 · What is deliberately missing
 			</h2>
-			<div class="rounded-[16px] bg-surface px-[18px] py-4 shadow-md">
+			<div class=" bg-surface px-[18px] py-4 shadow-md">
 				<p class="text-[14px] leading-[1.6] text-neutral-800">
 					No notifications. No streaks, scores or nudges. No editing or deleting a line — a
 					wrong entry is corrected by writing the correction. No sharing, no accounts, no

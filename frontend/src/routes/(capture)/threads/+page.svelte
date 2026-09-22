@@ -134,11 +134,6 @@
 		<span class="text-[12px] text-neutral-600">every year</span>
 	</div>
 
-	<p class="mt-2 max-w-[62ch] shrink-0 text-[12px] leading-relaxed text-neutral-600">
-		A <span class="font-mono">{'{date}'}</span> whose reply set the next one. The number down the
-		left is how long you carried it.
-	</p>
-
 	{#if view.error}
 		<p class="mt-4 shrink-0 text-[13px] text-error">{view.error}</p>
 	{/if}
@@ -226,10 +221,7 @@
 	{#if view.loading && threads.length === 0}
 		<p class="mt-10 text-[13px] text-neutral-600">Reading…</p>
 	{:else if threads.length === 0}
-		<p class="mt-10 max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
-			Nothing has been carried forward{scope.folder ? ' in this folder' : ''}. A thread starts when
-			you answer a <span class="font-mono">{'{date}'}</span> with a reply that sets the next one.
-		</p>
+		<p class="mt-10 text-[13px] text-neutral-600">No threads.</p>
 	{:else}
 		{#if live.length}
 			<section class="mt-9 flex shrink-0 flex-col gap-5">

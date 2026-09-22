@@ -7,9 +7,11 @@
 	 * drifted apart at the gap between segments. Neither is more canonical than
 	 * the other, so the shape lives here now and both call it.
 	 *
-	 * The active segment is a white surface with `--shadow-sm` rather than the
-	 * accent gradient: this control picks between things that are all equally
-	 * ordinary, and the accent is reserved for the one live thing on a screen.
+	 * **The active segment is the accent fill**, the same inversion the rail,
+	 * the folder picker and the year list use. It was a raised surface with a
+	 * shadow on the grounds that these choices are ordinary — but the chosen
+	 * one *is* the current thing, which is what white means in this app, and a
+	 * fourth way of drawing "selected" was a fourth thing to learn.
 	 */
 	let {
 		options,
@@ -25,13 +27,13 @@
 	} = $props();
 </script>
 
-<span class="flex gap-[3px] rounded-[9px] bg-neutral-200 p-[3px]" role="group" aria-label={label}>
+<span class="flex gap-[3px] bg-neutral-200 p-[3px]" role="group" aria-label={label}>
 	{#each options as option (option.value)}
 		<button
 			type="button"
 			aria-pressed={value === option.value}
-			class="rounded-[7px] px-2.5 py-[5px] text-[12px] transition-colors {value === option.value
-				? 'bg-surface font-bold shadow-sm'
+			class="px-2.5 py-[5px] text-[12px] transition-colors {value === option.value
+				? 'accent-fill font-bold'
 				: 'font-semibold text-neutral-700 hover:text-ink'}"
 			onclick={() => onpick(option.value)}
 		>

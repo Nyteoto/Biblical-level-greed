@@ -37,6 +37,7 @@
 	 * today's ring, the selected cell — and a heavy day is not that.
 	 */
 	import { MONTH_ABBR } from './log';
+	import { dateLabel } from './day';
 
 	let {
 		year,
@@ -60,17 +61,28 @@
 	 *  three and a half hours, or any mixture — and a day past it is simply at
 	 *  the top. Same number the old grid used, because it is the same rule. */
 	const PEAK = 10;
-	/** Eight rungs, dimmest to brightest, ending below white. */
+	/**
+	 * Seven lit rungs over the floor, ending below white.
+	 *
+	 * **The steps widen as they climb**, 7–12 points of lightness apart rather
+	 * than an even 4–6. The first cut spent its range evenly and started one
+	 * hair above the floor, so a one-point day was barely told from nothing and
+	 * the bottom three rungs read as one colour — on a real year only about
+	 * three steps could be seen at all, and the heavy days did not stand out
+	 * from the ordinary ones. The mapping below is untouched; only the paint
+	 * moved. Lightness in HSL at a fixed slate hue, so the rungs differ in one
+	 * dimension and nothing else.
+	 */
 	const EMPTY = '#171b1f';
 	const AHEAD = '#12161a';
 	const RAMP = [
-		'#20262b',
-		'#2b333a',
-		'#39434b',
-		'#4b5761',
-		'#617079',
-		'#7e8f99',
-		'#a9bcc6'
+		'#2c343a',
+		'#3c464e',
+		'#4e5b65',
+		'#62737f',
+		'#7d8f9b',
+		'#a0adb6',
+		'#c2cbd0'
 	];
 
 	const DIM = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -97,10 +109,7 @@
 	 *  same one for the pointer and the screen reader. */
 	function says(dayKey: string): string {
 		const found = scored.get(dayKey);
-		const label = new Date(dayKey + 'T00:00:00').toLocaleDateString(undefined, {
-			day: 'numeric',
-			month: 'long'
-		});
+		const label = dateLabel(dayKey);
 		if (!found) return `${label} — nothing`;
 		const parts: string[] = [];
 		if (found.entries) parts.push(`${found.entries} ${found.entries === 1 ? 'entry' : 'entries'}`);

@@ -32,7 +32,7 @@
 
 <button
 	type="button"
-	class="group lift lift-sm relative aspect-square w-full overflow-hidden rounded-[10px] bg-neutral-300 shadow-sm"
+	class="group lift lift-sm relative aspect-square w-full overflow-hidden bg-neutral-300 shadow-sm"
 	use:hold={(x, y) => onhold?.(x, y)}
 	onclick={() => onopen?.()}
 	aria-label={video ? 'play clip' : 'open photo'}
@@ -50,7 +50,7 @@
 		     has to read against a bright poster, and dimming half the frame to
 		     make room for one glyph is a heavier price than it is worth. -->
 		<span
-			class="pointer-events-none absolute bottom-1.5 left-1.5 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+			class="pointer-events-none absolute bottom-1.5 left-1.5 bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 		>
 			▶
 		</span>

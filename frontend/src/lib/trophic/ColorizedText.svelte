@@ -31,14 +31,21 @@
 	 * a field on the segment. `colorize.ts` is pinned by 25 fixtures compared
 	 * key for key — an extra key on a segment fails them — and the alignment
 	 * this relies on is the module's own documented rule: every token gets a
-	 * segment, so the indices are the same indices. */
+	 * segment, so the indices are the same indices.
+	 *
+	 * ## Quiet
+	 *
+	 * The tag of the folder you are reading is drawn dim, at the prose's own
+	 * weight — see `quiet.ts`. The same second `tokenize` finds it. */
 	import { colorizeSegments } from './colorize';
 	import { tokenize } from './tokenize';
 	import { lifted } from './lifted.svelte';
+	import { isQuiet } from './quiet';
 
 	let { text }: { text: string } = $props();
 
 	const store = lifted();
+	const quiet = isQuiet();
 	const segments = $derived(colorizeSegments(text));
 	const tokens = $derived(tokenize(text));
 
@@ -46,16 +53,23 @@
 	 *  `value` is the inner content already lowercased, so the brackets are
 	 *  sliced off the raw rather than taken from it — a tag written `<Garden>`
 	 *  is lifted to `Garden`, which is what was typed. */
-	function shown(index: number): { text: string; lift: boolean } {
+	function shown(index: number): { text: string; lift: boolean; quiet: boolean } {
 		const token = tokens[index];
+		const hushed = !!token && token.kind === 'folder' && quiet(token.value);
 		if (!token || token.kind !== 'folder' || !store.has(token.value)) {
-			return { text: segments[index].text, lift: false };
+			return { text: segments[index].text, lift: false, quiet: hushed };
 		}
-		return { text: token.raw.slice(1, -1), lift: true };
+		return { text: token.raw.slice(1, -1), lift: true, quiet: hushed };
+	}
+
+	function paint(color: string | null | undefined, cell: { lift: boolean; quiet: boolean }) {
+		if (!color || cell.lift) return undefined;
+		if (cell.quiet) return 'color:var(--color-neutral-600)';
+		return `color:${color};font-weight:700`;
 	}
 </script>
 
 {#each segments as s, i (i)}{@const cell = shown(i)}<span
-		style={s.color && !cell.lift ? `color:${s.color};font-weight:700` : undefined}
+		style={paint(s.color, cell)}
 		>{cell.text}</span
 	>{/each}

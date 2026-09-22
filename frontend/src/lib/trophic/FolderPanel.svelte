@@ -116,7 +116,7 @@
 					autofocus
 					bind:value={renameValue}
 					aria-label="folder name"
-					class="w-full rounded-lg bg-neutral-200 px-3 py-2 text-[14px]"
+					class="w-full bg-neutral-200 px-3 py-2 text-[14px]"
 					onkeydown={(e) => {
 						if (e.key === 'Escape') renaming = false;
 					}}
@@ -143,7 +143,7 @@
 				     panel whose only exit is "somewhere else" does not look closable. -->
 				<button
 					type="button"
-					class="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[15px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-ink"
+					class="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center text-[15px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-ink"
 					aria-label="close"
 					onclick={onclose}
 				>
@@ -184,7 +184,7 @@
 							maxlength="32"
 							aria-label="new group name"
 							placeholder="name the group"
-							class="w-full rounded-lg bg-neutral-200 px-3 py-2 text-[14px]"
+							class="w-full bg-neutral-200 px-3 py-2 text-[14px]"
 							onkeydown={(e) => {
 								if (e.key === 'Escape') naming = false;
 							}}
@@ -194,7 +194,7 @@
 					<div class="flex flex-wrap gap-1.5 text-[12px]">
 						<button
 							type="button"
-							class="rounded-lg px-2.5 py-1 transition-colors {group
+							class=" px-2.5 py-1 transition-colors {group
 								? 'text-neutral-700 hover:bg-neutral-200'
 								: 'bg-neutral-200 font-semibold text-ink'}"
 							onclick={() => ongroup?.('')}
@@ -204,7 +204,7 @@
 						{#each groups as name (name)}
 							<button
 								type="button"
-								class="max-w-[140px] truncate rounded-lg px-2.5 py-1 transition-colors {name ===
+								class="max-w-[140px] truncate px-2.5 py-1 transition-colors {name ===
 								group
 									? 'bg-neutral-200 font-semibold text-ink'
 									: 'text-neutral-700 hover:bg-neutral-200'}"
@@ -215,7 +215,7 @@
 						{/each}
 						<button
 							type="button"
-							class="rounded-lg px-2.5 py-1 text-accent-700 transition-colors hover:bg-neutral-200"
+							class=" px-2.5 py-1 text-accent-700 transition-colors hover:bg-neutral-200"
 							onclick={() => {
 								nameValue = '';
 								naming = true;
@@ -250,7 +250,7 @@
 		{#if unassigned.length > 0}
 			<!-- The loose tags, right here. This is the trip to the mapping screen
 			     that the hold gesture exists to remove. -->
-			<div class="flex flex-wrap gap-2 rounded-[10px] bg-neutral-200 p-2.5 text-[12px]">
+			<div class="flex flex-wrap gap-2 bg-neutral-200 p-2.5 text-[12px]">
 				{#each unassigned.slice(0, 10) as tag (tag.tag)}
 					<button
 						type="button"

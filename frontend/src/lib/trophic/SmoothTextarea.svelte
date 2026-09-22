@@ -93,13 +93,18 @@
 		ta?.focus();
 	}
 
-	export function insertText(text: string) {
+	/** Type `text` at the caret, replacing any selection. With `close`, the
+	 *  pair goes *around* the selection instead — or, with nothing selected,
+	 *  either side of the caret, which lands between them: a `<>` key that
+	 *  left you after the `>` would have you arrowing back to write the tag. */
+	export function insertText(text: string, close = '') {
 		if (!ta) return;
 		ta.focus();
 		const start = ta.selectionStart;
 		const end = ta.selectionEnd;
-		const nextCaret = start + text.length;
-		value = value.slice(0, start) + text + value.slice(end);
+		const inside = close ? value.slice(start, end) : '';
+		const nextCaret = close && inside ? start + text.length + inside.length + close.length : start + text.length;
+		value = value.slice(0, start) + text + inside + close + value.slice(end);
 		requestAnimationFrame(() => {
 			ta?.setSelectionRange(nextCaret, nextCaret);
 			syncCaret();
@@ -385,7 +390,7 @@
 	     thumb on mobile. Inverted on purpose, and the arrow keys are inverted
 	     to match; re-sorting this list silently breaks them. -->
 	<div
-		class="trophic-scrollbar-hide fixed z-50 max-h-[180px] w-fit overflow-y-auto rounded-[10px] bg-surface py-1 shadow-lg"
+		class="trophic-scrollbar-hide fixed z-50 max-h-[180px] w-fit overflow-y-auto bg-surface py-1 shadow-lg"
 		style="left:{Math.max(8, caretScreen.x - 8)}px;top:{caretScreen.y}px;
 		       transform:translateY(-100%) translateY(-6px)"
 	>

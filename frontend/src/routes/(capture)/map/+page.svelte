@@ -19,7 +19,7 @@
 	 * ## Three things and their reads
 	 *
 	 *   - the totals — the shelf, read once for the whole app in
-	 *     `subject.svelte.ts`;
+	 *     `subject.svelte.ts`, and cut to the folder when one is chosen;
 	 *   - the **grid** — `/heat`, refetched when the subject changes. One trip
 	 *     on loopback is imperceptible, and the alternative is a per-folder
 	 *     per-day payload that exists only to avoid it;
@@ -38,7 +38,8 @@
 	import { lens } from '$lib/trophic/lens.svelte';
 	import { subject } from '$lib/trophic/subject.svelte';
 	import { duration } from '$lib/trophic/timer';
-	import { todayKey } from '$lib/trophic/day';
+	import { clockLabel, dateLabel, monthAbbr, todayKey, weekdayLabel } from '$lib/trophic/day';
+	import { quietTags } from '$lib/trophic/quiet';
 	import { logSettings } from '$lib/trophic/settings.svelte';
 	import { mediaViewUrl } from '$lib/trophic/api';
 	import { plateFallback } from '$lib/trophic/media';
@@ -63,6 +64,33 @@
 	 *  one fact and three copies of it to go stale. */
 	const shelf = $derived(bar.data);
 	let lines = $state<Entry[]>([]);
+
+	/** The chosen folder's own row on the shelf, or null for everything and
+	 *  for the unfiled pile — neither of which is a folder. */
+	const chosen = $derived(
+		scope.folder && scope.folder !== 'unfiled'
+			? (shelf?.albums.find((a) => a.id === scope.folder) ?? null)
+			: null
+	);
+
+	/**
+	 * What the header counts. It printed the shelf's year totals whatever the
+	 * subject bar said, so `phosphor` and every folder at once both read 430
+	 * lines — a figure under a folder's grid that was not about the folder.
+	 * The album row already carries the year's counts, cut the way the grid
+	 * is. The unfiled pile has a line count on the shelf and no media count,
+	 * so it says only what it knows.
+	 */
+	const totals = $derived.by(() => {
+		if (!shelf) return null;
+		if (!scope.folder) return { entries: shelf.entries, media: shelf.media as number | null };
+		if (scope.folder === 'unfiled') return { entries: shelf.unfiled, media: null };
+		return chosen ? { entries: chosen.entry_count, media: chosen.media_count as number | null } : null;
+	});
+
+	// The folder's own tags go quiet in the aside: it is the subject, and the
+	// bar already says so. See `quiet.ts`.
+	quietTags(() => chosen?.tags ?? []);
 
 	$effect(() => {
 		logSettings.hydrate();
@@ -106,12 +134,25 @@
 	const pressed = $derived(day || days.at(-1)?.day || '');
 	let lastDay = '';
 	$effect(() => {
-		if (!pressed || pressed === lastDay) return;
+		// With a folder chosen the album answers this; see `mine` below.
+		if (scope.folder || !pressed || pressed === lastDay) return;
 		lastDay = pressed;
 		getEntries({ date: pressed })
 			.then((r) => (lines = r.entries))
 			.catch(() => (lines = []));
 	});
+
+	/** The pressed day's lines, cut to the subject the way the grid is.
+	 *
+	 *  `/entries` reads by date alone, so a phosphor cell opened onto
+	 *  everything written that day. With a folder chosen the album is already
+	 *  in hand — it is what the chapter band is read from — and its entries are
+	 *  the folder's, resolved by the server. Filtering `/entries` here instead
+	 *  would mean resolving membership a second time in the browser, from the
+	 *  tags, and missing every line filed by a directive or by hand. */
+	const mine = $derived(
+		scope.folder ? (album?.entries.filter((e) => e.day === pressed) ?? []) : lines
+	);
 
 	/** The month that counts as current, 1-based, and 0 in any year but this
 	 *  one. Map used to light whichever chapter covered today's month number
@@ -121,17 +162,12 @@
 	const liveMonth = $derived(scope.year === thisYear() ? Number(today.slice(5, 7)) : 0);
 
 	const onDay = $derived(days.find((d) => d.day === pressed) ?? null);
-	const media = $derived(lines.flatMap((e) => e.media.map((ref) => ({ ref, entry: e }))));
-	const said = $derived(lines.filter((e) => e.clean_text.trim()));
+	const media = $derived(mine.flatMap((e) => e.media.map((ref) => ({ ref, entry: e }))));
+	const said = $derived(mine.filter((e) => e.clean_text.trim()));
 
 	function press(key: string) {
 		goto(lensHref('/map', scope, { day: key }), { noScroll: true, keepFocus: true });
 	}
-
-	const dayLabel = (key: string) =>
-		new Date(key + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-	const weekday = (key: string) =>
-		new Date(key + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long' });
 
 	// ── The jump field, carried over whole ──────────────────────────────────
 	let jump = $state('');
@@ -206,14 +242,14 @@
 				<div class="min-w-0">
 					<div class="flex items-baseline gap-2.5">
 						<span class="text-[52px] leading-[0.86] font-extrabold tracking-[-0.05em] tabular-nums">
-							{pressed.slice(8)}
+							{Number(pressed.slice(8))}
 						</span>
 						<span class="text-[19px] font-bold text-neutral-700">
-							{dayLabel(pressed).replace(/^\d+\s/, '')}
+							{monthAbbr(pressed)}
 						</span>
 					</div>
 					<div class="mt-2 text-[10px] font-bold tracking-[0.18em] text-neutral-600 uppercase">
-						{weekday(pressed)}
+						{weekdayLabel(pressed, true)}
 					</div>
 				</div>
 				<!-- **It says what it does.** This was a bare `›` alone in the
@@ -241,7 +277,7 @@
 
 			<div class="flex items-center gap-4 text-[12px] text-neutral-700 tabular-nums">
 				<span class="flex items-center gap-1.5">
-					<Glyph kind="entries" count={lines.length} size={13} />{lines.length}
+					<Glyph kind="entries" count={mine.length} size={13} />{mine.length}
 				</span>
 				{#if media.length}
 					<span class="flex items-center gap-1.5">
@@ -295,10 +331,7 @@
 				{#each said.slice(0, 5) as entry (entry.id)}
 					<div class="flex gap-3">
 						<span class="w-[34px] shrink-0 text-[11px] text-neutral-600 tabular-nums">
-							{new Date(entry.ts).toLocaleTimeString(undefined, {
-								hour: '2-digit',
-								minute: '2-digit'
-							})}
+							{clockLabel(entry.ts)}
 						</span>
 						<p class="m-0 min-w-0 text-[14px] leading-[1.5] font-light">
 							<ColorizedText text={entry.clean_text} />
@@ -319,14 +352,16 @@
 			<h1 class="text-[42px] leading-none font-extrabold tracking-[-0.04em] tabular-nums">
 				{scope.year === 'all' ? 'All' : scope.year}
 			</h1>
-			{#if shelf}
+			{#if totals}
 				<span class="flex items-center gap-3.5 text-[12px] text-neutral-700 tabular-nums">
 					<span class="flex items-center gap-1.5">
-						<Glyph kind="entries" count={shelf.entries} size={13} />{shelf.entries.toLocaleString()}
+						<Glyph kind="entries" count={totals.entries} size={13} />{totals.entries.toLocaleString()}
 					</span>
-					<span class="flex items-center gap-1.5">
-						<Glyph kind="media" count={shelf.media} size={13} />{shelf.media.toLocaleString()}
-					</span>
+					{#if totals.media !== null}
+						<span class="flex items-center gap-1.5">
+							<Glyph kind="media" count={totals.media} size={13} />{totals.media.toLocaleString()}
+						</span>
+					{/if}
 				</span>
 			{/if}
 
@@ -362,7 +397,7 @@
 									<span class="truncate text-[13px] leading-snug font-light">
 										<ColorizedText text={result.clean_text.slice(0, 140)} />
 									</span>
-									<span class="text-[11px] text-neutral-600">{dayLabel(result.day)}</span>
+									<span class="text-[11px] text-neutral-600">{dateLabel(result.day)}</span>
 								</a>
 							{/each}
 						</div>
@@ -384,10 +419,7 @@
 		{#if scope.year === 'all'}
 			<!-- Twelve columns of every year at once is not a shape. The setting
 			     stays honoured; the grid simply has nothing to draw. -->
-			<p class="mt-10 text-[13px] text-neutral-600">
-				Pick a year to draw the grid — it is twelve months wide, and “all” has no
-				twelve months to be.
-			</p>
+			<p class="mt-10 text-[13px] text-neutral-600">Pick a year.</p>
 		{:else}
 			<!-- Chapters, as spans over the months they cover. One folder only:
 			     a chapter belongs to *one* album, so with everything selected

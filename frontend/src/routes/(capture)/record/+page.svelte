@@ -202,17 +202,14 @@
 			<!-- No redirect. Record is where a folder is made, so landing here with
 			     nothing chosen is a legitimate place to be — the list is the screen
 			     at that point, and on a narrow window it is the whole screen. -->
-			<p class="max-w-[56ch] text-[13px] leading-relaxed text-neutral-600">
-				No folder chosen. Press the name at the top of the screen to pick one, or to make one.
-			</p>
+			<p class="text-[13px] text-neutral-600">No folder.</p>
 			{#if unassigned.length}
 				<!-- Where Settings' "point them" row lands. The tags cannot be
 				     pointed from here — a tag points *at* a folder — so this says
-				     what is waiting and which press does it. -->
-				<p class="mt-2 max-w-[56ch] text-[13px] leading-relaxed text-neutral-700">
+				     what is waiting; the list is under Unclaimed on any folder. -->
+				<p class="mt-1 text-[13px] text-neutral-600">
 					{unassigned.length}
-					{unassigned.length === 1 ? 'tag points' : 'tags point'} nowhere. Open the folder they belong
-					in and they are listed under Unclaimed.
+					{unassigned.length === 1 ? 'tag points' : 'tags point'} nowhere.
 				</p>
 			{/if}
 		{:else if view.loading && !album}
@@ -265,28 +262,17 @@
 								>
 									<img src={mediaViewUrl(picture)} alt="" class="h-full w-full object-cover" />
 								</a>
-							{:else}
-								<div
-									class="float-left mr-[18px] mb-3 flex h-[104px] w-[104px] flex-col items-center justify-center gap-1 px-2 text-center"
-									style="box-shadow:inset 0 0 0 1px var(--color-neutral-400)"
-								>
-									<span class="text-[16px] text-neutral-600">▢</span>
-									<!-- Where the gesture is, not what it is: choosing the
-									     face means holding a photograph, and the Log is the
-									     only lens that has any. -->
-									<span class="text-[10px] leading-[1.3] text-neutral-700">
-										hold a photo<br />on the Log
-									</span>
-								</div>
 							{/if}
+							<!-- No picture draws nothing, and no description draws
+							     nothing: an empty frame captioned with the gesture that
+							     fills it, and a line asking what the project is for,
+							     were instructions standing where the content goes. The
+							     button under this is the one way in, and the face is
+							     chosen by holding a photograph on the Log. -->
 
 							{#if written}
 								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 								<div class="prose-overview">{@html overview}</div>
-							{:else}
-								<p class="text-[13px] text-neutral-600">
-									Nothing written yet — what is this, and what is it for?
-								</p>
 							{/if}
 						</div>
 						<!-- The clear goes on a wrapper, not on the button: `clear`
@@ -301,7 +287,7 @@
 								style="box-shadow:inset 0 0 0 1px var(--color-neutral-400)"
 								onclick={startEditing}
 							>
-								{written ? 'Edit' : 'Describe it'}
+								{written ? 'Edit' : '+ Describe'}
 							</button>
 						</div>
 					{/if}
@@ -361,10 +347,6 @@
 								{chapter.entries === 1 ? 'line' : 'lines'}
 							</span>
 						</button>
-					{:else}
-						<p class="px-2 text-[13px] text-neutral-600">
-							Nothing is chaptered. Cut one where something changed.
-						</p>
 					{/each}
 
 					<!-- What sits before the first cut. Said rather than swept into an
@@ -499,8 +481,6 @@
 							>
 								{`<${tag}>`}
 							</button>
-						{:else}
-							<span class="text-[13px] text-neutral-600">No tag points here yet.</span>
 						{/each}
 					</div>
 				</section>
@@ -524,8 +504,6 @@
 							>
 								{`<${tag.tag}>`}<span class="text-[11px] text-neutral-600">{tag.count}</span>
 							</button>
-						{:else}
-							<span class="text-[13px] text-neutral-600">Every tag written points somewhere.</span>
 						{/each}
 					</div>
 				</section>
@@ -562,28 +540,6 @@
 		onremove={(at) => act(unsplitChapter(folderId, at))}
 		onclose={() => (chapterPanel = null)}
 	/>
-{/if}
-
-{#if heldPicture && folder}
-	{@const at = heldPicture}
-	{@const owner = folder}
-	<HoldMenu x={at.x} y={at.y} width={230} onclose={() => (heldPicture = null)}>
-		<button
-			type="button"
-			class="text-left text-[13px] font-semibold text-accent-700"
-			onclick={() => {
-				// The request first: clearing `heldPicture` tears down the block
-				// this handler is declared in, `@const` bindings and all.
-				act(patchFolder(owner.id, { overview_media: '' }));
-				heldPicture = null;
-			}}
-		>
-			Remove picture
-			<span class="mt-0.5 block text-[11px] font-normal text-neutral-700">
-				the photograph stays in the log
-			</span>
-		</button>
-	</HoldMenu>
 {/if}
 
 {#if heldPicture && folder}

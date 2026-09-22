@@ -61,6 +61,7 @@
 	import { isReply, stripReply } from '$lib/trophic/reply';
 	import ColorizedText from '$lib/trophic/ColorizedText.svelte';
 	import { validate, CAP_WARN_AT, MAX_RAW_LEN } from '$lib/trophic/validation';
+	import { dateLabel, keyOf } from '$lib/trophic/day';
 
 	// Matches http(s), www., and bare domains — the source's regex, used to
 	// refuse links rather than store them.
@@ -573,7 +574,7 @@
 	<div class="relative">
 		<button
 			type="button"
-			class="lift lift-sm flex items-center gap-[9px] rounded-[10px] bg-surface px-[13px] py-2 shadow-sm"
+			class="lift lift-sm flex items-center gap-[9px] bg-surface px-[13px] py-2 shadow-sm"
 			onclick={(e) => {
 				e.stopPropagation();
 				pinMenu = !pinMenu;
@@ -613,14 +614,14 @@
 
 		{#if pinMenu}
 			<div
-				class="absolute top-full right-0 z-50 mt-2 flex max-h-[60vh] min-w-[190px] flex-col overflow-y-auto rounded-[12px] bg-surface p-1.5 shadow-lg"
+				class="absolute top-full right-0 z-50 mt-2 flex max-h-[60vh] min-w-[190px] flex-col overflow-y-auto bg-surface p-1.5 shadow-lg"
 				style="animation:landing-fade-in 0.15s ease-out"
 			>
 				{#each folders as f (f.id)}
 					{@const tag = tagForPin(f)}
 					<button
 						type="button"
-						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors hover:bg-neutral-200 disabled:opacity-50 disabled:hover:bg-transparent"
+						class="flex items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-neutral-200 disabled:opacity-50 disabled:hover:bg-transparent"
 						disabled={!tag}
 						title={tag
 							? `captures land as <${tag}>`
@@ -665,10 +666,10 @@
 		     the top one brings up the next. -->
 		{#if due}
 			<!-- Two things can be done with a prompt: answer it or dismiss it.
-			     The answer is `--reply`, and the strip says so — the command is
-			     the only part of this app's syntax you cannot discover by
-			     typing a sigil and reading the panel, because it belongs to
-			     this moment rather than to the vocabulary.
+			     The answer is `--reply`. The strip used to spell that out under
+			     every prompt, which was an instruction standing in the one
+			     place on this screen that is about what you wrote; `--` on the
+			     key row offers `--reply` first, and that is where it is found.
 
 			     While the draft *is* a reply the strip lights and says what it
 			     is attached to. That is the whole feedback: `--reply` scrolls
@@ -676,7 +677,7 @@
 			     without it there is nothing on screen saying where this is
 			     about to go. -->
 			<div
-				class="flex flex-col gap-1.5 rounded-[12px] bg-surface px-4 py-3 shadow-sm transition-shadow"
+				class="flex flex-col gap-1.5 bg-surface px-4 py-3 shadow-sm transition-shadow"
 				class:answering={replying}
 				style="animation:landing-fade-in 0.3s ease-out"
 			>
@@ -693,10 +694,7 @@
 						</span>
 					{/if}
 					<span class="shrink-0 text-[11px] text-neutral-700">
-						{new Date(due.due_at).toLocaleDateString(undefined, {
-							month: 'short',
-							day: 'numeric'
-						})}
+						{dateLabel(keyOf(new Date(due.due_at)))}
 					</span>
 					<button
 						type="button"
@@ -706,15 +704,12 @@
 						dismiss
 					</button>
 				</div>
-				<span class="text-[11px] text-neutral-700">
-					{#if replying}
+				{#if replying}
+					<span class="text-[11px] text-neutral-700">
 						<span class="font-semibold text-accent-700">replying</span> — this answers
 						the line above, and takes it off the strip
-					{:else}
-						type <span class="font-semibold">--reply</span> then your thought to answer
-						it
-					{/if}
-				</span>
+					</span>
+				{/if}
 			</div>
 		{/if}
 
@@ -725,7 +720,7 @@
 			<div class="flex flex-wrap gap-2.5">
 				{#each attachments as item (item.key)}
 					<div
-						class="relative h-[74px] w-[74px] overflow-hidden rounded-[12px] bg-neutral-200 shadow-sm"
+						class="relative h-[74px] w-[74px] overflow-hidden bg-neutral-200 shadow-sm"
 					>
 						{#if item.kind === 'image'}
 							<img src={item.preview} alt="" class="h-full w-full object-cover" />
@@ -734,7 +729,7 @@
 							<video src={item.preview} muted playsinline class="h-full w-full object-cover"
 							></video>
 							<span
-								class="absolute bottom-1.5 left-1.5 rounded-[5px] bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
+								class="absolute bottom-1.5 left-1.5 bg-ground/85 px-[5px] py-[2px] font-mono text-[9px] text-neutral-800"
 							>
 								clip
 							</span>
@@ -742,7 +737,7 @@
 
 						<button
 							type="button"
-							class="absolute top-[5px] right-[5px] flex h-[19px] w-[19px] items-center justify-center rounded-full bg-ground/90 text-[12px] leading-none text-neutral-800 shadow-sm transition-colors hover:text-accent"
+							class="absolute top-[5px] right-[5px] flex h-[19px] w-[19px] items-center justify-center bg-ground/90 text-[12px] leading-none text-neutral-800 shadow-sm transition-colors hover:text-accent"
 							aria-label="remove"
 							onclick={() => drop(item.key)}>×</button
 						>
@@ -848,7 +843,7 @@
 
 		<!-- The syntax keys. The only standing thing under the line, and they do
 		     something rather than say something. -->
-		<SyntaxBar oninsert={(t) => input?.insertText(t)} />
+		<SyntaxBar oninsert={(t, close) => input?.insertText(t, close)} />
 
 		{#if nope}
 			<!-- A refusal, so it takes the colour every other refusal in the app
@@ -873,7 +868,7 @@
 				{#if issue.createFolder}
 					<button
 						type="button"
-						class="lift lift-sm rounded-lg bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink shadow-sm"
+						class="lift lift-sm bg-surface px-2.5 py-1 text-[12px] font-semibold text-ink shadow-sm"
 						onclick={createMissingFolder}
 					>
 						create it

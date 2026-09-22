@@ -33,7 +33,7 @@
 				<button
 					type="button"
 					aria-label={done.has(li) ? 'untick' : 'tick'}
-					class="mt-[5px] flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-[5px] border transition-colors"
+					class="mt-[5px] flex h-[15px] w-[15px] shrink-0 items-center justify-center border transition-colors"
 					style={done.has(li)
 						? `background-color:${UI_COLORS.dim};border-color:${UI_COLORS.dim}`
 						: `border-color:${UI_COLORS.muted}`}

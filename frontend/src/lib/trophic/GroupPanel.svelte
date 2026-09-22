@@ -78,7 +78,7 @@
 				bind:value
 				maxlength="32"
 				aria-label="group name"
-				class="w-full rounded-lg bg-neutral-200 px-3 py-2 text-[14px]"
+				class="w-full bg-neutral-200 px-3 py-2 text-[14px]"
 				onkeydown={(e) => {
 					if (e.key === 'Escape') renaming = false;
 				}}
@@ -100,7 +100,7 @@
 			<!-- The way out you can see, as on the folder's panel. -->
 			<button
 				type="button"
-				class="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[15px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-ink"
+				class="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center text-[15px] text-neutral-700 transition-colors hover:bg-neutral-200 hover:text-ink"
 				aria-label="close"
 				onclick={onclose}
 			>

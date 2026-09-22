@@ -37,9 +37,20 @@
 	 * not a second copy of that: the pile says *there is more*, the counter says
 	 * *how much*, and only one of them can be read at a glance.
 	 *
+	 * ## The pile is the handle
+	 *
+	 * The way back used to be a 64px gutter with the date it led to standing
+	 * up in it, sideways, floating in the margin away from the sheet — a
+	 * second drawing of "there is an earlier page" beside the pile that was
+	 * already saying so. The pile's own edges are the target now: press the
+	 * stack and the top sheet comes off it. The later page, which has no pile
+	 * to press, keeps a bare arrow on the other side and nothing more. The date
+	 * a turn leads to is the page's own headline one turn later, and the
+	 * control's label for anything that cannot see it.
+	 *
 	 * ## One motion, three ways to ask for it
 	 *
-	 * A press on an edge, a drag, and the arrow keys all drive the same three
+	 * A press on the pile, a drag, and the arrow keys all drive the same three
 	 * states. That is the whole reason this is a small state machine rather than
 	 * a `{#key}` block with a transition on it: a drag that finishes has to hand
 	 * over to the animation a press starts, and two motions that nearly agree is
@@ -269,10 +280,17 @@
 		if (focused instanceof HTMLElement && focused.closest('input, textarea, [contenteditable="true"]')) {
 			return;
 		}
-		go(event.key === 'ArrowLeft' ? 'older' : 'newer');
+		// The way a book turns, and the way the screen is laid out: the pile —
+		// what is left to read — lies to the right, so Right takes the next
+		// sheet off it and Left brings the last one back. It was the other way
+		// round while the earlier-page handle stood in the left-hand gutter;
+		// once the pile became that handle, a key pointing away from the thing
+		// it pressed was a key you had to think about. A leftward swipe was
+		// already this way round and is unchanged.
+		go(event.key === 'ArrowRight' ? 'older' : 'newer');
 	}
 
-	/** `Sat 15 Aug`, or `Sat 15 Aug 2/3` when the day it leads to continues. */
+	/** `15 Aug`, or `15 Aug 2/3` when the day it leads to continues. */
 	function edgeLabel(page: Page): string {
 		const label = dayLabel(page.day.key);
 		return page.parts > 1 ? `${label} ${page.part + 1}/${page.parts}` : label;
@@ -308,44 +326,26 @@
 
 <svelte:window onkeydown={onKey} />
 
-{#snippet edge(to: 'older' | 'newer', target: Page | null)}
+{#snippet later(target: Page | null)}
 	<!-- Held open whether or not it can be pressed, so the page underneath does
-	     not shift sideways by a gutter at the ends of the deck.
-
-	     Narrow below `lg`, which is where a tablet in portrait lives. Two 74px
-	     gutters plus the index left an iPad about 210px of page — a date
-	     stacked three words high. The arrow is the part that has to survive;
-	     the date beside it is what goes, because at that width the page's own
-	     headline is already saying the day. -->
+	     not shift sideways by a gutter at the newest end of the deck. -->
 	<button
 		type="button"
-		class="group/edge flex w-[30px] shrink-0 flex-col items-center justify-center gap-3 transition-colors lg:w-[64px]
+		class="group/edge flex w-[30px] shrink-0 items-center justify-center transition-colors lg:w-[44px]
 		       {target ? 'hover:bg-neutral-200/60' : 'pointer-events-none opacity-0'}"
 		disabled={!target}
-		aria-label={target ? `${to === 'older' ? 'earlier' : 'later'}: ${edgeLabel(target)}` : undefined}
-		onclick={() => go(to)}
+		aria-label={target ? `later: ${edgeLabel(target)}` : undefined}
+		onclick={() => go('newer')}
 	>
-		<span
-			class="text-[22px] leading-none text-neutral-600 transition-colors group-hover/edge:text-ink"
-		>
-			{to === 'older' ? '‹' : '›'}
+		<span class="text-[22px] leading-none text-neutral-600 transition-colors group-hover/edge:text-ink">
+			‹
 		</span>
-		{#if target}
-			<!-- The date it leads to, standing up. A turn is worth making with the
-			     day in front of you rather than after you have made it. -->
-			<span
-				class="hidden text-[11px] tracking-[0.08em] text-neutral-600 transition-colors group-hover/edge:text-neutral-800 lg:inline"
-				style="writing-mode:vertical-rl;{to === 'older' ? 'transform:rotate(180deg)' : ''}"
-			>
-				{edgeLabel(target)}
-			</span>
-		{/if}
 	</button>
 {/snippet}
 
 {#if current}
 	<div class="flex min-h-0 flex-1 items-stretch gap-1">
-		{@render edge('older', older)}
+		{@render later(newer)}
 
 		<!-- The deck. The right and bottom padding is where the pile lies: the
 		     sheets are inset by exactly that much, so the stack has somewhere to
@@ -379,6 +379,29 @@
 				></div>
 			{/each}
 
+			<!-- The pile's edges, as the press that takes the top sheet off it.
+			     Two strips — down the right and along the foot, the two sides
+			     the stack shows on — over the inset the sheets leave for it, so
+			     at rest they never cover the page being read. -->
+			{#if older}
+				{@const label = `earlier: ${edgeLabel(older)}`}
+				<button
+					type="button"
+					class="pile-edge absolute top-0 right-0 bottom-0 w-[22px]"
+					aria-label={label}
+					title={label}
+					onclick={() => go('older')}
+				></button>
+				<button
+					type="button"
+					class="pile-edge absolute right-0 bottom-0 left-0 h-[30px]"
+					tabindex="-1"
+					aria-hidden="true"
+					title={label}
+					onclick={() => go('older')}
+				></button>
+			{/if}
+
 			<!-- The page rising out of the pile, then the one leaving over it. -->
 			{#each sheets as sheet (sheet.page.key)}
 				<div class="sheet" style={sheet.style}>
@@ -396,14 +419,17 @@
 			{/each}
 		</div>
 
-		{@render edge('newer', newer)}
+		<!-- Balances the later arrow, so the sheet stays centred. -->
+		<span aria-hidden="true" class="w-[30px] shrink-0 lg:w-[44px]"></span>
 	</div>
 
 	<!-- Where you are in the deck. A page count rather than a scrollbar: a deck
 	     has a length you can state, and stating it is what a scrollbar was only
 	     ever approximating. -->
+	<!-- Bottom padding of its own: the column above clips, and a counter
+	     sitting on the clip line lost its descenders to it. -->
 	<div
-		class="flex shrink-0 items-center justify-center gap-2 pt-2 text-[11px] text-neutral-600 tabular-nums"
+		class="flex shrink-0 items-center justify-center gap-2 pt-1 pb-3 text-[11px] leading-[16px] text-neutral-600 tabular-nums"
 	>
 		<span>{at + 1} of {pages.length}</span>
 	</div>
@@ -419,8 +445,17 @@
 		right: 22px;
 		bottom: 30px;
 		overflow-y: auto;
-		border-radius: 18px;
 		background: var(--color-surface);
 		box-shadow: inset 0 0 0 1px var(--color-neutral-400);
+	}
+
+	/* Invisible until wanted: the pile underneath is the drawing, and this is
+	   only where it can be pressed. A hover lights the strip one rung. */
+	.pile-edge {
+		cursor: pointer;
+		transition: background-color 150ms ease-out;
+	}
+	.pile-edge:hover {
+		background-color: color-mix(in srgb, var(--color-neutral-400) 35%, transparent);
 	}
 </style>

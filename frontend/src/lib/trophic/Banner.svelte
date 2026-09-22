@@ -176,7 +176,7 @@
 					disabled={busy}
 					aria-label="check this off"
 					title="check this off"
-					class="flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-[5px] border border-neutral-400 transition-colors hover:border-accent-500 disabled:opacity-40"
+					class="flex h-[17px] w-[17px] shrink-0 items-center justify-center border border-neutral-400 transition-colors hover:border-accent-500 disabled:opacity-40"
 					onclick={tick}
 				>
 					<svg
@@ -219,7 +219,7 @@
 				onclick={openReminder}
 			>
 				<span
-					class="shrink-0 rounded-[6px] px-[7px] py-[2px] text-[11px] font-bold tabular-nums {daysLeft <=
+					class="shrink-0 px-[7px] py-[2px] text-[11px] font-bold tabular-nums {daysLeft <=
 					0
 						? 'bg-accent-100 text-accent-700'
 						: 'bg-neutral-200'}"
