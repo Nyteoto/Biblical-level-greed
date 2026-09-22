@@ -93,7 +93,7 @@ changes:
 python -m backend.app.pdf --all
 ```
 
-Prints are A4, set in Noto Sans Mono (vendored, OFL), with every photograph
+Prints are A4 unless `PGS_PRINT_PAGE` says otherwise, set in Noto Sans Mono (vendored, OFL), with every photograph
 embedded from the original at the resolution it was taken. A clip prints as its
 poster frame and its filename.
 
@@ -106,6 +106,7 @@ What the apps before the Portal left — `data/capture/`, `data/log/`,
 | `PGS_TZ_OFFSET_HOURS` | the day boundary. Default `7`. |
 | `PGS_SITTING_GRACE` | seconds a sitting may go unheard. Default `300`. |
 | `PGS_FAKE_NOW` | pin the clock to an ISO instant. For scratch data only. |
+| `PGS_PRINT_PAGE` | `A4` (default) or `LETTER`. Reprint with `--all` after changing it. |
 | `PGS_SERVICE` | the unit `POST /api/restart` restarts. Default `pgs.service`. |
 
 ## API

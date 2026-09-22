@@ -322,7 +322,7 @@ def _portal(now: datetime) -> dict:
         "media": (state or {}).get("media", []) if phase == "sitting" else [],
         "previous": last["instance"] if last else None,
         "failed": instance - last["instance"] - 1 if last else 0,
-        "remark": remarks.pick(instance),
+        "remark": remarks.pick(instance, now),
     }
 
 

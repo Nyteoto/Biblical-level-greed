@@ -44,7 +44,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, LETTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -61,9 +61,12 @@ from reportlab.platypus import (
 )
 
 from . import media, records, timeutil
-from .config import PDF_DIR
+from .config import PDF_DIR, PRINT_PAGE
 
-PAGE = A4
+_PAGES = {"A4": A4, "LETTER": LETTER}
+if PRINT_PAGE not in _PAGES:
+    raise ValueError(f"PGS_PRINT_PAGE is {PRINT_PAGE!r}; it must be one of {', '.join(_PAGES)}")
+PAGE = _PAGES[PRINT_PAGE]
 MARGIN = 18 * mm
 # Where a re-encode is unavoidable. High enough that it is not the weak link
 # in a print; a straight JPEG is not re-encoded at all.

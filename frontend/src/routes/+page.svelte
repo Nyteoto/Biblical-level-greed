@@ -63,6 +63,16 @@
 		return () => document.removeEventListener('visibilitychange', back);
 	});
 
+	/** Each step and each phase starts at its top. The screen is one scroller,
+	 *  so without this the template opened wherever yesterday's Record had
+	 *  been scrolled to, with today's number and face above the fold. */
+	let scroller = $state<HTMLElement | null>(null);
+	$effect(() => {
+		void portal?.phase;
+		void step;
+		scroller?.scrollTo({ top: 0 });
+	});
+
 	const n = $derived(portal?.instance ?? 0);
 	const prev = $derived(portal?.previous ?? null);
 
@@ -109,7 +119,7 @@
 	}
 </script>
 
-<div class="min-h-0 flex-1 overflow-y-auto">
+<div class="min-h-0 flex-1 overflow-y-auto" bind:this={scroller}>
 	<div class="mx-auto flex min-h-full max-w-[880px] flex-col px-6 pt-8 pb-16 sm:px-10">
 		{#if error}
 			<p class="pb-4 text-[13px] text-error">{error}</p>

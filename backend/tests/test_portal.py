@@ -309,6 +309,58 @@ def test_every_pool_names_a_condition_that_exists():
         assert pool["when"] in remarks._CONDITIONS, pool["when"]
 
 
+def _lines(when: str) -> list[str]:
+    return next(p["lines"] for p in remarks._pools() if p["when"] == when)
+
+
+def test_a_failure_is_addressed_before_anything_else(data_dir):
+    """Exclusive: a day after a failure hears about the failure, whatever
+    else yesterday's Record would have offered to talk about."""
+    records.write({"instance": 8191, "mood": 9, "wish": "rest", "body": "x"})
+    facts = remarks.context(8193)
+    assert remarks.pick(8193) in [l.format_map(remarks._Leave(facts)) for l in _lines("failed")]
+
+
+def test_an_ordinary_day_draws_from_everything_that_holds(data_dir):
+    records.write(
+        {"instance": 8192, "mood": 5, "wish": "Call home.", "signature": "8192", "body": "short"}
+    )
+    facts = remarks.context(8193)
+    held = [
+        l.format_map(remarks._Leave(facts))
+        for w in ("wish", "terse", "no_media", "always")
+        for l in _lines(w)
+    ]
+    assert remarks.pick(8193) in held
+
+
+def test_yesterdays_wish_can_be_quoted(data_dir):
+    records.write({"instance": 8192, "mood": 5, "wish": "Call home.", "body": "x"})
+    facts = remarks.context(8193)
+    assert facts["wish"] == "Call home."
+    assert "Call home." in _lines("wish")[0].format_map(remarks._Leave(facts))
+
+
+def test_waking_inside_the_window_is_remarked_on(data_dir):
+    records.write({"instance": 8192, "mood": 5, "body": "x"})
+    assert remarks.context(8193, at("19:30"))["late"]
+    assert not remarks.context(8193, at("09:00"))["late"]
+    assert remarks.pick(8193, at("19:30")) in _lines("late")
+
+
+def test_no_line_leaves_a_placeholder_unfilled_when_there_is_a_record(data_dir):
+    """Every placeholder a line can use exists whenever a Record does."""
+    records.write(
+        {"instance": 8192, "mood": 5, "wish": "w", "signature": "s", "body": "b", "media": []}
+    )
+    facts = remarks.context(8193, at("12:00"))
+    for pool in remarks._pools():
+        if pool["when"] == "first":
+            continue
+        for line in pool["lines"]:
+            assert "{" not in line.format_map(remarks._Leave(facts)), line
+
+
 # ── The print ─────────────────────────────────────────────────────────────
 
 

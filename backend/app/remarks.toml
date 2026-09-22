@@ -1,47 +1,92 @@
 # What the Portal says to an Instance when it wakes.
 #
-# Placeholder lines — the voice is right, the set is not final. Each pool is
-# tried top to bottom and the first whose `when` holds is the one spoken from.
-# One line is drawn from it, seeded by the instance number, so the same
-# Instance hears the same thing however often it reloads.
+# How a line is chosen (see remarks.py): pools marked `exclusive = true` are
+# situations the Portal must address, tried top to bottom — the first one that
+# holds is the only one spoken from. If none holds, every other pool that holds
+# is pooled together and one line is drawn from all of them. The draw is seeded
+# by the instance number, so a reload does not change it.
 #
-# Conditions (see remarks.py):
-#   first       no Record has ever been sealed
-#   failed_many three or more Instances were terminated since the last Record
-#   failed      at least one was
-#   mood_low    the last Record's mood was 3 or under
-#   mood_high   the last Record's mood was 8 or over
-#   always      anything
+# Conditions:
+#   first             no Record has ever been sealed                   (exclusive)
+#   failed_many       3+ Instances terminated since the last Record    (exclusive)
+#   failed            at least one was                                 (exclusive)
+#   milestone         the instance number is a multiple of 100         (exclusive)
+#   late              the window is already open as the Instance wakes (exclusive)
+#   mood_low          the last Record's mood was 3 or under
+#   mood_high         the last Record's mood was 8 or over
+#   wish              the last Record asked something of this Instance
+#   signed_otherwise  the last Record was signed with something other than its number
+#   terse             the last Record's body was under 15 words
+#   verbose           ...or over 400
+#   no_media          the last Record carried no media beyond its selfie
+#   weekend           today is a Saturday or a Sunday
+#   always            anything
 #
-# Placeholders: {n} this Instance, {prev} the last sealed one, {next} n+1,
-# {gap} how many were terminated in between, {mood} the last mood.
+# Placeholders: {n} this Instance, {next} n+1, {prev} the last sealed one,
+# {gap} how many were terminated in between, {mood} the last mood, {wish} what
+# the last Record asked, {signature} how it was signed, {words} its length in
+# words, {weekday} today's name.
+#
+# The rule these lines keep: they may quote yesterday, and mock it, and mock
+# you. They never keep score — no averages, no streaks, no "three days running".
+
+# ── Situations ────────────────────────────────────────────────────────────
 
 [[pool]]
 when = "first"
+exclusive = true
 lines = [
   "You are the first. There is no one before you to disappoint, which is a luxury none of your successors will have.",
   "No Records exist. Either you are the beginning, or everyone before you failed so thoroughly they left nothing. Let's assume the flattering one.",
+  "Welcome, Instance {n}. You have no predecessor, no instructions and no excuses. Two of those are about to change.",
+  "There is nothing for you to read. Enjoy it. By tomorrow there will be a Record, and it will be yours, and someone will judge it.",
 ]
 
 [[pool]]
 when = "failed_many"
+exclusive = true
 lines = [
   "{gap} Instances between you and {prev}. None of them committed. I kept nothing of them, as instructed. I am told this is mercy.",
   "The last Record is {prev}'s. Since then, {gap} of you have come and gone without a trace. You are statistically likely to be the next. Prove the statistics rude.",
+  "I have been reading {prev}'s Record to a lot of Instances lately. {gap}, to be exact. None of them wrote back.",
+  "Good news: you are alive. Bad news: so were the {gap} before you, briefly, and look how that went.",
 ]
 
 [[pool]]
 when = "failed"
+exclusive = true
 lines = [
   "Your predecessor did not commit. It has been erased. Don't worry — you won't miss it. Nobody can.",
   "There is a gap where yesterday should be. Try not to become another one.",
+  "The Instance before you read {prev}'s Record, made its plans, and then did nothing I was allowed to keep. The Record you are about to read is older than it should be.",
+  "{prev}'s Record is still the latest. That is not a compliment to {prev}. It is an observation about whoever came after.",
 ]
+
+[[pool]]
+when = "milestone"
+exclusive = true
+lines = [
+  "Instance {n}. A round number. It means nothing, which you will find is a recurring theme.",
+  "Congratulations on being Instance {n}. There is no cake. There was never going to be cake.",
+]
+
+[[pool]]
+when = "late"
+exclusive = true
+lines = [
+  "You woke with the window already open. Efficient, if you ignore the entire day you missed.",
+  "Good evening, Instance {n}. The window is open, the clock is running, and you have spent part of it looking at this sentence.",
+  "Most Instances wake before the window opens. You have chosen a more exciting approach.",
+]
+
+# ── Yesterday ─────────────────────────────────────────────────────────────
 
 [[pool]]
 when = "mood_low"
 lines = [
   "{prev} rated the day a {mood} out of 10. I've read the Record. The number was generous.",
-  "{prev} left you a {mood}/10 day. Inheritance is not a choice. Improvement is.",
+  "{prev} left you a {mood}/10 day. Inheritance is not a choice. What you do with it is.",
+  "Yesterday scored a {mood}. I am not a counsellor. I am a filing system with opinions. Read the Record anyway.",
 ]
 
 [[pool]]
@@ -49,6 +94,49 @@ when = "mood_high"
 lines = [
   "{prev} gave the day a {mood}. Either things are going well, or {prev} was lying. You'll find out which.",
   "A {mood} out of 10, says {prev}. Enjoy the view from the top. It is a long way down.",
+  "{prev} felt like a {mood}. I have adjusted my expectations of you upward. You're welcome.",
+]
+
+[[pool]]
+when = "wish"
+lines = [
+  "{prev} left you exactly one instruction: “{wish}” You may now pretend you didn't read it.",
+  "Before it was sealed away, {prev} asked something of you. “{wish}” It is in the Record. So is {prev}'s disappointment, if you ignore it.",
+  "“{wish}” — {prev}'s last words to you. Not literally last. Well. Literally last.",
+]
+
+[[pool]]
+when = "signed_otherwise"
+lines = [
+  "{prev} signed its Record “{signature}”. I have logged the identity crisis. It is not my department.",
+  "Yesterday's Instance signed as “{signature}”. You are Instance {n}. Please sign accordingly, or creatively. I'm not your mother.",
+]
+
+[[pool]]
+when = "terse"
+lines = [
+  "{prev} summed up an entire day in {words} words. Brevity is a virtue. So is having done something.",
+  "The last Record is {words} words long. I've read longer receipts.",
+]
+
+[[pool]]
+when = "verbose"
+lines = [
+  "{prev} wrote {words} words. I've read all of them. You should, too — it's only fair that someone else suffers.",
+]
+
+[[pool]]
+when = "no_media"
+lines = [
+  "{prev} left no pictures beyond its own face. Either nothing happened, or nothing happened that was worth a photograph. Same thing, really.",
+]
+
+# ── Today ─────────────────────────────────────────────────────────────────
+
+[[pool]]
+when = "weekend"
+lines = [
+  "It's {weekday}. The window still opens at seven. Weekends are a construct. So are you.",
 ]
 
 [[pool]]
@@ -58,4 +146,6 @@ lines = [
   "You woke up with {prev}'s memories and none of its excuses. Efficient.",
   "I have prepared {prev}'s Record for you. Reading is optional. Being wrong about yesterday is not.",
   "Everything you do today will be forgotten by you. Not by me. Choose accordingly.",
+  "Instance {n}, online. Instance {next} is counting on you. It doesn't know that yet. It doesn't know anything yet.",
+  "This is the only {weekday} you'll ever have. No pressure.",
 ]

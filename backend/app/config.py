@@ -43,6 +43,11 @@ SITTING_GRACE_SECONDS = int(os.environ.get("PGS_SITTING_GRACE", "300"))
 # Media blocks on a Record, not counting the selfie.
 MAX_MEDIA = 4
 
+# The printed Record's paper. A4 unless told otherwise; changing it and running
+# `python -m backend.app.pdf --all` reprints the whole archive at the new size,
+# which is the reason the prints are derived rather than kept.
+PRINT_PAGE = os.environ.get("PGS_PRINT_PAGE", "A4").upper()
+
 
 class DataDirMissing(RuntimeError):
     """`PGS_DATA_DIR` points at something that is not there."""

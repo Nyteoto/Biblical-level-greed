@@ -423,23 +423,28 @@ main {
 
 /* -- the Portal's two voices --------------------------------------------- */
 
-/* The label: tiny, tracked, uppercase, at the metadata rung. What Record drew
-   over every section, kept as the one way a section is named. */
-.p-label {
-	font-size: 10px;
-	font-weight: 700;
-	letter-spacing: 0.18em;
-	text-transform: uppercase;
-	color: var(--color-neutral-600);
-}
+/* In `@layer components`, below the utilities, so a `text-error` or `text-ink`
+   written beside one of these still wins. Unlayered, they silently beat every
+   utility — the terminated label was grey rather than red. */
+@layer components {
+	/* The label: tiny, tracked, uppercase, at the metadata rung. What Record drew
+	   over every section, kept as the one way a section is named. */
+	.p-label {
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--color-neutral-600);
+	}
 
-/* The title: the heaviest thing on any screen, and there is one per screen. */
-.p-title {
-	font-size: clamp(28px, 6vw, 40px);
-	line-height: 1.05;
-	font-weight: 800;
-	letter-spacing: -0.03em;
-	color: var(--color-neutral-800);
+	/* The title: the heaviest thing on any screen, and there is one per screen. */
+	.p-title {
+		font-size: clamp(28px, 6vw, 40px);
+		line-height: 1.05;
+		font-weight: 800;
+		letter-spacing: -0.03em;
+		color: var(--color-neutral-800);
+	}
 }
 
 /* A disabled fieldset still has to look like the thing it will become, so the
