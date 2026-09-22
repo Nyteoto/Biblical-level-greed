@@ -107,6 +107,15 @@ the machine. Built to `frontend/build`, which is **gitignored** — rebuild
   were taken, never from the 2048px display copy. A video prints as its poster
   frame, which the browser makes at 1920px — no ffmpeg on the server, because it
   would have to exist on both OSes.
+- **A Record is drawn as a record sheet, and the screen and the paper are one
+  form.** `Sheet.svelte` is the form, from the design canvas *Folders and the
+  log* → *One day, as a record sheet*. Its elements are there to say the Record
+  is filed: sheets underneath, binder holes, a ruled grid of labelled boxes, a
+  numbered register, plates on corner mounts, "carried forward" for the wish,
+  and the **sealed** stamp. The template and the read-back Record are the same
+  component with inputs or ink in the boxes; `pdf.py` draws the same form on
+  paper. Change one and you change the others. The tally row holds facts about
+  *this* sheet only, never totals across sheets.
 - **The server's rules are the authority; `rules.ts` is a mirror.** The
   checklist shrinks as you type, but `day.missing` decides. Keep the two lists
   saying the same thing in the same words.

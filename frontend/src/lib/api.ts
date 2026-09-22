@@ -59,8 +59,11 @@ export interface Portal {
 	max_media: number;
 	selfie: string | null;
 	media: DayMedia[];
-	/** The last sealed Instance before today, if any. */
+	/** The last sealed Instance before today, if any, and the day it lived. */
 	previous: number | null;
+	previous_day: string | null;
+	/** When today's sitting began, while one is open. */
+	began: string | null;
 	/** How many Instances were terminated since `previous`. */
 	failed: number;
 	remark: string;
@@ -83,6 +86,8 @@ export interface SealedRecord {
 	sitting: { began: string; sealed: string };
 	/** Whether a print exists at `/api/portal/pdf/{instance}`. */
 	pdf: boolean;
+	/** The sheet this one was filed on top of. */
+	follows: { instance: number; day: string } | null;
 }
 
 export interface Draft {

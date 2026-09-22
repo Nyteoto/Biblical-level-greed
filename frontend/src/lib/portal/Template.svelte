@@ -39,8 +39,10 @@
 		type SealedRecord
 	} from '$lib/api';
 	import MoodScale from './MoodScale.svelte';
+	import Plate from './Plate.svelte';
+	import Sheet, { type Fact } from './Sheet.svelte';
 	import { draft, end, hold, sitting } from './sitting.svelte';
-	import { longDay, missing, until } from './rules';
+	import { missing, until } from './rules';
 
 	let {
 		portal,
@@ -75,6 +77,18 @@
 		(portal.selfie ? 1 : 0) + portal.media.filter((m) => m.kind === 'image').length
 	);
 	const gaps = $derived(missing(draft, pictures));
+
+	/** The tally row: facts about this sheet, never totals across sheets. The
+	 *  time left is not here — the bar above says it, and stays on screen
+	 *  while the sheet scrolls. */
+	const facts = $derived<Fact[]>([
+		{
+			label: 'window',
+			value: `${portal.window.open.slice(11, 16)}–${portal.window.close.slice(11, 16)}`
+		},
+		{ label: 'began', value: portal.began ? portal.began.slice(11, 16) : '—', dim: !portal.began },
+		{ label: 'lost since', value: String(portal.failed), dim: portal.failed === 0 }
+	]);
 
 	let error = $state<string | null>(null);
 	let busy = $state(false);
@@ -219,116 +233,129 @@
 		<p class="-mt-6 text-[13px] text-error">{error}</p>
 	{/if}
 
-	<fieldset disabled={!live} class="flex flex-col gap-10 {live ? '' : 'opacity-60'}">
-		<header class="flex flex-wrap items-start justify-between gap-6">
-			<div class="flex flex-col gap-3">
-				<span class="p-label">{longDay(portal.day)}</span>
-				<h1 class="p-title">Instance {n}</h1>
-			</div>
-			{#if portal.selfie}
-				<img
-					src={viewUrl(portal.selfie)}
-					alt="Instance {n}"
-					class="h-[168px] w-[126px] object-cover"
-					onerror={(e) => fallback(e, portal.selfie!)}
-				/>
-			{/if}
-		</header>
+	<!-- The sheet. Disabled as a whole outside a sitting, so the Instance sees
+	     every box it will have to fill before it commits to filling them. -->
+	<fieldset disabled={!live} class="m-0 min-w-0 border-0 p-0 {live ? '' : 'opacity-60'}">
+		<Sheet
+			instance={n}
+			day={portal.day}
+			selfie={portal.selfie}
+			{facts}
+			filed={portal.previous !== null}
+			previous={portal.previous !== null && portal.previous_day
+				? { instance: portal.previous, day: portal.previous_day }
+				: null}
+			plateCount="{portal.media.length} of {portal.max_media}"
+		>
+			{#snippet register()}
+				<!-- Written straight onto the ruled lines. The rules are the
+				     textarea's own background, attached to its content, so they
+				     scroll with the writing rather than sitting still under it. -->
+				<textarea
+					aria-label="The day"
+					class="ruled field-sizing-content min-h-[408px] w-full flex-1 resize-none bg-transparent pr-3.5 pl-[56px] text-[16px] leading-[34px] font-light text-neutral-800 placeholder:text-neutral-600"
+					placeholder="What happened. What you did. What you would want to know tomorrow."
+					bind:value={draft.body}
+				></textarea>
+			{/snippet}
 
-		<section class="flex flex-col gap-3">
-			<h2 class="p-label">Media · {portal.media.length} of {portal.max_media}</h2>
-			<div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
-				{#each portal.media as item (item.ref)}
-					<figure class="flex flex-col gap-2">
-						<div class="relative">
-							{#if item.kind === 'video'}
-								<!-- svelte-ignore a11y_media_has_caption -->
-								<video
-									src={mediaUrl(item.ref)}
-									controls
-									playsinline
-									preload="metadata"
-									class="aspect-video w-full bg-neutral-200 object-contain"
-								></video>
-							{:else}
-								<img
-									src={viewUrl(item.ref)}
-									alt=""
-									class="max-h-[360px] w-full bg-neutral-200 object-contain"
-									onerror={(e) => fallback(e, item.ref)}
-								/>
-							{/if}
-							<button
-								type="button"
-								class="absolute top-2 right-2 h-9 bg-ground px-3 text-[12px] text-neutral-700 hover:text-ink"
-								onclick={() => remove(item.ref)}>remove</button
-							>
+			{#snippet plates()}
+				<div class="grid grid-cols-2 gap-3">
+					{#each portal.media as item, i (item.ref)}
+						{@const large = i === 0 || item.kind === 'video'}
+						<div class="relative {large ? 'col-span-2' : ''}">
+							<Plate {large}>
+								{#if item.kind === 'video'}
+									<!-- svelte-ignore a11y_media_has_caption -->
+									<video
+										src={mediaUrl(item.ref)}
+										controls
+										playsinline
+										preload="metadata"
+										class="h-full w-full bg-neutral-300 object-contain"
+									></video>
+								{:else}
+									<img
+										src={viewUrl(item.ref)}
+										alt=""
+										class="h-full w-full bg-neutral-300 object-cover"
+										onerror={(e) => fallback(e, item.ref)}
+									/>
+								{/if}
+								{#snippet caption()}
+									<span class="shrink-0 font-bold text-neutral-800">pl. {i + 1}</span>
+									<input
+										type="text"
+										aria-label="A note under plate {i + 1}"
+										placeholder="a note, if you want one"
+										class="h-7 min-w-0 flex-1 bg-transparent text-[12px] tracking-normal text-neutral-800 normal-case placeholder:text-neutral-600"
+										style="box-shadow: inset 0 -1px 0 0 var(--color-neutral-400)"
+										bind:value={draft.captions[item.ref]}
+									/>
+									<button
+										type="button"
+										class="h-7 shrink-0 text-neutral-600 hover:text-ink"
+										onclick={() => remove(item.ref)}>remove</button
+									>
+								{/snippet}
+							</Plate>
 						</div>
-						<input
-							type="text"
-							placeholder="A note under it, if you want one"
-							class="h-10 bg-transparent px-0 text-[13px] text-neutral-800 placeholder:text-neutral-600"
-							style="box-shadow: inset 0 -1px 0 0 var(--color-neutral-400)"
-							bind:value={draft.captions[item.ref]}
-						/>
-					</figure>
-				{/each}
+					{/each}
 
-				{#if upload}
-					<div class="flex aspect-video flex-col items-center justify-center gap-3 bg-neutral-200">
-						<span class="max-w-[80%] truncate text-[12px] text-neutral-700">{upload.name}</span>
-						<span class="h-[3px] w-1/2 bg-neutral-400">
-							<span
-								class="block h-full bg-ink"
-								style="width: {Math.round(upload.fraction * 100)}%"
-							></span>
-						</span>
-					</div>
-				{:else if portal.media.length < portal.max_media}
-					<label
-						class="flex aspect-video cursor-pointer flex-col items-center justify-center gap-1 text-neutral-600 transition-colors hover:text-ink"
-						style="box-shadow: inset 0 0 0 1px var(--color-neutral-400)"
-					>
-						<span class="text-[22px] leading-none">+</span>
-						<span class="text-[12px]">a photo or a clip</span>
-						<input type="file" accept="image/*,video/*" class="hidden" onchange={add} />
-					</label>
-				{/if}
-			</div>
-		</section>
+					{#if upload}
+						<div class={portal.media.length === 0 ? 'col-span-2' : ''}>
+							<Plate large={portal.media.length === 0}>
+								<div class="flex h-full flex-col items-center justify-center gap-3 bg-neutral-200">
+									<span class="max-w-[80%] truncate text-[11px] text-neutral-700">{upload.name}</span>
+									<span class="h-[3px] w-1/2 bg-neutral-400">
+										<span
+											class="block h-full bg-ink"
+											style="width: {Math.round(upload.fraction * 100)}%"
+										></span>
+									</span>
+								</div>
+							</Plate>
+						</div>
+					{:else if portal.media.length < portal.max_media}
+						<!-- An empty mount, waiting for a plate. -->
+						<div class={portal.media.length === 0 ? 'col-span-2' : ''}>
+							<Plate large={portal.media.length === 0}>
+								<label
+									class="flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-neutral-600 transition-colors hover:text-ink"
+								>
+									<span class="text-[20px] leading-none">+</span>
+									<span class="text-[10px] tracking-[0.14em] uppercase">mount a plate</span>
+									<input type="file" accept="image/*,video/*" class="hidden" onchange={add} />
+								</label>
+							</Plate>
+						</div>
+					{/if}
+				</div>
+			{/snippet}
 
-		<section class="flex max-w-[68ch] flex-col gap-3">
-			<h2 class="p-label">Record</h2>
-			<textarea
-				class="field-sizing-content min-h-[220px] resize-none bg-neutral-200 p-4 text-[14px] leading-[1.75] text-neutral-800"
-				placeholder="What happened. What you did. What you would want to know tomorrow."
-				bind:value={draft.body}
-			></textarea>
-		</section>
+			{#snippet forward()}
+				<textarea
+					aria-label="What do you want {n + 1} to do?"
+					class="field-sizing-content mt-1.5 min-h-[96px] w-full resize-none bg-transparent text-[14px] leading-[1.6] font-light text-neutral-800"
+					bind:value={draft.wish}
+				></textarea>
+			{/snippet}
 
-		<section class="flex max-w-[68ch] flex-col gap-3">
-			<h2 class="p-label">What do you want {n + 1} to do?</h2>
-			<textarea
-				class="field-sizing-content min-h-[110px] resize-none bg-neutral-200 p-4 text-[14px] leading-[1.75] text-neutral-800"
-				bind:value={draft.wish}
-			></textarea>
-		</section>
+			{#snippet mood()}
+				<MoodScale value={draft.mood} onpick={live ? (m) => (draft.mood = m) : undefined} />
+			{/snippet}
 
-		<section class="flex flex-col gap-3">
-			<h2 class="p-label">On a scale of 1 to 10, how do you feel?</h2>
-			<MoodScale value={draft.mood} onpick={live ? (m) => (draft.mood = m) : undefined} />
-		</section>
-
-		<section class="flex max-w-[360px] flex-col gap-2">
-			<h2 class="p-label">Signed</h2>
-			<input
-				type="text"
-				class="h-12 bg-transparent text-[22px] font-extrabold tracking-[-0.02em] text-ink"
-				style="box-shadow: inset 0 -1px 0 0 var(--color-neutral-400)"
-				placeholder={String(n)}
-				bind:value={draft.signature}
-			/>
-		</section>
+			{#snippet signed()}
+				<input
+					type="text"
+					aria-label="Signed"
+					class="h-10 w-full bg-transparent text-[22px] font-extrabold tracking-[-0.02em] text-ink"
+					style="box-shadow: inset 0 -1px 0 0 var(--color-neutral-500)"
+					placeholder={String(n)}
+					bind:value={draft.signature}
+				/>
+			{/snippet}
+		</Sheet>
 	</fieldset>
 
 	{#if live}

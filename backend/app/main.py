@@ -291,10 +291,20 @@ def get_media(relative: str):
 # -- the Portal ---------------------------------------------------------------
 
 
+def _follows(instance: int) -> dict | None:
+    """The sheet a Record was filed on top of — for the foot of the form."""
+    before = records.latest(before=instance)
+    return {"instance": before["instance"], "day": before["day"]} if before else None
+
+
 def _record_view(record: dict | None) -> dict | None:
     if record is None:
         return None
-    return {**record, "pdf": pdf.path_of(record["instance"]).is_file()}
+    return {
+        **record,
+        "pdf": pdf.path_of(record["instance"]).is_file(),
+        "follows": _follows(record["instance"]),
+    }
 
 
 def _portal(now: datetime) -> dict:
@@ -321,6 +331,8 @@ def _portal(now: datetime) -> dict:
         "selfie": (state or {}).get("selfie") if phase in ("awake", "sitting") else None,
         "media": (state or {}).get("media", []) if phase == "sitting" else [],
         "previous": last["instance"] if last else None,
+        "previous_day": last["day"] if last else None,
+        "began": ((state or {}).get("sitting") or {}).get("began") if phase == "sitting" else None,
         "failed": instance - last["instance"] - 1 if last else 0,
         "remark": remarks.pick(instance, now),
     }

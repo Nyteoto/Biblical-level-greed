@@ -73,6 +73,15 @@
 		scroller?.scrollTo({ top: 0 });
 	});
 
+	/** The record sheet is drawn at the width the reference gives it; the
+	 *  screens around it are prose and keep a reading measure. */
+	const onSheet = $derived(
+		!!portal &&
+			(portal.phase === 'sitting' ||
+				portal.phase === 'sealed' ||
+				(portal.phase === 'awake' && (step === 'read' || step === 'template')))
+	);
+
 	const n = $derived(portal?.instance ?? 0);
 	const prev = $derived(portal?.previous ?? null);
 
@@ -120,7 +129,11 @@
 </script>
 
 <div class="min-h-0 flex-1 overflow-y-auto" bind:this={scroller}>
-	<div class="mx-auto flex min-h-full max-w-[880px] flex-col px-6 pt-8 pb-16 sm:px-10">
+	<div
+		class="mx-auto flex min-h-full flex-col px-6 pt-8 pb-16 sm:px-10 {onSheet
+			? 'max-w-[1210px]'
+			: 'max-w-[880px]'}"
+	>
 		{#if error}
 			<p class="pb-4 text-[13px] text-error">{error}</p>
 		{/if}

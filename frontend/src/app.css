@@ -160,6 +160,13 @@
 	   values equal; there is no third place to change. */
 	--color-error: #ff6a5a;
 
+	/* The record sheet: a page one step up from the ground, and the faint rule
+	   its unused lines are drawn in. From the design canvas's *One day, as a
+	   record sheet*, where every other value on the form is already a rung of
+	   the ramp above. */
+	--color-sheet: #15191e;
+	--color-rule-faint: #1e242a;
+
 	/* One step apart, and used as a ladder: a card at rest is `md`, lifted is
 	   `lg`, a chip at rest is `sm`. Hover moves one rung and never two.
 	   Elevation used to be emission — a halo of phosphor, because a dark
@@ -310,7 +317,7 @@ body {
    indicator's notch, on the one screen whose whole argument is that it is bare.
    - the draft shows focus with the caret it draws itself;
    - an input inside a `.focus-pill` has already had the ring drawn for it. */
-textarea.smooth-layout:focus-visible,
+.ruled:focus-visible,
 .focus-pill :focus-visible {
 	outline: none;
 }
@@ -437,6 +444,30 @@ main {
 		color: var(--color-neutral-600);
 	}
 
+	/* A field's name on the record sheet: smaller and wider-tracked than a
+	   section label, because it sits in a ruled box rather than over a page. */
+	.f-label {
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--color-neutral-600);
+	}
+
+	/* A ruled grid of labelled boxes: the rules are the 1px gaps showing the
+	   ground through, so a box never draws its own border and two never double. */
+	.f-grid {
+		display: grid;
+		gap: 1px;
+		background: var(--color-neutral-500);
+		box-shadow: 0 0 0 1px var(--color-neutral-500);
+	}
+	.f-cell {
+		background: var(--color-sheet);
+		padding: 8px 12px 10px;
+		min-width: 0;
+	}
+
 	/* The title: the heaviest thing on any screen, and there is one per screen. */
 	.p-title {
 		font-size: clamp(28px, 6vw, 40px);
@@ -445,6 +476,20 @@ main {
 		letter-spacing: -0.03em;
 		color: var(--color-neutral-800);
 	}
+}
+
+/* The register's ruled lines, drawn under a textarea: one faint rule per
+   34px line, and the margin rule at the gutter. `local` attaches them to the
+   content, so they scroll with the writing instead of staying put under it. */
+.ruled {
+	background-image:
+		linear-gradient(to right, transparent 42px, var(--color-neutral-400) 42px, var(--color-neutral-400) 43px, transparent 43px),
+		linear-gradient(to bottom, transparent 33px, var(--color-rule-faint) 33px);
+	background-size:
+		100% 100%,
+		100% 34px;
+	background-attachment: local;
+	background-repeat: no-repeat, repeat;
 }
 
 /* A disabled fieldset still has to look like the thing it will become, so the
